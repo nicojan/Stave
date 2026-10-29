@@ -42,8 +42,9 @@ struct PathsAndDatabaseTests {
             ("unknown section", nil, "'bogus', 'tab'"),
             ("unknown kind", nil, "'regular', 'bogus'"),
         ]
+        // do/catch rather than `let error = #expect(throws:)`, which needs Swift 6.1; CI's macOS 14 runner has Swift 6.0.
         for (label, slot, rawSectionKind) in invalid {
-            let error = #expect(throws: DatabaseError.self, "\(label)") {
+            do {
                 try database.writer.write { db in
                     if let slot { try slot.insert(db); return }
                     try db.execute(
@@ -51,8 +52,10 @@ struct PathsAndDatabaseTests {
                         arguments: [UUID(), profile.id, workspace.id, Date()]
                     )
                 }
+                Issue.record("\(label): inserted without error")
+            } catch let error as DatabaseError {
+                #expect(error.extendedResultCode == .SQLITE_CONSTRAINT_CHECK, "\(label): \(error)")
             }
-            #expect(error?.extendedResultCode == .SQLITE_CONSTRAINT_CHECK, "\(label)")
         }
         let slots = try database.writer.read { db in try Slot.fetchCount(db) }
         #expect(slots == 0)
