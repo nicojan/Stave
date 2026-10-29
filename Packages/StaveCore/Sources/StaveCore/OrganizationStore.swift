@@ -12,9 +12,17 @@ public final class OrganizationStore: Sendable {
     let database: StaveDatabase
     let now: @Sendable () -> Date
 
+    /// `now` is brought to stored precision, so a record a method returns equals the same record read back (R24).
     public init(database: StaveDatabase, now: @escaping @Sendable () -> Date = Date.init) {
         self.database = database
-        self.now = now
+        self.now = { Self.storedPrecision(now()) }
+    }
+
+    /// Rounds to whole milliseconds (GRDB stores "ss.SSS"), then takes the value GRDB decodes for it: decoding goes through
+    /// `DateComponents`, so a rounded date alone can read back a few hundred nanoseconds off and compare unequal.
+    static func storedPrecision(_ date: Date) -> Date {
+        let rounded = Date(timeIntervalSince1970: (date.timeIntervalSince1970 * 1000).rounded() / 1000)
+        return Date.fromDatabaseValue(rounded.databaseValue) ?? rounded
     }
 
     private var writer: any DatabaseWriter { database.writer }

@@ -26,6 +26,22 @@ struct TabTests {
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [top.id, a.id, child.id, b.id])
     }
 
+    /// The store keeps dates at stored precision (R24): with a sub-millisecond clock, what `openTab` returns equals what is read back.
+    @Test func returnedTabEqualsStoredTab() throws {
+        let clock = TestClock(start: Date(timeIntervalSince1970: 1_700_000_000.123_456_7))
+        let (store, _, _) = try makeTempStore(now: clock.now)
+        let profile = try store.createProfile(name: "P")
+        let ws = try #require(try store.workspaces(profileID: profile.id).first)
+        var returned: [Tab] = []
+        for i in 0..<50 {
+            clock.advance(by: 0.000_987_6)
+            returned.append(try store.openTab(url: "https://\(i).example", title: "\(i)", workspaceID: ws.id, origin: .commandBar, containerID: nil, edge: .bottom))
+        }
+        let firstRaw = Date(timeIntervalSince1970: 1_700_000_000.123_456_7).addingTimeInterval(0.000_987_6)
+        #expect(returned[0].modifiedAt != firstRaw) // the raw sub-millisecond clock value was not kept
+        #expect(try store.regularTabs(workspaceID: ws.id) == returned)
+    }
+
     @Test func openOnUnknownWorkspaceThrowsNotFound() throws {
         let (store, _, _, _, _) = try fixture()
         #expect(throws: StoreError.notFound) {
