@@ -81,13 +81,14 @@ struct ProfileWorkspaceTests {
         #expect(try store.workspaces(profileID: profile.id).map(\.name) == ["Home"])
     }
 
-    // Enabled in Task 5, which adds `archivedTabs(profileID:)`. Until then it queries the table directly.
-    @Test(.disabled("needs Task 5")) func deleteWorkspaceArchivesItsTabs() throws {
+    @Test func deleteWorkspaceArchivesItsTabs() throws {
         let clock = TestClock()
         let (store, database, _) = try makeTempStore(now: clock.now)
         let profile = try store.createProfile(name: "P")
         let doomed = try store.createWorkspace(profileID: profile.id, name: "Doomed", icon: "star", colorHex: "#111111")
         let now = clock.date
+        let survivor = try store.createWorkspace(profileID: profile.id, name: "Survivor", icon: "star", colorHex: "#333333")
+        let survivingTab = try store.openTab(url: "https://survivor.example", title: "Survivor", workspaceID: survivor.id, origin: .commandBar, containerID: nil, edge: .top)
         try database.writer.write { db in
             let pinnedSlot = Slot(profileID: profile.id, workspaceID: doomed.id, section: .pinned, sortIndex: 0, modifiedAt: now)
             let regularSlot = Slot(profileID: profile.id, workspaceID: doomed.id, section: .regular, sortIndex: 1, modifiedAt: now)
@@ -98,8 +99,10 @@ struct ProfileWorkspaceTests {
         }
         clock.advance(by: 5)
         try store.deleteWorkspace(doomed.id)
-        let archived = try database.writer.read { db in try ArchivedTab.fetchAll(db) }
+        let archived = try store.archivedTabs(profileID: profile.id)
         #expect(Set(archived.map(\.url)) == ["https://pinned.example/a", "https://regular.example"])
+        #expect(!archived.contains { $0.url == "https://survivor.example" })
+        #expect(try store.regularTabs(workspaceID: survivor.id).map(\.id) == [survivingTab.id])
         #expect(archived.allSatisfy { $0.workspaceID == doomed.id && $0.profileID == profile.id && $0.closedAt == clock.date })
     }
 
