@@ -1,0 +1,43 @@
+name: Stave
+options:
+  bundleIdPrefix: com.nicojan
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  StaveCore:
+    path: Packages/StaveCore
+
+targets:
+  Stave:
+    type: application
+    platform: macOS
+    sources:
+      - path: Stave
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - package: StaveCore
+        product: StaveCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Stave
+        PRODUCT_NAME: Stave
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        INFOPLIST_FILE: Stave/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Stave/Stave.entitlements
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+        GENERATE_INFOPLIST_FILE: true
+      configs:
+        # Debug builds run under a separate bundle id so a copy launched from
+        # Xcode never shares the installed app's data. Debug data lives in
+        # Application Support/Stave-debug.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Stave.debug
