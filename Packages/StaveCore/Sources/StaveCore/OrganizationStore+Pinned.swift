@@ -174,7 +174,7 @@ extension OrganizationStore {
 
     // MARK: - Helpers
 
-    private enum Child {
+    enum Child {
         case folder(Folder), slot(Slot)
         var sortIndex: Double {
             switch self {
@@ -184,19 +184,19 @@ extension OrganizationStore {
         }
     }
 
-    private func fetchPair(_ id: UUID, in db: Database) throws -> (Tab, Slot) {
+    func fetchPair(_ id: UUID, in db: Database) throws -> (Tab, Slot) {
         guard let tab = try Tab.fetchOne(db, key: id),
               let slot = try Slot.fetchOne(db, key: tab.slotID) else { throw StoreError.notFound }
         return (tab, slot)
     }
 
-    private func tabsBySlot(_ slots: [Slot], in db: Database) throws -> [UUID: Tab] {
+    func tabsBySlot(_ slots: [Slot], in db: Database) throws -> [UUID: Tab] {
         let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
         return Dictionary(uniqueKeysWithValues: tabs.map { ($0.slotID, $0) })
     }
 
     /// Folders and pinned slots directly under `parentID` (nil = root), in one ordering space.
-    private func pinnedChildren(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> [Child] {
+    func pinnedChildren(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> [Child] {
         let folders = try Folder
             .filter(Column("workspaceID") == workspaceID && Column("parentFolderID") == parentID)
             .order(Column("sortIndex"), Column("rowid")).fetchAll(db)

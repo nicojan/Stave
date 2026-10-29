@@ -149,7 +149,7 @@ extension OrganizationStore {
         return index
     }
 
-    private func regularSlots(workspaceID: UUID, in db: Database) throws -> [Slot] {
+    func regularSlots(workspaceID: UUID, in db: Database) throws -> [Slot] {
         try Slot
             .filter(Column("workspaceID") == workspaceID && Column("section") == SlotSection.regular.rawValue)
             .order(Column("sortIndex"), Column("rowid"))
@@ -185,7 +185,7 @@ extension OrganizationStore {
     }
 
     /// True when `index` is not strictly between its neighbours, or is within `minimumIndexGap` of either.
-    private func isCrowded(_ index: Double, among existing: [Double]) -> Bool {
+    func isCrowded(_ index: Double, among existing: [Double]) -> Bool {
         let below = existing.filter { $0 <= index }.max()
         let above = existing.filter { $0 >= index }.min()
         // Equal to a neighbour is a zero gap, so the gap checks below cover it; a collapsed double lands here.
