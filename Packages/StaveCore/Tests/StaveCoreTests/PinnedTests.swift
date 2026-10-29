@@ -68,6 +68,29 @@ struct PinnedTests {
         #expect(regular.allSatisfy { $0.pinnedFaviconURL == nil && $0.pinnedURL == nil })
     }
 
+    @Test func removingDriftedPinnedOrEssentialArchivesPinnedPage() throws {
+        let (store, _, _, profile, ws) = try fixture()
+        let pinned = try open(store, "https://p.com", in: ws)
+        let essential = try open(store, "https://e.com", in: ws)
+        try store.updateNavigation(tabID: pinned.id, url: "https://p.com", title: "P", faviconURL: "https://p.com/i.png", interactionState: nil)
+        try store.updateNavigation(tabID: essential.id, url: "https://e.com", title: "E", faviconURL: "https://e.com/i.png", interactionState: nil)
+        try store.pinTab(pinned.id, folderID: nil)
+        try store.makeEssential(essential.id)
+        try store.updateNavigation(tabID: pinned.id, url: "https://p.com/drift", title: "PD", faviconURL: nil, interactionState: nil)
+        try store.updateNavigation(tabID: essential.id, url: "https://e.com/drift", title: "ED", faviconURL: nil, interactionState: nil)
+        try store.removePinnedTab(pinned.id)
+        try store.removeEssential(essential.id)
+        let archived = try store.archivedTabs(profileID: profile.id)
+        let pinnedRow = try #require(archived.first { $0.url == "https://p.com/drift" })
+        let essentialRow = try #require(archived.first { $0.url == "https://e.com/drift" })
+        #expect((pinnedRow.pinnedURL, pinnedRow.pinnedTitle, pinnedRow.pinnedFaviconURL) == ("https://p.com", "P", "https://p.com/i.png"))
+        #expect((essentialRow.pinnedURL, essentialRow.pinnedTitle, essentialRow.pinnedFaviconURL) == ("https://e.com", "E", "https://e.com/i.png"))
+        // Restore still yields a regular tab at the top, at the drifted page.
+        let restored = try store.restoreArchivedTab(pinnedRow.id, workspaceID: ws.id)
+        #expect(restored.url == "https://p.com/drift" && restored.pinnedURL == nil)
+        #expect(try store.regularTabs(workspaceID: ws.id).first?.id == restored.id)
+    }
+
     @Test func resetRegularThrowsNotPinned() throws {
         let (store, _, _, _, ws) = try fixture()
         let tab = try open(store, "https://a.com", in: ws)

@@ -84,15 +84,12 @@ public final class OrganizationStore: Sendable {
             guard siblings > 1 else { throw StoreError.lastWorkspace }
 
             let stamp = now()
-            let slotIDs = try Slot.filter(Column("workspaceID") == id).fetchAll(db).map(\.id)
-            let tabs = try Tab.filter(slotIDs.contains(Column("slotID"))).order(Column("lastActiveAt")).fetchAll(db)
+            let slots = try Slot.filter(Column("workspaceID") == id).fetchAll(db)
+            let slotsByID = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
+            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt")).fetchAll(db)
             for tab in tabs {
-                try ArchivedTab(
-                    profileID: workspace.profileID, workspaceID: id,
-                    url: tab.url, title: tab.title, faviconURL: tab.faviconURL,
-                    interactionState: tab.interactionState, containerID: tab.containerID,
-                    closedAt: stamp, modifiedAt: stamp
-                ).insert(db)
+                guard let slot = slotsByID[tab.slotID] else { continue }
+                try makeArchivedTab(slot: slot, tab: tab, closedAt: stamp).insert(db)
             }
             _ = try workspace.delete(db)
         }

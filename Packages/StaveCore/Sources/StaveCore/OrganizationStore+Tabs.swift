@@ -130,10 +130,12 @@ extension OrganizationStore {
 
     // MARK: - Helpers
 
-    /// The archive row for a closing tab (shared by `closeTab`, `removePinnedTab` and `removeEssential`). Not inserted.
+    /// The archive row for a closing tab (shared by `closeTab`, `removePinnedTab`, `removeEssential` and `deleteWorkspace`),
+    /// carrying the pinned page so a drifted pinned tab or Essential loses neither. Not inserted.
     func makeArchivedTab(slot: Slot, tab: Tab, closedAt: Date) -> ArchivedTab {
         ArchivedTab(
             profileID: slot.profileID, workspaceID: slot.workspaceID,
+            pinnedURL: tab.pinnedURL, pinnedTitle: tab.pinnedTitle, pinnedFaviconURL: tab.pinnedFaviconURL,
             url: tab.url, title: tab.title, faviconURL: tab.faviconURL,
             interactionState: tab.interactionState, containerID: tab.containerID,
             closedAt: closedAt, modifiedAt: closedAt

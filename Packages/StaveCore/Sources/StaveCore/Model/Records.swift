@@ -105,6 +105,10 @@ public struct ArchivedTab: Codable, FetchableRecord, PersistableRecord, Sendable
     public var id: UUID
     public var profileID: UUID
     public var workspaceID: UUID?
+    /// The pinned page of a pinned tab or Essential; nil for a regular tab. Kept so the page the user pinned is never lost.
+    public var pinnedURL: String?
+    public var pinnedTitle: String?
+    public var pinnedFaviconURL: String?
     public var url: String
     public var title: String
     public var faviconURL: String?
@@ -113,8 +117,9 @@ public struct ArchivedTab: Codable, FetchableRecord, PersistableRecord, Sendable
     public var closedAt: Date
     public var modifiedAt: Date
 
-    public init(id: UUID = UUID(), profileID: UUID, workspaceID: UUID? = nil, url: String, title: String, faviconURL: String? = nil, interactionState: Data? = nil, containerID: UUID? = nil, closedAt: Date = Date(), modifiedAt: Date = Date()) {
-        self.id = id; self.profileID = profileID; self.workspaceID = workspaceID; self.url = url
+    public init(id: UUID = UUID(), profileID: UUID, workspaceID: UUID? = nil, pinnedURL: String? = nil, pinnedTitle: String? = nil, pinnedFaviconURL: String? = nil, url: String, title: String, faviconURL: String? = nil, interactionState: Data? = nil, containerID: UUID? = nil, closedAt: Date = Date(), modifiedAt: Date = Date()) {
+        self.id = id; self.profileID = profileID; self.workspaceID = workspaceID
+        self.pinnedURL = pinnedURL; self.pinnedTitle = pinnedTitle; self.pinnedFaviconURL = pinnedFaviconURL; self.url = url
         self.title = title; self.faviconURL = faviconURL; self.interactionState = interactionState
         self.containerID = containerID; self.closedAt = closedAt; self.modifiedAt = modifiedAt
     }

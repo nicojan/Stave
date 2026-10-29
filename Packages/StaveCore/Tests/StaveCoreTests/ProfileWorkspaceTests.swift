@@ -94,7 +94,7 @@ struct ProfileWorkspaceTests {
             let regularSlot = Slot(profileID: profile.id, workspaceID: doomed.id, section: .regular, sortIndex: 1, modifiedAt: now)
             try pinnedSlot.insert(db)
             try regularSlot.insert(db)
-            try Tab(slotID: pinnedSlot.id, pinnedURL: "https://pinned.example", pinnedTitle: "Pinned", url: "https://pinned.example/a", title: "Pinned", lastActiveAt: now, modifiedAt: now).insert(db)
+            try Tab(slotID: pinnedSlot.id, pinnedURL: "https://pinned.example", pinnedTitle: "Pinned", pinnedFaviconURL: "https://pinned.example/icon.png", url: "https://pinned.example/a", title: "Pinned", lastActiveAt: now, modifiedAt: now).insert(db)
             try Tab(slotID: regularSlot.id, url: "https://regular.example", title: "Regular", lastActiveAt: now, modifiedAt: now).insert(db)
         }
         clock.advance(by: 5)
@@ -104,6 +104,13 @@ struct ProfileWorkspaceTests {
         #expect(!archived.contains { $0.url == "https://survivor.example" })
         #expect(try store.regularTabs(workspaceID: survivor.id).map(\.id) == [survivingTab.id])
         #expect(archived.allSatisfy { $0.workspaceID == doomed.id && $0.profileID == profile.id && $0.closedAt == clock.date })
+        // The drifted pinned tab keeps the page the user pinned, not only where it drifted to.
+        let pinnedRow = try #require(archived.first { $0.url == "https://pinned.example/a" })
+        #expect(pinnedRow.pinnedURL == "https://pinned.example")
+        #expect(pinnedRow.pinnedTitle == "Pinned")
+        #expect(pinnedRow.pinnedFaviconURL == "https://pinned.example/icon.png")
+        let regularRow = try #require(archived.first { $0.url == "https://regular.example" })
+        #expect(regularRow.pinnedURL == nil && regularRow.pinnedTitle == nil && regularRow.pinnedFaviconURL == nil)
     }
 
     @Test func everyWriteSurvivesReopen() throws {
