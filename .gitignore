@@ -4,3 +4,6 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 .claude/HANDOFF.md
+.build/
+.swiftpm/
+Stave.xcodeproj/xcuserdata/

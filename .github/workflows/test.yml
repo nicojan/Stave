@@ -1,0 +1,55 @@
+name: Test
+
+# Runs on every pull request and on main. macOS 14 is the deployment target and
+# macOS 15 the newer OS; testing only the newest hides OS-specific behaviour.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The default Xcode on a runner can be older than the project format
+      # needs, so pick the newest one installed. macos-14 tops out at 16.2.
+      - name: Use the newest installed Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Selecting $newest"
+          sudo xcode-select -s "$newest/Contents/Developer"
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: StaveCore package tests
+        run: swift test --package-path Packages/StaveCore
+
+      # Debug, unsigned: the runner has no signing identity and needs none.
+      - name: Build the app
+        run: |
+          set -o pipefail
+          xcodegen generate
+          xcodebuild build \
+            -project Stave.xcodeproj \
+            -scheme Stave \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY=""
