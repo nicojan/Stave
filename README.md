@@ -7,8 +7,9 @@ A calm, organized web browser for macOS, built on WebKit: profiles, workspaces, 
 In development, no release yet. The design is in `docs/superpowers/specs/2026-10-28-stave-design.md`, and the plans are in `docs/superpowers/plans/`.
 
 - **Done:** the organization model and its storage. That covers profiles, workspaces, Essentials, pinned tabs and folders, regular tabs, the archive, containers and window restore, all stored in SQLite.
-- **In review:** an importer for Arc's sidebar (spaces, pinned tabs and folders, Favorites, profiles).
-- **Not yet:** web pages (they wait on the shared engine from Chorus), the real sidebar and command bar, and a release.
+- **Done:** an importer for Arc's sidebar (spaces, pinned tabs and folders, Favorites, profiles), without a UI yet.
+- **Planned next:** the window and sidebar, command bar, compact mode and the Arc import screens (`docs/superpowers/plans/2026-10-29-stave-window-sidebar.md`).
+- **Not yet:** web pages (they wait on the shared engine from Chorus) and a release.
 
 ## Building
 
