@@ -62,13 +62,7 @@ extension OrganizationStore {
             guard let tab = try Tab.fetchOne(db, key: id),
                   let slot = try Slot.fetchOne(db, key: tab.slotID) else { throw StoreError.notFound }
             guard slot.section == .regular else { return .unloaded }
-            let stamp = now()
-            let archived = ArchivedTab(
-                profileID: slot.profileID, workspaceID: slot.workspaceID,
-                url: tab.url, title: tab.title, faviconURL: tab.faviconURL,
-                interactionState: tab.interactionState, containerID: tab.containerID,
-                closedAt: stamp, modifiedAt: stamp
-            )
+            let archived = makeArchivedTab(slot: slot, tab: tab, closedAt: now())
             try archived.insert(db)
             _ = try slot.delete(db) // the tab row goes with it (ON DELETE CASCADE)
             return .archived(archived.id)
@@ -133,6 +127,27 @@ extension OrganizationStore {
     }
 
     // MARK: - Helpers
+
+    /// The archive row for a closing tab (shared by `closeTab`, `removePinnedTab` and `removeEssential`). Not inserted.
+    func makeArchivedTab(slot: Slot, tab: Tab, closedAt: Date) -> ArchivedTab {
+        ArchivedTab(
+            profileID: slot.profileID, workspaceID: slot.workspaceID,
+            url: tab.url, title: tab.title, faviconURL: tab.faviconURL,
+            interactionState: tab.interactionState, containerID: tab.containerID,
+            closedAt: closedAt, modifiedAt: closedAt
+        )
+    }
+
+    /// The sort index for a new regular slot at the top of the workspace (`.commandBar` rule), renumbering first if crowded.
+    func topRegularIndex(workspace: Workspace, in db: Database) throws -> Double {
+        var slots = try regularSlots(workspaceID: workspace.id, in: db)
+        var index = try placementIndex(slots: slots, origin: .commandBar, edge: .top, in: db)
+        if isCrowded(index, among: slots.map(\.sortIndex)) {
+            slots = try renumber(slots, in: db)
+            index = try placementIndex(slots: slots, origin: .commandBar, edge: .top, in: db)
+        }
+        return index
+    }
 
     private func regularSlots(workspaceID: UUID, in db: Database) throws -> [Slot] {
         try Slot
