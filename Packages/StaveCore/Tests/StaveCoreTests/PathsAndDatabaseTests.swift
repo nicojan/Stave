@@ -27,6 +27,37 @@ struct PathsAndDatabaseTests {
         #expect(database.schemaVersion == 1)
     }
 
+    /// Every slot shape the schema must refuse, inserted directly (bypassing the store), each hitting a CHECK constraint.
+    @Test func slotChecksRefuseInvalidRows() throws {
+        let (store, database, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let workspace = try #require(try store.workspaces(profileID: profile.id).first)
+        let folder = try store.createFolder(workspaceID: workspace.id, parentFolderID: nil, title: "F")
+        let invalid: [(String, Slot?, String?)] = [
+            ("essential with a workspace", Slot(profileID: profile.id, workspaceID: workspace.id, section: .essential, sortIndex: 0), nil),
+            ("pinned without a workspace", Slot(profileID: profile.id, workspaceID: nil, section: .pinned, sortIndex: 0), nil),
+            ("regular without a workspace", Slot(profileID: profile.id, workspaceID: nil, section: .regular, sortIndex: 0), nil),
+            ("regular in a folder", Slot(profileID: profile.id, workspaceID: workspace.id, section: .regular, folderID: folder.id, sortIndex: 0), nil),
+            ("essential in a folder", Slot(profileID: profile.id, workspaceID: nil, section: .essential, folderID: folder.id, sortIndex: 0), nil),
+            ("unknown section", nil, "'bogus', 'tab'"),
+            ("unknown kind", nil, "'regular', 'bogus'"),
+        ]
+        for (label, slot, rawSectionKind) in invalid {
+            let error = #expect(throws: DatabaseError.self, "\(label)") {
+                try database.writer.write { db in
+                    if let slot { try slot.insert(db); return }
+                    try db.execute(
+                        sql: "INSERT INTO slot (id, profileID, workspaceID, section, kind, folderID, sortIndex, modifiedAt) VALUES (?, ?, ?, \(rawSectionKind ?? ""), NULL, 0, ?)",
+                        arguments: [UUID(), profile.id, workspace.id, Date()]
+                    )
+                }
+            }
+            #expect(error?.extendedResultCode == .SQLITE_CONSTRAINT_CHECK, "\(label)")
+        }
+        let slots = try database.writer.read { db in try Slot.fetchCount(db) }
+        #expect(slots == 0)
+    }
+
     @Test func reopenKeepsData() throws {
         let (database, file) = try makeTempDatabase()
         let profile = Profile(name: "Personal", sortIndex: 1)
@@ -43,7 +74,8 @@ struct PathsAndDatabaseTests {
         let profile = Profile(name: "P", sortIndex: 1)
         let workspace = Workspace(profileID: profile.id, name: "W", icon: "star", colorHex: "#fff", sortIndex: 1)
         let folder = Folder(workspaceID: workspace.id, title: "F", sortIndex: 1)
-        let slot = Slot(profileID: profile.id, workspaceID: workspace.id, section: .regular, folderID: folder.id, sortIndex: 1)
+        // Pinned: only pinned slots may sit in a folder (slot CHECK, R21).
+        let slot = Slot(profileID: profile.id, workspaceID: workspace.id, section: .pinned, folderID: folder.id, sortIndex: 1)
         let tab = Tab(slotID: slot.id, url: "https://example.com", title: "x")
         let archived = ArchivedTab(profileID: profile.id, workspaceID: workspace.id, url: "https://a.example", title: "a")
         try database.writer.write { db in

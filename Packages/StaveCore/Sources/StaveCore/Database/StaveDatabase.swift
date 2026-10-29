@@ -90,6 +90,11 @@ public final class StaveDatabase: Sendable {
             t.column("folderID", .blob).references("folder", onDelete: .setNull)
             t.column("sortIndex", .double).notNull()
             t.column("modifiedAt", .datetime).notNull()
+            // Slot invariants (R21): an Essential has no workspace and every other slot has one; only pinned slots sit in folders.
+            t.check(sql: "section IN ('essential', 'pinned', 'regular')")
+            t.check(sql: "kind IN ('tab', 'split')")
+            t.check(sql: "(section = 'essential') = (workspaceID IS NULL)")
+            t.check(sql: "folderID IS NULL OR section = 'pinned'")
         }
         try db.create(table: "container") { t in
             t.primaryKey("id", .blob)
