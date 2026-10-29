@@ -103,7 +103,8 @@ struct PinnedTests {
         let tab = try open(store, "https://a.com", in: ws)
         try store.pinTab(tab.id, folderID: nil)
         #expect(try store.closeTab(tab.id) == .unloaded)
-        #expect(tabIDs(try store.pinnedItems(workspaceID: ws.id)) == [tab.id])
+        let pinnedAfterClose = try store.pinnedItems(workspaceID: ws.id)
+        #expect(tabIDs(pinnedAfterClose) == [tab.id])
         #expect(try store.archivedTabs(profileID: profile.id).isEmpty)
     }
 
@@ -141,7 +142,8 @@ struct PinnedTests {
             inside.append(tab.id)
         }
         try store.deleteFolder(folder.id)
-        #expect(tabIDs(try store.pinnedItems(workspaceID: ws.id)) == inside + [x.id])
+        let pinnedAfterDelete = try store.pinnedItems(workspaceID: ws.id)
+        #expect(tabIDs(pinnedAfterDelete) == inside + [x.id])
         #expect(try store.archivedTabs(profileID: profile.id).isEmpty)
     }
 
