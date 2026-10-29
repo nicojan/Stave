@@ -52,6 +52,37 @@ struct SessionTests {
         #expect(child.id == p2.id)
     }
 
+    /// A split slot holds two tabs (R22). Every read path must survive it and show the slot once, by its first tab (rowid).
+    @Test func splitSlotsReadAsOneEntry() throws {
+        let clock = TestClock()
+        let (store, database, _) = try makeTempStore(now: clock.now)
+        let profile = try store.createProfile(name: "P")
+        let ws = try #require(try store.workspaces(profileID: profile.id).first)
+        let stamp = clock.date
+        var firsts: [SlotSection: UUID] = [:]
+        try database.writer.write { db in
+            for (index, (section, workspaceID)) in [(SlotSection.regular, Optional(ws.id)), (.pinned, ws.id), (.essential, nil)].enumerated() {
+                let slot = Slot(profileID: profile.id, workspaceID: workspaceID, section: section, kind: .split, sortIndex: Double(index), modifiedAt: stamp)
+                try slot.insert(db)
+                let first = Tab(slotID: slot.id, url: "https://\(section.rawValue)-1.example", title: "1", lastActiveAt: stamp, modifiedAt: stamp)
+                try first.insert(db)
+                try Tab(slotID: slot.id, url: "https://\(section.rawValue)-2.example", title: "2", lastActiveAt: stamp, modifiedAt: stamp).insert(db)
+                firsts[section] = first.id
+            }
+        }
+        #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [firsts[.regular]])
+        #expect(try store.essentials(profileID: profile.id).map(\.id) == [firsts[.essential]])
+        let pinned = try store.pinnedItems(workspaceID: ws.id)
+        #expect(pinned == [.tab(try #require(try database.writer.read { db in try Tab.fetchOne(db, key: firsts[.pinned]) }))])
+        let snapshot = try store.sidebarSnapshot(workspaceID: ws.id)
+        #expect(snapshot.regular.map(\.id) == [firsts[.regular]])
+        #expect(snapshot.essentials.map(\.id) == [firsts[.essential]])
+        #expect(snapshot.pinned == pinned)
+        // Opening next to a split slot still places the new tab.
+        let opened = try store.openTab(url: "https://new.example", title: "n", workspaceID: ws.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [firsts[.regular], opened.id])
+    }
+
     @Test func snapshotUnknownWorkspaceThrows() throws {
         let (store, _, _, _) = try fixture()
         #expect(throws: StoreError.notFound) { try store.sidebarSnapshot(workspaceID: UUID()) }

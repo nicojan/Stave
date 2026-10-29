@@ -198,9 +198,10 @@ extension OrganizationStore {
         return (tab, slot)
     }
 
+    /// One tab per slot, shared by every read path. A split slot holds several tabs, so the first by `rowid` stands for it.
     func tabsBySlot(_ slots: [Slot], in db: Database) throws -> [UUID: Tab] {
-        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
-        return Dictionary(uniqueKeysWithValues: tabs.map { ($0.slotID, $0) })
+        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("rowid")).fetchAll(db)
+        return Dictionary(tabs.map { ($0.slotID, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Folders and pinned slots directly under `parentID` (nil = root), in one ordering space.

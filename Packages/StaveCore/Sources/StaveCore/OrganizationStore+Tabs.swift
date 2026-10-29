@@ -116,8 +116,7 @@ extension OrganizationStore {
 
     func regularTabs(workspaceID: UUID, in db: Database) throws -> [Tab] {
         let slots = try regularSlots(workspaceID: workspaceID, in: db)
-        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
-        let bySlot = Dictionary(uniqueKeysWithValues: tabs.map { ($0.slotID, $0) })
+        let bySlot = try tabsBySlot(slots, in: db)
         return slots.compactMap { bySlot[$0.id] }
     }
 
