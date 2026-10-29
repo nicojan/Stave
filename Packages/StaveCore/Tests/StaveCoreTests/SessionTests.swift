@@ -133,6 +133,36 @@ struct SessionTests {
         #expect(restored.profileID == profile.id)
     }
 
+    @Test func deletedWorkspaceFallbackKeepsSelectedEssential() throws {
+        let (store, _, profile, home) = try fixture()
+        let other = try store.createWorkspace(profileID: profile.id, name: "B", icon: "star", colorHex: "#000000")
+        let essential = try open(store, "https://e.com", in: other)
+        try store.makeEssential(essential.id)
+        _ = try open(store, "https://b.com", in: other)
+        try store.saveWindows([window(profile, other, selected: essential.id)])
+        try store.deleteWorkspace(other.id)
+        let restored = try #require(try store.restoredWindows().first)
+        #expect(restored.workspaceID == home.id)
+        #expect(restored.selectedTabID == essential.id)
+    }
+
+    /// A window whose workspace belongs to another profile falls back; that workspace's tab (or Essential) is not kept.
+    @Test func foreignWorkspaceFallbackClearsItsTab() throws {
+        let (store, _, profile, home) = try fixture()
+        let second = try store.createProfile(name: "Q")
+        let foreign = try #require(try store.workspaces(profileID: second.id).first)
+        let foreignTab = try open(store, "https://q.com", in: foreign)
+        let foreignEssential = try open(store, "https://qe.com", in: foreign)
+        try store.makeEssential(foreignEssential.id)
+        try store.saveWindows([
+            WindowState(profileID: profile.id, workspaceID: foreign.id, selectedTabID: foreignTab.id, frame: "", sortIndex: 0),
+            WindowState(profileID: profile.id, workspaceID: foreign.id, selectedTabID: foreignEssential.id, frame: "", sortIndex: 1),
+        ])
+        let restored = try store.restoredWindows()
+        #expect(restored.map(\.workspaceID) == [home.id, home.id])
+        #expect(restored.map(\.selectedTabID) == [nil, nil])
+    }
+
     @Test func windowOfDeletedProfileIsDropped() throws {
         let (store, _, profile, ws) = try fixture()
         let second = try store.createProfile(name: "Q")

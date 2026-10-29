@@ -74,8 +74,8 @@ extension OrganizationStore {
         if !workspaceExists {
             guard let first = try workspaces(profileID: window.profileID, in: db).first else { return nil }
             result.workspaceID = first.id
-            result.selectedTabID = nil
         }
+        // Checked against the (possibly fallen-back) workspace: a selected Essential of this profile survives the fallback (R18, R23).
         if let tabID = result.selectedTabID, !(try isSelectable(tabID, workspaceID: result.workspaceID, profileID: result.profileID, in: db)) {
             result.selectedTabID = nil
         }
