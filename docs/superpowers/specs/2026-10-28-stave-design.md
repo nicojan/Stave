@@ -149,5 +149,5 @@ No separate bookmarks bar or manager in the first release. Pinned tabs and folde
 - Apple's process and timeline for the Passwords allow-list.
 - Whether DRM video (Netflix and similar) plays in a WKWebView browser outside Safari.
 - Memory cost of many data stores (profiles plus containers) in one app.
-- Whether Arc deletes its local file when it shuts down on 2026-12-22. (Arc's Favorites, ordering and profile fields were confirmed on 2026-10-28; see the Arc import parser.) Arc's space colour has been seen only in a third-party synthetic fixture.
+- Whether Arc deletes its local file when it shuts down on 2026-12-22. (Arc's Favorites, ordering and profile fields were confirmed on 2026-10-28; see the Arc import parser.) Some shapes have never been seen in a real file: space colour, named spaces, spaces in a custom profile, and Easels. They come only from MIT exporters' synthetic fixtures. A real Arc user's file is the check, and only through a structure-only dump.
 - A USPTO trademark check on "Stave" before the public beta.
