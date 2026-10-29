@@ -104,14 +104,16 @@ extension OrganizationStore {
     }
 
     public func essentials(profileID: UUID) throws -> [Tab] {
-        try database.writer.read { db in
-            let slots = try Slot
-                .filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
-                .order(Column("sortIndex"), Column("rowid"))
-                .fetchAll(db)
-            let bySlot = try tabsBySlot(slots, in: db)
-            return slots.compactMap { bySlot[$0.id] }
-        }
+        try database.writer.read { db in try essentials(profileID: profileID, in: db) }
+    }
+
+    func essentials(profileID: UUID, in db: Database) throws -> [Tab] {
+        let slots = try Slot
+            .filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
+            .order(Column("sortIndex"), Column("rowid"))
+            .fetchAll(db)
+        let bySlot = try tabsBySlot(slots, in: db)
+        return slots.compactMap { bySlot[$0.id] }
     }
 
     // MARK: - Folders
@@ -167,9 +169,11 @@ extension OrganizationStore {
 
     /// The workspace's pinned tree: root folders and root tabs interleaved by sort index, folders carrying their children.
     public func pinnedItems(workspaceID: UUID) throws -> [PinnedItem] {
-        try database.writer.read { db in
-            try pinnedTree(workspaceID: workspaceID, parentID: nil, in: db)
-        }
+        try database.writer.read { db in try pinnedItems(workspaceID: workspaceID, in: db) }
+    }
+
+    func pinnedItems(workspaceID: UUID, in db: Database) throws -> [PinnedItem] {
+        try pinnedTree(workspaceID: workspaceID, parentID: nil, in: db)
     }
 
     // MARK: - Helpers

@@ -36,10 +36,12 @@ public final class OrganizationStore: Sendable {
     /// Returns the first profile, creating "Personal" only when none exist.
     @discardableResult
     public func ensureDefaultProfile() throws -> Profile {
-        try writer.write { db in
-            if let existing = try Profile.order(Column("sortIndex")).fetchOne(db) { return existing }
-            return try insertProfile(name: Self.defaultProfileName, in: db)
-        }
+        try writer.write { db in try ensureDefaultProfile(in: db) }
+    }
+
+    func ensureDefaultProfile(in db: Database) throws -> Profile {
+        if let existing = try Profile.order(Column("sortIndex")).fetchOne(db) { return existing }
+        return try insertProfile(name: Self.defaultProfileName, in: db)
     }
 
     // MARK: - Workspaces
@@ -63,12 +65,14 @@ public final class OrganizationStore: Sendable {
     }
 
     public func workspaces(profileID: UUID) throws -> [Workspace] {
-        try writer.read { db in
-            try Workspace
-                .filter(Column("profileID") == profileID)
-                .order(Column("sortIndex"), Column("name"))
-                .fetchAll(db)
-        }
+        try writer.read { db in try workspaces(profileID: profileID, in: db) }
+    }
+
+    func workspaces(profileID: UUID, in db: Database) throws -> [Workspace] {
+        try Workspace
+            .filter(Column("profileID") == profileID)
+            .order(Column("sortIndex"), Column("name"))
+            .fetchAll(db)
     }
 
     /// Archives every tab in the workspace (any section) and then deletes it, all in one transaction.

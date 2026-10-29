@@ -111,12 +111,14 @@ extension OrganizationStore {
     // MARK: - Reading
 
     public func regularTabs(workspaceID: UUID) throws -> [Tab] {
-        try database.writer.read { db in
-            let slots = try regularSlots(workspaceID: workspaceID, in: db)
-            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
-            let bySlot = Dictionary(uniqueKeysWithValues: tabs.map { ($0.slotID, $0) })
-            return slots.compactMap { bySlot[$0.id] }
-        }
+        try database.writer.read { db in try regularTabs(workspaceID: workspaceID, in: db) }
+    }
+
+    func regularTabs(workspaceID: UUID, in db: Database) throws -> [Tab] {
+        let slots = try regularSlots(workspaceID: workspaceID, in: db)
+        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
+        let bySlot = Dictionary(uniqueKeysWithValues: tabs.map { ($0.slotID, $0) })
+        return slots.compactMap { bySlot[$0.id] }
     }
 
     /// The title, or the URL's host when the title is empty, or the URL itself.
