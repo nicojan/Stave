@@ -51,7 +51,8 @@ struct ArcImportStoreTests {
         let report = try ArcImporter.run(
             sidebar: try arcFixture("edge-cases"), localState: try arcFixture("local-state"), options: .init(), into: store
         )
-        #expect(report.imported.profiles >= 1)
+        #expect(report.imported.profiles == 1)
+        #expect(try store.profiles().map(\.name) == ["Personal", "Client Work"])
         let client = try #require(try store.profiles().first { $0.name == "Client Work" })
         let workspaces = try store.workspaces(profileID: client.id)
         #expect(workspaces.map(\.name) == ["Acme"])
@@ -178,5 +179,22 @@ struct ArcImportStoreTests {
         let home = URL(fileURLWithPath: "/Users/test")
         #expect(ArcImporter.sidebarFile(home: home).path == "/Users/test/Library/Application Support/Arc/StorableSidebar.json")
         #expect(ArcImporter.localStateFile(home: home).path == "/Users/test/Library/Application Support/Arc/User Data/Local State")
+    }
+
+    @Test func defaultProfileIsResolvedBeforeNewProfiles() throws {
+        let store = try makeStore()
+        let workspace = { (name: String) in PlannedWorkspace(name: name, icon: "square.grid.2x2", colorHex: "#8E8E93", pinned: [], regular: []) }
+        let plan = ArcImportPlan(
+            profiles: [
+                PlannedProfile(target: .new(name: "X"), workspaces: [workspace("In X")], essentials: []),
+                PlannedProfile(target: .existingDefault, workspaces: [workspace("In Default")], essentials: []),
+            ],
+            flattened: [], skipped: [])
+        _ = try store.importArc(plan)
+        let profiles = try store.profiles()
+        #expect(profiles.map(\.name) == ["Personal", "X"])
+        let names = try profiles.map { profile in try store.workspaces(profileID: profile.id).map(\.name) }
+        #expect(names[0].contains("In Default"))
+        #expect(names[1] == ["In X"])
     }
 }

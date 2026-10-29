@@ -28,7 +28,8 @@ public indirect enum ArcNode: Equatable, Sendable {
     case tab(ArcTab)
     case folder(title: String, children: [ArcNode])
     case split([ArcTab])
-    case unsupported(kind: String, title: String?)
+    /// `children` are the item's own children, imported at its position.
+    case unsupported(kind: String, title: String?, children: [ArcNode] = [])
 }
 
 public struct ArcSpace: Equatable, Sendable {
@@ -41,6 +42,8 @@ public struct ArcSpace: Equatable, Sendable {
     public var colorHex: String?
     public var pinned: [ArcNode]
     public var unpinned: [ArcNode]
+    /// The space's pinned container id did not resolve, or a resolved container id is absent from the items.
+    public var contentsMissing: Bool
 
     public init(
         title: String?,
@@ -48,7 +51,8 @@ public struct ArcSpace: Equatable, Sendable {
         emoji: String?,
         colorHex: String?,
         pinned: [ArcNode],
-        unpinned: [ArcNode]
+        unpinned: [ArcNode],
+        contentsMissing: Bool = false
     ) {
         self.title = title
         self.profile = profile
@@ -56,6 +60,7 @@ public struct ArcSpace: Equatable, Sendable {
         self.colorHex = colorHex
         self.pinned = pinned
         self.unpinned = unpinned
+        self.contentsMissing = contentsMissing
     }
 }
 
@@ -66,10 +71,18 @@ public struct ArcSidebar: Equatable, Sendable {
     public var favorites: [ArcProfileKey: [ArcNode]]
     /// Items reached twice (ruling 11).
     public var duplicateItems: Int
+    /// `topApps` containers with a missing or unrecognized profile marker; their tabs are merged into `favorites[.default]`.
+    public var unrecognizedFavoritesContainers: Int
 
-    public init(spaces: [ArcSpace], favorites: [ArcProfileKey: [ArcNode]], duplicateItems: Int) {
+    public init(
+        spaces: [ArcSpace],
+        favorites: [ArcProfileKey: [ArcNode]],
+        duplicateItems: Int,
+        unrecognizedFavoritesContainers: Int = 0
+    ) {
         self.spaces = spaces
         self.favorites = favorites
         self.duplicateItems = duplicateItems
+        self.unrecognizedFavoritesContainers = unrecognizedFavoritesContainers
     }
 }

@@ -208,7 +208,7 @@ struct ArcImportPlannerTests {
 
         let on = planOf(space("W", unpinned: unpinned), includeUnpinned: true)
         #expect(on.profiles[0].workspaces[0].regular == [tab("https://a.example.com/", "a")])
-        #expect(on.flattened == [.folderTooDeep(space: "W", folder: "Outer"), .folderTooDeep(space: "W", folder: "Inner")])
+        #expect(on.flattened == [.unpinnedFolder(space: "W", folder: "Outer"), .unpinnedFolder(space: "W", folder: "Inner")])
         #expect(on.skipped == [.nonWebURL(space: "W", title: "Bad", scheme: "file")])
     }
 
@@ -268,5 +268,80 @@ struct ArcImportPlannerTests {
                 #expect(plan.skipped.isEmpty, "\(url)")
             }
         }
+    }
+
+    // MARK: - Fix wave
+
+    private func plan(items: [String], spaces: [String]) throws -> ArcImportPlan {
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: spaces))
+        return ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+    }
+
+    @Test func unrecognizedFavoritesGoToDefaultEssentialsAndAreReported() throws {
+        let items = [
+            arcFavoritesJSON("FAV", children: ["T"], marker: #"{"something":{}}"#),
+            arcTabJSON("T", parent: "FAV", url: "https://fav.example.com/"),
+        ]
+        let plan = try plan(items: items, spaces: [])
+        #expect(plan.profiles[0].target == .existingDefault)
+        #expect(plan.profiles[0].essentials == [tab("https://fav.example.com/", "")])
+        #expect(plan.skipped == [.unrecognizedFavoritesProfile])
+    }
+
+    @Test func spaceWithMissingContentsIsCreatedAndReportedOnce() throws {
+        let space = arcSpaceJSON("S", #""title":"Lost","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"GONE",{"unpinned":{}},"ALSO-GONE"]"#)
+        let plan = try plan(items: [], spaces: [space])
+        #expect(plan.profiles[0].workspaces.map(\.name) == ["Lost"])
+        #expect(plan.skipped == [.spaceContentsMissing(space: "Lost")])
+    }
+
+    @Test func intactSpaceIsNotReportedMissing() throws {
+        let items = [arcSpaceContainerJSON("P", children: [])]
+        let space = arcSpaceJSON("S", #""title":"Ok","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P"]"#)
+        #expect(try plan(items: items, spaces: [space]).skipped.isEmpty)
+    }
+
+    @Test func unsupportedChildrenAreSplicedAtItsPosition() throws {
+        let items = [
+            arcSpaceContainerJSON("P", children: ["TA", "M", "TD"]),
+            arcTabJSON("TA", parent: "P", url: "https://a.example.com/"),
+            arcItemJSON("M", parent: "P", children: ["TB", "TC"], data: #"{"mystery":{}}"#),
+            arcTabJSON("TB", parent: "M", url: "https://b.example.com/"),
+            arcTabJSON("TC", parent: "M", url: "https://c.example.com/"),
+            arcTabJSON("TD", parent: "P", url: "https://d.example.com/"),
+        ]
+        let space = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P"]"#)
+        let plan = try plan(items: items, spaces: [space])
+        #expect(plan.profiles[0].workspaces[0].pinned == ["a", "b", "c", "d"].map {
+            PlannedPinned.tab(tab("https://\($0).example.com/", ""))
+        })
+        #expect(plan.skipped == [.unsupportedItem(space: "S", kind: "mystery", title: nil)])
+    }
+
+    @Test func unsupportedChildrenCountAsUnpinnedAndSpliceIntoRegular() {
+        let mystery: ArcNode = .unsupported(kind: "mystery", title: nil, children: [.tab(at("x"))])
+        let off = planOf(space("W", unpinned: [mystery]))
+        #expect(off.skipped == [.unpinnedTabs(space: "W", count: 1)])
+        let on = planOf(space("W", unpinned: [mystery]), includeUnpinned: true)
+        #expect(on.profiles[0].workspaces[0].regular == [tab("https://x.example.com/", "x")])
+        #expect(on.skipped == [.unsupportedItem(space: "W", kind: "mystery", title: nil)])
+    }
+
+    @Test func missingProfileKeyIsDefaultWithoutReport() throws {
+        let items = [arcSpaceContainerJSON("P", children: [])]
+        let ids = #""newContainerIDs":[{"pinned":{}},"P"]"#
+        let absent = try plan(items: items, spaces: [arcSpaceJSON("S", #""title":"A",\#(ids)"#)])
+        #expect(absent.profiles.map(\.target) == [.existingDefault])
+        #expect(absent.skipped.isEmpty)
+        let unknown = try plan(items: items, spaces: [arcSpaceJSON("S", #""title":"A","profile":{"x":{}},\#(ids)"#)])
+        #expect(unknown.skipped == [.unrecognizedProfile(space: "A")])
+    }
+
+    @Test func emptyTitleAndEmojiGetDefaults() throws {
+        let items = [arcSpaceContainerJSON("P", children: [])]
+        let space = arcSpaceJSON("S", #""title":"","profile":{"default":true},"customInfo":{"iconType":{"emoji_v2":""}},"newContainerIDs":[{"pinned":{}},"P"]"#)
+        let workspace = try plan(items: items, spaces: [space]).profiles[0].workspaces[0]
+        #expect(workspace.name == "Space 1")
+        #expect(workspace.icon == ArcImportPlanner.defaultIcon)
     }
 }

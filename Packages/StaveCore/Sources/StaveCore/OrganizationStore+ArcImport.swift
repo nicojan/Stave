@@ -6,11 +6,15 @@ extension OrganizationStore {
     public func importArc(_ plan: ArcImportPlan) throws -> ArcImportReport {
         try database.writer.write { db in
             var counts = ArcImportReport.Counts()
+            // First, so a first-run default is created before any imported profile and keeps its place at the top.
+            let defaultProfile = plan.profiles.contains { $0.target == .existingDefault }
+                ? try ensureDefaultProfile(in: db) : nil
             for planned in plan.profiles {
                 let profile: Profile
                 switch planned.target {
                 case .existingDefault:
-                    profile = try ensureDefaultProfile(in: db)
+                    guard let defaultProfile else { continue }
+                    profile = defaultProfile
                 case .new(let name):
                     profile = try insertProfile(name: name, withHomeWorkspace: planned.workspaces.isEmpty, in: db)
                     counts.profiles += 1

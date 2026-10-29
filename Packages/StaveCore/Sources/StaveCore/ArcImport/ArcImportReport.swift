@@ -33,6 +33,8 @@ public struct ArcImportReport: Equatable, Sendable {
         /// `space` is nil for a Favorite.
         case splitView(space: String?, tabCount: Int)
         case favoritesFolder(folder: String)
+        /// An unpinned folder imported as regular tabs (`includeUnpinnedTabs`): regular tabs have no folders.
+        case unpinnedFolder(space: String, folder: String)
     }
 
     public enum Skipped: Equatable, Sendable {
@@ -45,6 +47,10 @@ public struct ArcImportReport: Equatable, Sendable {
         case unrecognizedProfile(space: String)
         /// Once per import, when count > 0.
         case duplicateItem(count: Int)
+        /// One per `topApps` container whose profile marker is missing or unrecognized; its tabs went to the default profile's Essentials.
+        case unrecognizedFavoritesProfile
+        /// Once per space: the workspace was created, but its pinned container id is unresolved or a resolved container id is absent from the items.
+        case spaceContentsMissing(space: String)
     }
 
     public var imported: Counts

@@ -16,15 +16,26 @@ public enum ArcSidebarParser {
         guard let container = findContainer(in: root) else { throw ArcImportError.noSidebar }
         let items = itemsByID(container["items"]?.array ?? [])
         var walk = Walk(items: items)
-        let spaces = try (container["spaces"]?.array ?? []).compactMap { value -> ArcSpace? in
-            guard let space = value.object else { return nil }
-            return try parseSpace(space, walk: &walk)
-        }
+        // Visit order decides which copy of a repeated item wins: every space's pinned tree, then Favorites, then every space's unpinned tree.
+        let pending = (container["spaces"]?.array ?? []).compactMap { $0.object.map(parseSpaceHeader) }
+        let pinned = try pending.map { try nodes(inContainer: $0.containers.pinned, walk: &walk) }
         let favorites = try parseFavorites(
             listed: (container["topAppsContainerIDs"]?.array ?? []).compactMap(\.string),
             walk: &walk
         )
-        return ArcSidebar(spaces: spaces, favorites: favorites, duplicateItems: walk.duplicates)
+        let unpinned = try pending.map { try nodes(inContainer: $0.containers.unpinned, walk: &walk) }
+        let spaces = pending.indices.map { index in
+            let header = pending[index]
+            return ArcSpace(
+                title: header.title, profile: header.profile, emoji: header.emoji, colorHex: header.colorHex,
+                pinned: pinned[index], unpinned: unpinned[index],
+                contentsMissing: isMissing(header.containers, items: items)
+            )
+        }
+        return ArcSidebar(
+            spaces: spaces, favorites: favorites.byProfile, duplicateItems: walk.duplicates,
+            unrecognizedFavoritesContainers: favorites.unrecognizedCount
+        )
     }
 
     /// State shared by the whole parse: one visited set keeps the walk linear in item count.
@@ -59,22 +70,46 @@ public enum ArcSidebarParser {
 
     // MARK: - Spaces
 
-    private static func parseSpace(
-        _ space: [String: JSONValue],
-        walk: inout Walk
-    ) throws -> ArcSpace {
-        let list = space["newContainerIDs"]?.array ?? space["containerIDs"]?.array ?? []
-        let containers = containerIDs(list)
+    /// A space's metadata and resolved container ids, before any items are walked.
+    private struct SpaceHeader {
+        var title: String?
+        var profile: ArcProfileKey
+        var emoji: String?
+        var colorHex: String?
+        var containers: (pinned: String?, unpinned: String?)
+    }
+
+    private static func parseSpaceHeader(_ space: [String: JSONValue]) -> SpaceHeader {
         let icon = space["customInfo"]?["iconType"]
         let midTone = space["customInfo"]?["windowTheme"]?["primaryColorPalette"]?["midTone"]
-        return ArcSpace(
-            title: space["title"]?.string,
-            profile: profileKey(space["profile"]),
-            emoji: icon?["emoji_v2"]?.string,
+        return SpaceHeader(
+            title: nonEmpty(space["title"]?.string),
+            profile: space["profile"].map(profileKey) ?? .default,
+            emoji: nonEmpty(icon?["emoji_v2"]?.string),
             colorHex: midTone.flatMap(hexColor),
-            pinned: try nodes(inContainer: containers.pinned, walk: &walk),
-            unpinned: try nodes(inContainer: containers.unpinned, walk: &walk)
+            containers: resolveContainers(space)
         )
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// Pinned and unpinned are each taken from `newContainerIDs`, falling back to the legacy `containerIDs`.
+    private static func resolveContainers(_ space: [String: JSONValue]) -> (pinned: String?, unpinned: String?) {
+        let current = containerIDs(space["newContainerIDs"]?.array ?? [])
+        let legacy = containerIDs(space["containerIDs"]?.array ?? [])
+        return (current.pinned ?? legacy.pinned, current.unpinned ?? legacy.unpinned)
+    }
+
+    /// No resolvable pinned container, or a resolved container id that is not among the items.
+    private static func isMissing(
+        _ containers: (pinned: String?, unpinned: String?),
+        items: [String: [String: JSONValue]]
+    ) -> Bool {
+        guard let pinned = containers.pinned else { return true }
+        return [pinned, containers.unpinned].compactMap { $0 }.contains { items[$0] == nil }
     }
 
     /// A marker (`{"pinned": …}`, `{"unpinned": …}` or the bare string) is followed by its container id.
@@ -102,9 +137,9 @@ public enum ArcSidebarParser {
         return nil
     }
 
-    private static func profileKey(_ marker: JSONValue?) -> ArcProfileKey {
-        if case .bool(true)? = marker?["default"] { return .default }
-        if let name = marker?["custom"]?["_0"]?["directoryBasename"]?.string {
+    private static func profileKey(_ marker: JSONValue) -> ArcProfileKey {
+        if case .bool(true)? = marker["default"] { return .default }
+        if let name = marker["custom"]?["_0"]?["directoryBasename"]?.string {
             return .custom(directoryBasename: name)
         }
         return .unrecognized
@@ -120,24 +155,33 @@ public enum ArcSidebarParser {
     // MARK: - Favorites
 
     /// Listed containers come first, in order; any other root `topApps` item follows, sorted by id.
-    /// Lists for the same profile are concatenated in that order. Unrecognized markers are dropped.
+    /// Lists for the same profile are concatenated in that order. A container whose marker is missing or
+    /// unrecognized is walked too: its nodes follow the default profile's own, and it is counted.
     private static func parseFavorites(
         listed: [String],
         walk: inout Walk
-    ) throws -> [ArcProfileKey: [ArcNode]] {
+    ) throws -> (byProfile: [ArcProfileKey: [ArcNode]], unrecognizedCount: Int) {
         let others = walk.items.keys.sorted()
         var result: [ArcProfileKey: [ArcNode]] = [:]
+        var strays: [ArcNode] = []
+        var unrecognized = 0
         var seen: Set<String> = []
         for id in listed + others where !seen.contains(id) {
             guard let item = walk.items[id], isRoot(item),
-                  let marker = item["data"]?["itemContainer"]?["containerType"]?["topApps"]?["_0"]
+                  let topApps = item["data"]?["itemContainer"]?["containerType"]?["topApps"]
             else { continue }
             seen.insert(id)
-            let key = profileKey(marker)
-            if key == .unrecognized { continue }
-            result[key, default: []] += try nodes(inContainer: id, walk: &walk)
+            let found = try nodes(inContainer: id, walk: &walk)
+            switch topApps["_0"].map(profileKey) {
+            case .some(let key) where key != .unrecognized:
+                result[key, default: []] += found
+            default:
+                unrecognized += 1
+                strays += found
+            }
         }
-        return result
+        if !strays.isEmpty { result[.default, default: []] += strays }
+        return (result, unrecognized)
     }
 
     private static func isRoot(_ item: [String: JSONValue]) -> Bool {
@@ -191,7 +235,8 @@ public enum ArcSidebarParser {
             }
             return .split(tabs)
         }
-        return .unsupported(kind: data.keys.sorted().first ?? "", title: item["title"]?.string)
+        let kids = try children(of: item, walk: &walk, depth: depth + 1)
+        return .unsupported(kind: data.keys.sorted().first ?? "", title: item["title"]?.string, children: kids)
     }
 
     private static func arcTab(_ item: [String: JSONValue], _ tab: JSONValue) -> ArcTab {

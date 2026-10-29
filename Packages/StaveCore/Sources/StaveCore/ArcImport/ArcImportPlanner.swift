@@ -23,7 +23,7 @@ public enum ArcImportPlanner {
         // Workspace names first, so "Space N" counts unnamed spaces in sidebar order.
         var unnamed = 0
         let names: [String] = sidebar.spaces.map { space in
-            if let title = space.title { return title }
+            if let title = space.title, !title.isEmpty { return title }
             unnamed += 1
             return "Space \(unnamed)"
         }
@@ -47,6 +47,9 @@ public enum ArcImportPlanner {
             if space.profile == .unrecognized {
                 notes.skipped.append(.unrecognizedProfile(space: names[index]))
             }
+            if space.contentsMissing {
+                notes.skipped.append(.spaceContentsMissing(space: names[index]))
+            }
             let workspace = planWorkspace(space, name: names[index], options: options, notes: &notes)
             workspaces[id, default: []].append(workspace)
         }
@@ -62,6 +65,8 @@ public enum ArcImportPlanner {
                 essentials[id, default: []] += planFavorites(nodes, notes: &notes)
             }
         }
+
+        notes.skipped += Array(repeating: .unrecognizedFavoritesProfile, count: sidebar.unrecognizedFavoritesContainers)
 
         if sidebar.duplicateItems > 0 {
             notes.skipped.append(.duplicateItem(count: sidebar.duplicateItems))
@@ -98,14 +103,14 @@ public enum ArcImportPlanner {
         let pinned = planPinned(space.pinned, depth: 0, space: name, notes: &notes)
         var regular: [PlannedTab] = []
         if options.includeUnpinnedTabs {
-            regular = planFlat(space.unpinned, space: name, folderNote: .tooDeep(name), notes: &notes)
+            regular = planFlat(space.unpinned, space: name, folderNote: .unpinned(name), notes: &notes)
         } else {
             let count = countWebTabs(space.unpinned)
             if count > 0 { notes.skipped.append(.unpinnedTabs(space: name, count: count)) }
         }
         return PlannedWorkspace(
             name: name,
-            icon: space.emoji ?? defaultIcon,
+            icon: space.emoji.flatMap { $0.isEmpty ? nil : $0 } ?? defaultIcon,
             colorHex: space.colorHex ?? defaultColorHex,
             pinned: pinned,
             regular: regular
@@ -134,8 +139,9 @@ public enum ArcImportPlanner {
             case .split(let tabs):
                 notes.flattened.append(.splitView(space: space, tabCount: tabs.count))
                 result += tabs.compactMap { acceptTab($0, space: space, notes: &notes) }.map { .tab($0) }
-            case .unsupported(let kind, let title):
+            case .unsupported(let kind, let title, let children):
                 notes.skipped.append(.unsupportedItem(space: space, kind: kind, title: title))
+                result += planPinned(children, depth: depth, space: space, notes: &notes)
             }
         }
         return result
@@ -144,7 +150,7 @@ public enum ArcImportPlanner {
     // MARK: - Flat lists (regular tabs, Favorites)
 
     private enum FolderNote {
-        case tooDeep(String)   // space name
+        case unpinned(String)   // space name
         case favorites
     }
 
@@ -161,15 +167,16 @@ public enum ArcImportPlanner {
                 if let planned = acceptTab(tab, space: space, notes: &notes) { result.append(planned) }
             case .folder(let title, let children):
                 switch folderNote {
-                case .tooDeep(let name): notes.flattened.append(.folderTooDeep(space: name, folder: title))
+                case .unpinned(let name): notes.flattened.append(.unpinnedFolder(space: name, folder: title))
                 case .favorites: notes.flattened.append(.favoritesFolder(folder: title))
                 }
                 result += planFlat(children, space: space, folderNote: folderNote, notes: &notes)
             case .split(let tabs):
                 notes.flattened.append(.splitView(space: space, tabCount: tabs.count))
                 result += tabs.compactMap { acceptTab($0, space: space, notes: &notes) }
-            case .unsupported(let kind, let title):
+            case .unsupported(let kind, let title, let children):
                 notes.skipped.append(.unsupportedItem(space: space, kind: kind, title: title))
+                result += planFlat(children, space: space, folderNote: folderNote, notes: &notes)
             }
         }
         return result
@@ -219,7 +226,7 @@ public enum ArcImportPlanner {
             case .tab(let tab): return total + (isWeb(tab.url) ? 1 : 0)
             case .folder(_, let children): return total + countWebTabs(children)
             case .split(let tabs): return total + tabs.filter { isWeb($0.url) }.count
-            case .unsupported: return total
+            case .unsupported(_, _, let children): return total + countWebTabs(children)
             }
         }
     }

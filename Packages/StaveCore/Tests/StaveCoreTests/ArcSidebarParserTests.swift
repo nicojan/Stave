@@ -184,7 +184,7 @@ struct ArcSidebarParserTests {
         #expect(sidebar.duplicateItems == 999)
     }
 
-    @Test func doublingFoldersDoNotExplode() throws {
+    @Test(.timeLimit(.minutes(1))) func doublingFoldersDoNotExplode() throws {
         // Each folder lists the next one twice: 2^40 paths without a visited set.
         var items = ""
         for level in 1...40 {
@@ -239,5 +239,153 @@ struct ArcSidebarParserTests {
         #expect(names == ["Default": "Person 1", "Profile 1": "Client Work"])
         #expect(ArcProfileNames.names(fromLocalState: Data("x".utf8)) == [:])
         #expect(ArcProfileNames.names(fromLocalState: Data("[]".utf8)) == [:])
+    }
+
+    // MARK: - Fix wave
+
+    private let defaultMarker = #"{"default":true}"#
+
+    @Test func favoritesWithUnrecognizedMarkerGoToDefaultAfterItsOwn() throws {
+        let items = [
+            arcFavoritesJSON("FAV-D", children: ["TD"], marker: defaultMarker),
+            arcTabJSON("TD", parent: "FAV-D", url: "https://d.example.com/"),
+            arcFavoritesJSON("FAV-A", children: ["TA"], marker: #"{"something":{}}"#),
+            arcTabJSON("TA", parent: "FAV-A", url: "https://a.example.com/"),
+            arcFavoritesJSON("FAV-B", children: ["TB"], marker: nil),
+            arcTabJSON("TB", parent: "FAV-B", url: "https://b.example.com/"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: []))
+        #expect(sidebar.favorites[.default] == [
+            .tab(ArcTab(url: "https://d.example.com/", title: "")),
+            .tab(ArcTab(url: "https://a.example.com/", title: "")),
+            .tab(ArcTab(url: "https://b.example.com/", title: "")),
+        ])
+        #expect(sidebar.favorites[.unrecognized] == nil)
+        #expect(sidebar.unrecognizedFavoritesContainers == 2)
+    }
+
+    private func spaceContents(_ sidebar: ArcSidebar) -> (pinned: [ArcNode], unpinned: [ArcNode], missing: Bool) {
+        (sidebar.spaces[0].pinned, sidebar.spaces[0].unpinned, sidebar.spaces[0].contentsMissing)
+    }
+
+    private var pinnedAndUnpinnedItems: [String] {
+        [
+            arcSpaceContainerJSON("P", children: ["TP"]),
+            arcTabJSON("TP", parent: "P", url: "https://p.example.com/"),
+            arcSpaceContainerJSON("U", children: ["TU"]),
+            arcTabJSON("TU", parent: "U", url: "https://u.example.com/"),
+        ]
+    }
+
+    private let legacyIDs = #""containerIDs":["unpinned","U","pinned","P"]"#
+
+    @Test func emptyNewContainerIDsFallBackToLegacy() throws {
+        let space = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[],\#(legacyIDs)"#)
+        let contents = spaceContents(try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: [space])))
+        #expect(contents.pinned == [.tab(ArcTab(url: "https://p.example.com/", title: ""))])
+        #expect(contents.unpinned == [.tab(ArcTab(url: "https://u.example.com/", title: ""))])
+        #expect(!contents.missing)
+    }
+
+    @Test func eachKindFallsBackIndependently() throws {
+        let space = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P"],\#(legacyIDs)"#)
+        let contents = spaceContents(try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: [space])))
+        #expect(contents.pinned.count == 1)
+        #expect(contents.unpinned == [.tab(ArcTab(url: "https://u.example.com/", title: ""))])
+        #expect(!contents.missing)
+    }
+
+    @Test func spaceWithoutResolvableContainersIsKeptAndFlagged() throws {
+        let pinnedAbsent = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"GONE"]"#)
+        let noIDs = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[]"#)
+        let unpinnedAbsent = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P",{"unpinned":{}},"GONE"]"#)
+        for space in [pinnedAbsent, noIDs, unpinnedAbsent] {
+            let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: [space]))
+            #expect(sidebar.spaces.count == 1, "\(space)")
+            #expect(sidebar.spaces[0].contentsMissing, "\(space)")
+        }
+    }
+
+    @Test func unsupportedItemKeepsItsChildren() throws {
+        let items = [
+            arcSpaceContainerJSON("P", children: ["M"]),
+            arcItemJSON("M", parent: "P", children: ["T1", "T2"], title: "Odd", data: #"{"mystery":{}}"#),
+            arcTabJSON("T1", parent: "M", url: "https://one.example.com/"),
+            arcTabJSON("T2", parent: "M", url: "https://two.example.com/"),
+        ]
+        let space = arcSpaceJSON("S", #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P"]"#)
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [space]))
+        #expect(sidebar.spaces[0].pinned == [.unsupported(kind: "mystery", title: "Odd", children: [
+            .tab(ArcTab(url: "https://one.example.com/", title: "")),
+            .tab(ArcTab(url: "https://two.example.com/", title: "")),
+        ])])
+    }
+
+    @Test func missingProfileIsDefaultAndUnknownIsUnrecognized() throws {
+        let ids = #""newContainerIDs":[{"pinned":{}},"P"]"#
+        let spaces = [
+            arcSpaceJSON("S1", #""title":"A",\#(ids)"#),
+            arcSpaceJSON("S2", #""title":"B","profile":{"something":{}},\#(ids)"#),
+            arcSpaceJSON("S3", #""title":"C","profile":{"default":true},\#(ids)"#),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: spaces))
+        #expect(sidebar.spaces.map(\.profile) == [.default, .unrecognized, .default])
+    }
+
+    @Test func emptyTitleAndEmojiAreNil() throws {
+        let space = arcSpaceJSON("S", #""title":"","profile":{"default":true},"customInfo":{"iconType":{"emoji_v2":""}},"newContainerIDs":[{"pinned":{}},"P"]"#)
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: [space]))
+        #expect(sidebar.spaces[0].title == nil)
+        #expect(sidebar.spaces[0].emoji == nil)
+    }
+
+    @Test func pinnedCopyWinsOverEarlierSpacesUnpinnedDuplicate() throws {
+        let items = [
+            arcSpaceContainerJSON("A-PIN", children: []),
+            arcSpaceContainerJSON("A-UNP", children: ["T"]),
+            arcSpaceContainerJSON("B-PIN", children: ["T"]),
+            arcSpaceContainerJSON("B-UNP", children: []),
+            arcTabJSON("T", parent: "B-PIN", url: "https://shared.example.com/"),
+        ]
+        let spaces = [
+            arcSpaceJSON("SA", #""title":"A","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"A-PIN",{"unpinned":{}},"A-UNP"]"#),
+            arcSpaceJSON("SB", #""title":"B","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"B-PIN",{"unpinned":{}},"B-UNP"]"#),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: spaces))
+        #expect(sidebar.spaces[0].unpinned.isEmpty)
+        #expect(sidebar.spaces[1].pinned == [.tab(ArcTab(url: "https://shared.example.com/", title: ""))])
+        #expect(sidebar.duplicateItems == 1)
+    }
+
+    @Test func favoriteCopyWinsOverUnpinnedDuplicate() throws {
+        let items = [
+            arcSpaceContainerJSON("A-PIN", children: []),
+            arcSpaceContainerJSON("A-UNP", children: ["T"]),
+            arcFavoritesJSON("FAV", children: ["T"], marker: defaultMarker),
+            arcTabJSON("T", parent: "FAV", url: "https://shared.example.com/"),
+        ]
+        let space = arcSpaceJSON("SA", #""title":"A","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"A-PIN",{"unpinned":{}},"A-UNP"]"#)
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [space]))
+        #expect(sidebar.spaces[0].unpinned.isEmpty)
+        #expect(sidebar.favorites[.default]?.count == 1)
+    }
+
+    @Test func maximumDepthIsSixtyFour() {
+        #expect(ArcSidebarParser.maximumDepth == 64)
+    }
+
+    @Test func deeplyNestedJSONArrayDoesNotCrash() async throws {
+        // 511 levels: inside Foundation's own 512 limit, so only our decoding stack is exercised.
+        let nested = String(repeating: "[", count: 511) + String(repeating: "]", count: 511)
+        let spaceFields = #""title":"S","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P"],"junk":\#(nested)"#
+        let inSidebar = arcSidebarData(
+            items: [arcSpaceContainerJSON("P", children: [])], spaces: [arcSpaceJSON("S", spaceFields)])
+        let whole = Data(nested.utf8)
+        let outcomes = await Task.detached { () -> [Bool] in
+            [inSidebar, whole].map { data in
+                do { _ = try ArcSidebarParser.parse(data); return true } catch is ArcImportError { return true } catch { return false }
+            }
+        }.value
+        #expect(outcomes == [true, true])
     }
 }

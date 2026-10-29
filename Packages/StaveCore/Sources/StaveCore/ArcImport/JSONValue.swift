@@ -9,7 +9,15 @@ enum JSONValue: Decodable, Sendable, Equatable {
     case bool(Bool)
     case null
 
+    /// Real Arc files nest a handful of levels. The stack-recursive decode below crashed on a 511-deep array, so deeper input is refused.
+    static let maximumNesting = 100
+
     init(from decoder: Decoder) throws {
+        guard decoder.codingPath.count <= Self.maximumNesting else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "JSON nested more than \(Self.maximumNesting) levels")
+            )
+        }
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
