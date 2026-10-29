@@ -15,12 +15,23 @@ public enum ArcSidebarParser {
         }
         guard let container = findContainer(in: root) else { throw ArcImportError.noSidebar }
         let items = itemsByID(container["items"]?.array ?? [])
+        var walk = Walk(items: items)
         let spaces = try (container["spaces"]?.array ?? []).compactMap { value -> ArcSpace? in
             guard let space = value.object else { return nil }
-            return try parseSpace(space, items: items)
+            return try parseSpace(space, walk: &walk)
         }
-        let favorites = try parseFavorites(items: items)
-        return ArcSidebar(spaces: spaces, favorites: favorites, duplicateItems: 0)
+        let favorites = try parseFavorites(
+            listed: (container["topAppsContainerIDs"]?.array ?? []).compactMap(\.string),
+            walk: &walk
+        )
+        return ArcSidebar(spaces: spaces, favorites: favorites, duplicateItems: walk.duplicates)
+    }
+
+    /// State shared by the whole parse: one visited set keeps the walk linear in item count.
+    private struct Walk {
+        let items: [String: [String: JSONValue]]
+        var visited: Set<String> = []
+        var duplicates = 0
     }
 
     // MARK: - Locating data
@@ -50,9 +61,10 @@ public enum ArcSidebarParser {
 
     private static func parseSpace(
         _ space: [String: JSONValue],
-        items: [String: [String: JSONValue]]
+        walk: inout Walk
     ) throws -> ArcSpace {
-        let containers = containerIDs(space["newContainerIDs"]?.array ?? [])
+        let list = space["newContainerIDs"]?.array ?? space["containerIDs"]?.array ?? []
+        let containers = containerIDs(list)
         let icon = space["customInfo"]?["iconType"]
         let midTone = space["customInfo"]?["windowTheme"]?["primaryColorPalette"]?["midTone"]
         return ArcSpace(
@@ -60,26 +72,41 @@ public enum ArcSidebarParser {
             profile: profileKey(space["profile"]),
             emoji: icon?["emoji_v2"]?.string,
             colorHex: midTone.flatMap(hexColor),
-            pinned: try nodes(inContainer: containers.pinned, items: items),
-            unpinned: try nodes(inContainer: containers.unpinned, items: items)
+            pinned: try nodes(inContainer: containers.pinned, walk: &walk),
+            unpinned: try nodes(inContainer: containers.unpinned, walk: &walk)
         )
     }
 
-    /// `newContainerIDs` alternates a marker object with the container id that follows it.
+    /// A marker (`{"pinned": …}`, `{"unpinned": …}` or the bare string) is followed by its container id.
     private static func containerIDs(_ list: [JSONValue]) -> (pinned: String?, unpinned: String?) {
         var pinned: String?
         var unpinned: String?
-        for (index, element) in list.enumerated() {
-            guard let marker = element.object, index + 1 < list.count,
-                  let id = list[index + 1].string else { continue }
-            if marker["pinned"] != nil { pinned = id }
-            if marker["unpinned"] != nil { unpinned = id }
+        var index = 0
+        while index + 1 < list.count {
+            let kind = markerKind(list[index])
+            if let kind, let id = list[index + 1].string {
+                if kind == "pinned" { pinned = id } else { unpinned = id }
+                index += 2
+            } else {
+                index += 1
+            }
         }
         return (pinned, unpinned)
     }
 
+    private static func markerKind(_ element: JSONValue) -> String? {
+        if let text = element.string { return ["pinned", "unpinned"].contains(text) ? text : nil }
+        guard let object = element.object else { return nil }
+        if object["pinned"] != nil { return "pinned" }
+        if object["unpinned"] != nil { return "unpinned" }
+        return nil
+    }
+
     private static func profileKey(_ marker: JSONValue?) -> ArcProfileKey {
         if case .bool(true)? = marker?["default"] { return .default }
+        if let name = marker?["custom"]?["_0"]?["directoryBasename"]?.string {
+            return .custom(directoryBasename: name)
+        }
         return .unrecognized
     }
 
@@ -92,13 +119,23 @@ public enum ArcSidebarParser {
 
     // MARK: - Favorites
 
+    /// Listed containers come first, in order; any other root `topApps` item follows, sorted by id.
+    /// Lists for the same profile are concatenated in that order. Unrecognized markers are dropped.
     private static func parseFavorites(
-        items: [String: [String: JSONValue]]
+        listed: [String],
+        walk: inout Walk
     ) throws -> [ArcProfileKey: [ArcNode]] {
+        let others = walk.items.keys.sorted()
         var result: [ArcProfileKey: [ArcNode]] = [:]
-        for (id, item) in items.sorted(by: { $0.key < $1.key }) where isRoot(item) {
-            guard let marker = item["data"]?["itemContainer"]?["containerType"]?["topApps"]?["_0"] else { continue }
-            result[profileKey(marker)] = try nodes(inContainer: id, items: items)
+        var seen: Set<String> = []
+        for id in listed + others where !seen.contains(id) {
+            guard let item = walk.items[id], isRoot(item),
+                  let marker = item["data"]?["itemContainer"]?["containerType"]?["topApps"]?["_0"]
+            else { continue }
+            seen.insert(id)
+            let key = profileKey(marker)
+            if key == .unrecognized { continue }
+            result[key, default: []] += try nodes(inContainer: id, walk: &walk)
         }
         return result
     }
@@ -109,29 +146,33 @@ public enum ArcSidebarParser {
 
     // MARK: - Item trees
 
-    private static func nodes(
-        inContainer id: String?,
-        items: [String: [String: JSONValue]]
-    ) throws -> [ArcNode] {
-        guard let id, let container = items[id] else { return [] }
-        return try children(of: container, items: items, depth: 1)
+    private static func nodes(inContainer id: String?, walk: inout Walk) throws -> [ArcNode] {
+        guard let id, let container = walk.items[id] else { return [] }
+        return try children(of: container, walk: &walk, depth: 1)
     }
 
+    /// `depth` is the nesting level of the children being read; an item deeper than `maximumDepth` throws.
     private static func children(
         of item: [String: JSONValue],
-        items: [String: [String: JSONValue]],
+        walk: inout Walk,
         depth: Int
     ) throws -> [ArcNode] {
-        guard depth <= maximumDepth else { throw ArcImportError.tooDeep }
-        return try (item["childrenIds"]?.array ?? []).compactMap { childID in
-            guard let id = childID.string, let child = items[id] else { return nil }
-            return try node(child, items: items, depth: depth)
+        var result: [ArcNode] = []
+        for childID in item["childrenIds"]?.array ?? [] {
+            guard let id = childID.string, let child = walk.items[id] else { continue }
+            guard walk.visited.insert(id).inserted else {
+                walk.duplicates += 1
+                continue
+            }
+            guard depth <= maximumDepth else { throw ArcImportError.tooDeep }
+            result.append(try node(child, walk: &walk, depth: depth))
         }
+        return result
     }
 
     private static func node(
         _ item: [String: JSONValue],
-        items: [String: [String: JSONValue]],
+        walk: inout Walk,
         depth: Int
     ) throws -> ArcNode {
         let data = item["data"]?.object ?? [:]
@@ -139,11 +180,11 @@ public enum ArcSidebarParser {
             return .tab(arcTab(item, tab))
         }
         if data["list"] != nil {
-            let kids = try children(of: item, items: items, depth: depth + 1)
+            let kids = try children(of: item, walk: &walk, depth: depth + 1)
             return .folder(title: item["title"]?.string ?? "", children: kids)
         }
         if data["splitView"] != nil {
-            let kids = try children(of: item, items: items, depth: depth + 1)
+            let kids = try children(of: item, walk: &walk, depth: depth + 1)
             let tabs = kids.compactMap { node -> ArcTab? in
                 if case .tab(let tab) = node { return tab }
                 return nil

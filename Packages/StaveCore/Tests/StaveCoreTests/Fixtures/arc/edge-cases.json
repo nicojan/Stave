@@ -1,0 +1,504 @@
+{
+  "version": 1,
+  "sidebar": {
+    "containers": [
+      {
+        "global": {}
+      },
+      {
+        "items": [
+          "ACME-PIN",
+          {
+            "id": "ACME-PIN",
+            "parentID": null,
+            "childrenIds": [
+              "L1",
+              "SPLIT1",
+              "EASEL",
+              "WELCOME",
+              "T-JS",
+              "T-JS2",
+              "T-FILE",
+              "T-EMPTY",
+              "T-NOKEY",
+              "T-LONG",
+              "T-SHARED"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-ACME"
+                  }
+                }
+              }
+            }
+          },
+          "L1",
+          {
+            "id": "L1",
+            "parentID": "ACME-PIN",
+            "childrenIds": [
+              "L2"
+            ],
+            "title": "Level 1",
+            "data": {
+              "list": {}
+            }
+          },
+          "L2",
+          {
+            "id": "L2",
+            "parentID": "L1",
+            "childrenIds": [
+              "L3"
+            ],
+            "title": "Level 2",
+            "data": {
+              "list": {}
+            }
+          },
+          "L3",
+          {
+            "id": "L3",
+            "parentID": "L2",
+            "childrenIds": [
+              "T-DEEP"
+            ],
+            "title": "Level 3",
+            "data": {
+              "list": {}
+            }
+          },
+          "T-DEEP",
+          {
+            "id": "T-DEEP",
+            "parentID": "L3",
+            "childrenIds": [],
+            "title": "Deep",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-DEEP",
+                "savedURL": "https://deep.example.com/"
+              }
+            }
+          },
+          "SPLIT1",
+          {
+            "id": "SPLIT1",
+            "parentID": "ACME-PIN",
+            "childrenIds": [
+              "T-SA",
+              "T-SB"
+            ],
+            "title": null,
+            "data": {
+              "splitView": {}
+            }
+          },
+          "T-SA",
+          {
+            "id": "T-SA",
+            "parentID": "SPLIT1",
+            "childrenIds": [],
+            "title": "Split A",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-SA",
+                "savedURL": "https://split-a.example.org/"
+              }
+            }
+          },
+          "T-SB",
+          {
+            "id": "T-SB",
+            "parentID": "SPLIT1",
+            "childrenIds": [],
+            "title": "Split B",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-SB",
+                "savedURL": "https://split-b.example.org/"
+              }
+            }
+          },
+          "EASEL",
+          {
+            "id": "EASEL",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Sketch",
+            "data": {
+              "easel": {}
+            }
+          },
+          "WELCOME",
+          {
+            "id": "WELCOME",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "welcomeToArc": {}
+            }
+          },
+          "T-JS",
+          {
+            "id": "T-JS",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Script",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-JS",
+                "savedURL": "javascript:alert(1)"
+              }
+            }
+          },
+          "T-JS2",
+          {
+            "id": "T-JS2",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Script Two",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-JS2",
+                "savedURL": "JavaScript:void(0)"
+              }
+            }
+          },
+          "T-FILE",
+          {
+            "id": "T-FILE",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Local File",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-FILE",
+                "savedURL": "file:///etc/hosts"
+              }
+            }
+          },
+          "T-EMPTY",
+          {
+            "id": "T-EMPTY",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Empty URL",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-EMPTY",
+                "savedURL": ""
+              }
+            }
+          },
+          "T-NOKEY",
+          {
+            "id": "T-NOKEY",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "No URL",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-NOKEY"
+              }
+            }
+          },
+          "T-LONG",
+          {
+            "id": "T-LONG",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé東京🚀Ünïcødé",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-LONG",
+                "savedURL": "https://long.example.net/"
+              }
+            }
+          },
+          "T-SHARED",
+          {
+            "id": "T-SHARED",
+            "parentID": "ACME-PIN",
+            "childrenIds": [],
+            "title": "Shared",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-SHARED",
+                "savedURL": "https://shared.example.com/"
+              }
+            }
+          },
+          "ACME-UNPIN",
+          {
+            "id": "ACME-UNPIN",
+            "parentID": null,
+            "childrenIds": [
+              "SPLIT-U",
+              "T-UN"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-ACME"
+                  }
+                }
+              }
+            }
+          },
+          "SPLIT-U",
+          {
+            "id": "SPLIT-U",
+            "parentID": "ACME-UNPIN",
+            "childrenIds": [
+              "TU-A",
+              "TU-B"
+            ],
+            "title": null,
+            "data": {
+              "splitView": {}
+            }
+          },
+          "TU-A",
+          {
+            "id": "TU-A",
+            "parentID": "SPLIT-U",
+            "childrenIds": [],
+            "title": "Unpinned A",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved TU-A",
+                "savedURL": "https://unpinned-a.example.com/"
+              }
+            }
+          },
+          "TU-B",
+          {
+            "id": "TU-B",
+            "parentID": "SPLIT-U",
+            "childrenIds": [],
+            "title": "Unpinned B",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved TU-B",
+                "savedURL": "https://unpinned-b.example.com/"
+              }
+            }
+          },
+          "T-UN",
+          {
+            "id": "T-UN",
+            "parentID": "ACME-UNPIN",
+            "childrenIds": [],
+            "title": "Unpinned",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-UN",
+                "savedURL": "https://unpinned.example.net/"
+              }
+            }
+          },
+          "ODD-PIN",
+          {
+            "id": "ODD-PIN",
+            "parentID": null,
+            "childrenIds": [
+              "T-SHARED",
+              "CYC"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-ODD"
+                  }
+                }
+              }
+            }
+          },
+          "CYC",
+          {
+            "id": "CYC",
+            "parentID": "ODD-PIN",
+            "childrenIds": [
+              "CYC"
+            ],
+            "title": "Cycle",
+            "data": {
+              "list": {}
+            }
+          },
+          "ODD-UNPIN",
+          {
+            "id": "ODD-UNPIN",
+            "parentID": null,
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-ODD"
+                  }
+                }
+              }
+            }
+          },
+          "FAV-P1",
+          {
+            "id": "FAV-P1",
+            "parentID": null,
+            "childrenIds": [
+              "F-FAV",
+              "T-FAVPLAIN"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "topApps": {
+                    "_0": {
+                      "custom": {
+                        "_0": {
+                          "directoryBasename": "Profile 1",
+                          "machineID": "00000000-0000-4000-8000-000000000001"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "F-FAV",
+          {
+            "id": "F-FAV",
+            "parentID": "FAV-P1",
+            "childrenIds": [
+              "T-FAVIN"
+            ],
+            "title": "Fav Folder",
+            "data": {
+              "list": {}
+            }
+          },
+          "T-FAVIN",
+          {
+            "id": "T-FAVIN",
+            "parentID": "F-FAV",
+            "childrenIds": [],
+            "title": "Fav Inner",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-FAVIN",
+                "savedURL": "https://fav-inner.example.com/"
+              }
+            }
+          },
+          "T-FAVPLAIN",
+          {
+            "id": "T-FAVPLAIN",
+            "parentID": "FAV-P1",
+            "childrenIds": [],
+            "title": "Fav Plain",
+            "data": {
+              "tab": {
+                "savedTitle": "Saved T-FAVPLAIN",
+                "savedURL": "https://fav-plain.example.org/"
+              }
+            }
+          },
+          "FAV-P9",
+          {
+            "id": "FAV-P9",
+            "parentID": null,
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "topApps": {
+                    "_0": {
+                      "custom": {
+                        "_0": {
+                          "directoryBasename": "Profile 9",
+                          "machineID": "00000000-0000-4000-8000-000000000001"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "topAppsContainerIDs": [
+          "FAV-P1",
+          {
+            "custom": {
+              "_0": {
+                "directoryBasename": "Profile 1",
+                "machineID": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          },
+          "FAV-P9",
+          {
+            "custom": {
+              "_0": {
+                "directoryBasename": "Profile 9",
+                "machineID": "00000000-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        ],
+        "spaces": [
+          "S-ACME",
+          {
+            "id": "S-ACME",
+            "title": "Acme",
+            "profile": {
+              "custom": {
+                "_0": {
+                  "directoryBasename": "Profile 1",
+                  "machineID": "00000000-0000-4000-8000-000000000001"
+                }
+              }
+            },
+            "containerIDs": [
+              "unpinned",
+              "ACME-UNPIN",
+              "pinned",
+              "ACME-PIN"
+            ]
+          },
+          "S-ODD",
+          {
+            "id": "S-ODD",
+            "title": "Odd",
+            "profile": {
+              "something": {}
+            },
+            "newContainerIDs": [
+              {
+                "unpinned": {}
+              },
+              "ODD-UNPIN",
+              {
+                "pinned": {}
+              },
+              "ODD-PIN"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
