@@ -304,6 +304,22 @@ Rules the tests pin:
 
 ---
 
+## Outcome (2026-10-29)
+
+Built on `feat/arc-import` (draft PR #2): all 4 tasks reviewed, then the final whole-branch review and one fix wave. There are 167 package tests, and CI is green on macOS 14 (Xcode 16.2) and 15, Debug and Release. A throwaway program outside the repo printed only counts from a dry run on Nico's real Arc file into a temporary database. Its counts matched the structure dump: 1 workspace, 1 folder, 6 pinned tabs, 2 Essentials, and 2 unpinned tabs when that option is on.
+
+Departures from this plan, all made as rulings during execution:
+
+- **URL check.** The scheme check no longer uses `URL(string:)`, which behaves differently on macOS 14 and 15. It reads an RFC 3986 scheme prefix, and `http`/`https` also need a non-empty authority after `//`.
+- **Unrecognised Favorites.** Favorites whose profile marker is missing or unrecognised now go to the default profile's Essentials, reported as `.unrecognizedFavoritesProfile`, instead of being dropped.
+- **Unresolved spaces.** Pinned and unpinned containers resolve independently: `newContainerIDs` is tried first, then `containerIDs`. A space whose contents can't be found still becomes a workspace and is reported as `.spaceContentsMissing`.
+- **Unknown item kinds** that have children keep those children, in place.
+- **Unpinned folders** are reported as `.unpinnedFolder`, not `.folderTooDeep`.
+- **Walk order** is every pinned tree, then Favorites, then every unpinned tree, so a pinned copy of a duplicated item wins.
+- **Space profile.** A missing `profile` key means the default profile, with no report. An empty space title or emoji counts as missing.
+- **Nesting limit.** JSON nested more than 100 levels deep is refused as `.notJSON`. A crafted file nested about 500 levels deep crashed the parser before this guard.
+- **Default profile first.** `importArc` resolves the default profile before creating any new profile.
+
 ## Carried into later plans
 
 - **Plan 4 (window and sidebar):**
@@ -315,3 +331,13 @@ Rules the tests pin:
   - Read Arc's files through a user-granted file access if the app is sandboxed.
 - **Risk:** it is unknown whether Arc deletes `StorableSidebar.json` when it shuts down on 2026-12-22. The file-picker path covers a user who copied it first. The beta's release notes should tell Arc users to keep a copy.
 - **Not imported (by design for now):** per-tab emoji icons, Arc's archive (`StorableArchive.json`), Boosts, Easels, Notes, split-view layout (split view is 2.x), and the `machineID` on custom profiles.
+- **Plan 4, from this plan's review:**
+  - Check the file size before reading the file (an `ArcImporter` entry point that takes a URL).
+  - Make report labels unambiguous when two spaces share a name, and label Favorites entries with their profile.
+  - Report `.unrecognizedFavoritesProfile` only when the container actually held tabs. Arc keeps stale, empty profile containers.
+- **Test debts that can wait:**
+  - Pin `profile: null` → `.unrecognized`.
+  - Make the doubling-folders test fail by itself, not just hang, if the visited set regresses.
+  - Pin the remaining scheme-table cases (`"foo bar:x"`, `"1http://x"`, `":"`).
+  - Add a test that the store's clock stamps imported records.
+  - Make the order tests distinguish equal sortIndex values.
