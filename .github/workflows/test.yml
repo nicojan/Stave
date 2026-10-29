@@ -53,3 +53,15 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
+
+      # Release, unsigned: catches code that only compiles in Debug (e.g. #if DEBUG hooks).
+      - name: Build the app (Release)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Stave.xcodeproj \
+            -scheme Stave \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY=""
