@@ -1,0 +1,298 @@
+{
+  "version": 1,
+  "sidebar": {
+    "containers": [
+      {
+        "global": {}
+      },
+      {
+        "spaces": [
+          "S-WORK",
+          {
+            "id": "S-WORK",
+            "title": "Work",
+            "profile": {
+              "default": true
+            },
+            "customInfo": {
+              "iconType": {
+                "emoji_v2": "💼"
+              },
+              "windowTheme": {
+                "primaryColorPalette": {
+                  "midTone": {
+                    "red": 0.36,
+                    "green": 0.42,
+                    "blue": 0.95,
+                    "alpha": 1
+                  }
+                }
+              }
+            },
+            "newContainerIDs": [
+              {
+                "pinned": {}
+              },
+              "WORK-PIN",
+              {
+                "unpinned": {
+                  "_0": {
+                    "shared": {}
+                  }
+                }
+              },
+              "WORK-UNPIN"
+            ]
+          },
+          "S-2",
+          {
+            "id": "S-2",
+            "profile": {
+              "default": true
+            },
+            "customInfo": {
+              "iconType": {
+                "icon": "star"
+              }
+            },
+            "newContainerIDs": [
+              {
+                "pinned": {}
+              },
+              "HOME-PIN",
+              {
+                "unpinned": {
+                  "_0": {
+                    "shared": {}
+                  }
+                }
+              },
+              "HOME-UNPIN"
+            ]
+          }
+        ],
+        "items": [
+          "WORK-PIN",
+          {
+            "id": "WORK-PIN",
+            "parentID": null,
+            "childrenIds": [
+              "F-DOCS",
+              "T-BOARD"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-WORK"
+                  }
+                }
+              }
+            }
+          },
+          "T-BOARD",
+          {
+            "id": "T-BOARD",
+            "parentID": "WORK-PIN",
+            "childrenIds": [],
+            "title": "My Board",
+            "data": {
+              "tab": {
+                "savedURL": "https://board.example.com/team",
+                "savedTitle": "Board — Example"
+              }
+            }
+          },
+          "F-DOCS",
+          {
+            "id": "F-DOCS",
+            "parentID": "WORK-PIN",
+            "childrenIds": [
+              "T-SPEC",
+              "T-NOTES"
+            ],
+            "title": "Docs",
+            "data": {
+              "list": {}
+            }
+          },
+          "T-NOTES",
+          {
+            "id": "T-NOTES",
+            "parentID": "F-DOCS",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://notes.example.com/daily",
+                "savedTitle": "Daily Notes"
+              }
+            }
+          },
+          "T-SPEC",
+          {
+            "id": "T-SPEC",
+            "parentID": "F-DOCS",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://spec.example.com/draft",
+                "savedTitle": "Draft Spec"
+              }
+            }
+          },
+          "WORK-UNPIN",
+          {
+            "id": "WORK-UNPIN",
+            "parentID": null,
+            "childrenIds": [
+              "T-MAIL",
+              "T-CAL"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-WORK"
+                  }
+                }
+              }
+            }
+          },
+          "T-MAIL",
+          {
+            "id": "T-MAIL",
+            "parentID": "WORK-UNPIN",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://mail.example.com/inbox",
+                "savedTitle": "Inbox"
+              }
+            }
+          },
+          "T-CAL",
+          {
+            "id": "T-CAL",
+            "parentID": "WORK-UNPIN",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://calendar.example.com/week",
+                "savedTitle": "Week View"
+              }
+            }
+          },
+          "HOME-PIN",
+          {
+            "id": "HOME-PIN",
+            "parentID": null,
+            "childrenIds": [
+              "T-RECIPES"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-2"
+                  }
+                }
+              }
+            }
+          },
+          "T-RECIPES",
+          {
+            "id": "T-RECIPES",
+            "parentID": "HOME-PIN",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://recipes.example.com/soup",
+                "savedTitle": "Soup"
+              }
+            }
+          },
+          "HOME-UNPIN",
+          {
+            "id": "HOME-UNPIN",
+            "parentID": null,
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "spaceItems": {
+                    "_0": "S-2"
+                  }
+                }
+              }
+            }
+          },
+          "FAV-DEF",
+          {
+            "id": "FAV-DEF",
+            "parentID": null,
+            "childrenIds": [
+              "T-FAV1",
+              "T-FAV2"
+            ],
+            "title": null,
+            "data": {
+              "itemContainer": {
+                "containerType": {
+                  "topApps": {
+                    "_0": {
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "T-FAV1",
+          {
+            "id": "T-FAV1",
+            "parentID": "FAV-DEF",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://chat.example.com/",
+                "savedTitle": "Chat"
+              }
+            }
+          },
+          "T-FAV2",
+          {
+            "id": "T-FAV2",
+            "parentID": "FAV-DEF",
+            "childrenIds": [],
+            "title": null,
+            "data": {
+              "tab": {
+                "savedURL": "https://music.example.com/",
+                "savedTitle": "Music"
+              }
+            }
+          }
+        ],
+        "topAppsContainerIDs": [
+          {
+            "default": true
+          },
+          "FAV-DEF"
+        ]
+      }
+    ]
+  },
+  "sidebarSyncState": {
+    "items": []
+  }
+}
