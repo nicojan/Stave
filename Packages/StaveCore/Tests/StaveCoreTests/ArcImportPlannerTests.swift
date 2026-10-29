@@ -181,4 +181,92 @@ struct ArcImportPlannerTests {
         #expect(plan.flattened.contains(.splitView(space: nil, tabCount: 2)))
         #expect(plan.profiles[0].essentials.count == 2)
     }
+
+    // MARK: - Synthetic coverage
+
+    private func space(_ title: String?, pinned: [ArcNode] = [], unpinned: [ArcNode] = []) -> ArcSpace {
+        ArcSpace(title: title, profile: .default, emoji: nil, colorHex: nil, pinned: pinned, unpinned: unpinned)
+    }
+
+    private func planOf(_ space: ArcSpace, includeUnpinned: Bool = false) -> ArcImportPlan {
+        ArcImportPlanner.plan(
+            ArcSidebar(spaces: [space], favorites: [:], duplicateItems: 0),
+            options: ArcImportOptions(includeUnpinnedTabs: includeUnpinned), profileNames: [:])
+    }
+
+    private func at(_ n: String) -> ArcTab { ArcTab(url: "https://\(n).example.com/", title: n) }
+
+    @Test func unpinnedFolderTabsCountedWhenOff() {
+        let bad = ArcTab(url: "file:///x", title: "Bad")
+        let unpinned: [ArcNode] = [.folder(title: "Outer", children: [
+            .folder(title: "Inner", children: [.tab(at("a")), .tab(bad)]),
+        ])]
+        let off = planOf(space("W", unpinned: unpinned))
+        #expect(off.skipped == [.unpinnedTabs(space: "W", count: 1)])
+        #expect(off.flattened.isEmpty)
+        #expect(off.profiles[0].workspaces[0].regular.isEmpty)
+
+        let on = planOf(space("W", unpinned: unpinned), includeUnpinned: true)
+        #expect(on.profiles[0].workspaces[0].regular == [tab("https://a.example.com/", "a")])
+        #expect(on.flattened == [.folderTooDeep(space: "W", folder: "Outer"), .folderTooDeep(space: "W", folder: "Inner")])
+        #expect(on.skipped == [.nonWebURL(space: "W", title: "Bad", scheme: "file")])
+    }
+
+    @Test func pinnedChainDropsLevelsThreeAndFour() {
+        let pinned: [ArcNode] = [.folder(title: "L1", children: [.folder(title: "L2", children: [
+            .tab(at("before")),
+            .folder(title: "L3", children: [
+                .tab(at("x")),
+                .folder(title: "L4", children: [.split([at("s1"), at("s2")]), .tab(at("y"))]),
+            ]),
+            .tab(at("after")),
+        ])])]
+        let plan = planOf(space("W", pinned: pinned))
+        func p(_ n: String) -> PlannedPinned { .tab(tab("https://\(n).example.com/", n)) }
+        #expect(plan.profiles[0].workspaces[0].pinned == [.folder(title: "L1", children: [
+            .folder(title: "L2", children: [p("before"), p("x"), p("s1"), p("s2"), p("y"), p("after")]),
+        ])])
+        #expect(plan.flattened == [
+            .folderTooDeep(space: "W", folder: "L3"),
+            .folderTooDeep(space: "W", folder: "L4"),
+            .splitView(space: "W", tabCount: 2),
+        ])
+    }
+
+    @Test func unpinnedSplitWithNonWebTab() {
+        let split: ArcNode = .split([at("a"), ArcTab(url: "javascript:1", title: "J"), at("b")])
+        let plan = planOf(space(nil, unpinned: [split]), includeUnpinned: true)
+        #expect(plan.profiles[0].workspaces[0].regular == [tab("https://a.example.com/", "a"), tab("https://b.example.com/", "b")])
+        #expect(plan.flattened == [.splitView(space: "Space 1", tabCount: 3)])
+        #expect(plan.skipped == [.nonWebURL(space: "Space 1", title: "J", scheme: "javascript")])
+    }
+
+    @Test func paddedTitleAndMixedCaseURLAreVerbatim() {
+        let t = ArcTab(url: "HTTPS://EXAMPLE.com/A", title: "  padded\t")
+        let plan = planOf(space("W", pinned: [.tab(t)]))
+        #expect(plan.profiles[0].workspaces[0].pinned == [.tab(PlannedTab(url: "HTTPS://EXAMPLE.com/A", title: "  padded\t"))])
+    }
+
+    @Test func urlFilterTable() {
+        let cases: [(String, String?)] = [   // (url, nil when accepted, else the reported scheme)
+            ("HTTPS://x.example.com", nil),
+            (" https://x.example.com", ""),
+            ("https:", "https"),
+            ("https://", "https"),
+            ("https:///path", "https"),
+            ("https://example.com/日本語 space", nil),
+            ("mailto:a@example.com", "mailto"),
+            ("", ""),
+        ]
+        for (url, expected) in cases {
+            let plan = planOf(space("W", pinned: [.tab(ArcTab(url: url, title: "T"))]))
+            if let scheme = expected {
+                #expect(plan.profiles[0].workspaces[0].pinned.isEmpty, "\(url)")
+                #expect(plan.skipped == [.nonWebURL(space: "W", title: "T", scheme: scheme)], "\(url)")
+            } else {
+                #expect(plan.profiles[0].workspaces[0].pinned == [.tab(tab(url, "T"))], "\(url)")
+                #expect(plan.skipped.isEmpty, "\(url)")
+            }
+        }
+    }
 }

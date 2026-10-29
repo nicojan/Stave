@@ -181,13 +181,28 @@ public enum ArcImportPlanner {
 
     // MARK: - URL filter (ruling 1)
 
+    /// The text before the first ":" when it is a syntactically valid scheme, lowercased; otherwise "".
+    /// Deliberately independent of `URL(string:)`, whose handling of spaces and non-ASCII differs by OS version.
     private static func scheme(of url: String) -> String {
-        URL(string: url)?.scheme?.lowercased() ?? ""
+        guard let colon = url.firstIndex(of: ":") else { return "" }
+        let prefix = url[url.startIndex..<colon]
+        guard let first = prefix.unicodeScalars.first, isASCIILetter(first) else { return "" }
+        let valid = prefix.unicodeScalars.allSatisfy { isASCIILetter($0) || ("0"..."9").contains($0) || "+-.".unicodeScalars.contains($0) }
+        return valid ? prefix.lowercased() : ""
     }
 
+    private static func isASCIILetter(_ scalar: Unicode.Scalar) -> Bool {
+        ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar)
+    }
+
+    /// http or https, then "//" and a non-empty host (authority up to the first "/", "?" or "#").
     private static func isWeb(_ url: String) -> Bool {
         let scheme = scheme(of: url)
-        return scheme == "http" || scheme == "https"
+        guard scheme == "http" || scheme == "https" else { return false }
+        let rest = url.dropFirst(scheme.count + 1)
+        guard rest.hasPrefix("//") else { return false }
+        let authority = rest.dropFirst(2).prefix { $0 != "/" && $0 != "?" && $0 != "#" }
+        return !authority.isEmpty
     }
 
     private static func acceptTab(_ tab: ArcTab, space: String?, notes: inout Notes) -> PlannedTab? {
