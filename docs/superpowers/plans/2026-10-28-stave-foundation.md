@@ -337,3 +337,31 @@ Ordering uses `Double` sort indices: inserting between two neighbours takes thei
 - [ ] **Step 3: Verify crash safety by hand.** With the Debug app running, insert a tab through a temporary Debug-only menu item "Add sample tab" (remove it in plan 4), then `kill -9` the process and relaunch: the tab is listed.
 - [ ] **Step 4: Run** the full package suite again → PASS; push and confirm CI is green on macOS 14 and 15.
 - [ ] **Step 5: Commit** `feat: app shell restores the stored organization`
+
+---
+
+## Outcome (2026-10-28)
+
+Built on `feat/foundation` (PR #1), all 10 tasks reviewed, final whole-branch review clean after one fix wave; 101 package tests; CI green on macOS 14 (Xcode 16.2) and 15, Debug and Release.
+
+Departures from this plan:
+
+- GRDB is capped `"7.0.0"..<"7.9.0"` (resolves 7.8.0): GRDB 7.9+ needs Swift 6.1, and the macOS 14 runner tops out at Xcode 16.2. Drop the cap when macOS 14 CI goes.
+- Schema v1 gained, before any release: `tab.pinnedFaviconURL` (the spec's pinned icon), `archivedTab.pinnedURL`/`pinnedTitle`/`pinnedFaviconURL` (archiving a drifted pinned tab keeps its pinned page), and CHECKs on `slot` (essential ⇔ no workspace, folder only on pinned, section/kind domains). `tab.slotID` is deliberately not unique: a split slot will hold several tabs.
+- Store and test details: the store clock is snapped to GRDB's stored millisecond precision. A cross-profile restore or container use throws `.crossProfileMove`. A window's selected Essential survives a workspace fallback.
+
+## Carried into later plans
+
+- **Plan 4 (window and sidebar):**
+  - `moveTab` can only anchor after a tab, so add an item anchor (tab or folder) and a `moveFolder`.
+  - Window state is saved only at quit, but the spec says save as it changes.
+  - Clamp restored frames to visible screens.
+  - Schedule `trimArchive` (probably at launch). Until then `deleteContainer` stays refused for any container that ever archived a tab.
+  - Consolidate the duplicated store helpers: renumbering, crowding loop, essentials query, slot→tab join, folder-ownership check.
+  - Unify tie-breaks on `rowid`.
+  - Make `deleteWorkspace` throw rather than `continue` on a missing slot.
+  - Remove the Debug "Add sample tab" menu item and `-StaveAddSampleTab`.
+- **Plan 3/4:** adopt a late-arriving favicon as `pinnedFaviconURL` while a pinned tab is still on its pinned URL.
+- **Plan 5:** revisit the `.debug`-suffix data-folder mapping if a third bundle ID (e.g. a beta) appears.
+- **Sync:** decide whether `markActive` should bump `modifiedAt`.
+- **Split view (2.x):** closing or removing a tab in a split slot must archive every tab in the slot. Today the slot delete cascades.
