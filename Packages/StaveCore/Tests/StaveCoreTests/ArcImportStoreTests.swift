@@ -95,7 +95,11 @@ struct ArcImportStoreTests {
         let home = try #require(try store.workspaces(profileID: profile.id).first)
         let existing = try store.openTab(url: "https://keep.example.com", title: "Keep", workspaceID: home.id, origin: .commandBar, containerID: nil, edge: .top)
         try store.pinTab(existing.id, folderID: nil)
+        // Two Essentials, the first removed: the survivor has sortIndex 1, so restarting imported Essentials at 0 would show.
+        let removed = try store.openTab(url: "https://gone.example.com", title: "Gone", workspaceID: home.id, origin: .commandBar, containerID: nil, edge: .top)
+        try store.makeEssential(removed.id)
         try store.makeEssential(try store.openTab(url: "https://ess.example.com", title: "Ess", workspaceID: home.id, origin: .commandBar, containerID: nil, edge: .top).id)
+        try store.removeEssential(removed.id)
         let pinnedBefore = try store.pinnedItems(workspaceID: home.id)
         let regularBefore = try store.regularTabs(workspaceID: home.id)
         let essentialBefore = try #require(try store.essentials(profileID: profile.id).first)
@@ -110,6 +114,8 @@ struct ArcImportStoreTests {
         let essentials = try store.essentials(profileID: profile.id)
         #expect(essentials.count == 3)
         #expect(essentials.first == essentialBefore)
+        let plannedEssentials = try #require(try plan("basic").profiles.first?.essentials)
+        #expect(essentials.map(\.pinnedURL) == ["https://ess.example.com"] + plannedEssentials.map(\.url))
         #expect(try store.profiles().count == 1)
     }
 
