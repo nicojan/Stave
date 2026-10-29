@@ -70,6 +70,8 @@ public struct Tab: Codable, FetchableRecord, PersistableRecord, Sendable, Identi
     public var containerID: UUID?
     public var pinnedURL: String?
     public var pinnedTitle: String?
+    /// The pinned page's icon, kept so a reset brings it back.
+    public var pinnedFaviconURL: String?
     public var url: String
     public var title: String
     public var faviconURL: String?
@@ -77,9 +79,9 @@ public struct Tab: Codable, FetchableRecord, PersistableRecord, Sendable, Identi
     public var lastActiveAt: Date
     public var modifiedAt: Date
 
-    public init(id: UUID = UUID(), slotID: UUID, containerID: UUID? = nil, pinnedURL: String? = nil, pinnedTitle: String? = nil, url: String, title: String, faviconURL: String? = nil, interactionState: Data? = nil, lastActiveAt: Date = Date(), modifiedAt: Date = Date()) {
+    public init(id: UUID = UUID(), slotID: UUID, containerID: UUID? = nil, pinnedURL: String? = nil, pinnedTitle: String? = nil, pinnedFaviconURL: String? = nil, url: String, title: String, faviconURL: String? = nil, interactionState: Data? = nil, lastActiveAt: Date = Date(), modifiedAt: Date = Date()) {
         self.id = id; self.slotID = slotID; self.containerID = containerID; self.pinnedURL = pinnedURL
-        self.pinnedTitle = pinnedTitle; self.url = url; self.title = title; self.faviconURL = faviconURL
+        self.pinnedTitle = pinnedTitle; self.pinnedFaviconURL = pinnedFaviconURL; self.url = url; self.title = title; self.faviconURL = faviconURL
         self.interactionState = interactionState; self.lastActiveAt = lastActiveAt; self.modifiedAt = modifiedAt
     }
 }

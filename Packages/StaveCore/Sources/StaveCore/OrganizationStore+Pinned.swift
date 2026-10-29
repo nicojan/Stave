@@ -11,7 +11,7 @@ extension OrganizationStore {
     // MARK: - Pinning
 
     /// Pins a regular tab (or re-files a pinned one) at the end of `folderID`, or of the workspace root when nil.
-    /// Sets `pinnedURL`/`pinnedTitle` from the current page unless already set.
+    /// Sets `pinnedURL`/`pinnedTitle`/`pinnedFaviconURL` from the current page unless already pinned.
     public func pinTab(_ id: UUID, folderID: UUID?) throws {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
@@ -26,6 +26,7 @@ extension OrganizationStore {
             slot.sortIndex = try nextPinnedIndex(workspaceID: workspaceID, parentID: folderID, in: db)
             slot.modifiedAt = stamp
             try slot.update(db)
+            tab.pinnedFaviconURL = tab.pinnedURL == nil ? tab.faviconURL : tab.pinnedFaviconURL
             tab.pinnedURL = tab.pinnedURL ?? tab.url
             tab.pinnedTitle = tab.pinnedTitle ?? tab.title
             tab.modifiedAt = stamp
@@ -47,18 +48,20 @@ extension OrganizationStore {
             try slot.update(db)
             tab.pinnedURL = nil
             tab.pinnedTitle = nil
+            tab.pinnedFaviconURL = nil
             tab.modifiedAt = stamp
             try tab.update(db)
         }
     }
 
-    /// Sends a pinned tab or Essential back to its pinned page and drops its saved interaction state.
+    /// Sends a pinned tab or Essential back to its pinned page and icon, and drops its saved interaction state.
     public func resetPinnedTab(_ id: UUID) throws {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
             guard slot.section != .regular, let pinnedURL = tab.pinnedURL else { throw StoreError.notPinned }
             tab.url = pinnedURL
             tab.title = tab.pinnedTitle ?? tab.title
+            tab.faviconURL = tab.pinnedFaviconURL
             tab.interactionState = nil
             tab.modifiedAt = now()
             try tab.update(db)
@@ -91,6 +94,7 @@ extension OrganizationStore {
             slot.sortIndex = (siblings.map(\.sortIndex).max() ?? -1) + 1
             slot.modifiedAt = stamp
             try slot.update(db)
+            tab.pinnedFaviconURL = tab.pinnedURL == nil ? tab.faviconURL : tab.pinnedFaviconURL
             tab.pinnedURL = tab.pinnedURL ?? tab.url
             tab.pinnedTitle = tab.pinnedTitle ?? tab.title
             tab.modifiedAt = stamp

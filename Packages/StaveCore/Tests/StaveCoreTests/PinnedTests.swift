@@ -35,6 +35,39 @@ struct PinnedTests {
         #expect(!store.isDrifted(reset))
     }
 
+    @Test func resetRestoresPinnedIcon() throws {
+        let (store, _, _, _, ws) = try fixture()
+        let tab = try open(store, "https://a.com", in: ws)
+        try store.updateNavigation(tabID: tab.id, url: "https://a.com", title: "A", faviconURL: "https://a.com/icon.png", interactionState: nil)
+        try store.pinTab(tab.id, folderID: nil)
+        try store.updateNavigation(tabID: tab.id, url: "https://b.com", title: "B", faviconURL: "https://b.com/icon.png", interactionState: nil)
+        try store.resetPinnedTab(tab.id)
+        guard case .tab(let reset) = try #require(store.pinnedItems(workspaceID: ws.id).first) else { Issue.record("not a tab"); return }
+        #expect(reset.pinnedFaviconURL == "https://a.com/icon.png")
+        #expect(reset.faviconURL == "https://a.com/icon.png")
+    }
+
+    @Test func pinnedIconFollowsPinnedPage() throws {
+        let (store, _, _, profile, ws) = try fixture()
+        let essential = try open(store, "https://e.com", in: ws)
+        try store.updateNavigation(tabID: essential.id, url: "https://e.com", title: "E", faviconURL: "https://e.com/i.png", interactionState: nil)
+        try store.makeEssential(essential.id)
+        #expect(try store.essentials(profileID: profile.id).first?.pinnedFaviconURL == "https://e.com/i.png")
+
+        let moved = try open(store, "https://m.com", in: ws)
+        try store.updateNavigation(tabID: moved.id, url: "https://m.com", title: "M", faviconURL: "https://m.com/i.png", interactionState: nil)
+        try store.moveTab(moved.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: nil)
+        guard case .tab(let pinned) = try #require(store.pinnedItems(workspaceID: ws.id).first) else { Issue.record("not a tab"); return }
+        #expect(pinned.pinnedFaviconURL == "https://m.com/i.png")
+
+        try store.moveTab(moved.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: nil)
+        try store.moveTab(essential.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: nil)
+        try store.unpinTab(essential.id)
+        let regular = try store.regularTabs(workspaceID: ws.id)
+        #expect(regular.count == 2)
+        #expect(regular.allSatisfy { $0.pinnedFaviconURL == nil && $0.pinnedURL == nil })
+    }
+
     @Test func resetRegularThrowsNotPinned() throws {
         let (store, _, _, _, ws) = try fixture()
         let tab = try open(store, "https://a.com", in: ws)

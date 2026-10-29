@@ -106,6 +106,7 @@ public final class StaveDatabase: Sendable {
             t.column("containerID", .blob).references("container")
             t.column("pinnedURL", .text)
             t.column("pinnedTitle", .text)
+            t.column("pinnedFaviconURL", .text)
             t.column("url", .text).notNull()
             t.column("title", .text).notNull()
             t.column("faviconURL", .text)

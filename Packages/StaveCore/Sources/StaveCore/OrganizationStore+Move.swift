@@ -18,17 +18,19 @@ extension OrganizationStore {
             )
             let stamp = now()
             let pinnedPage = section == .regular
-                ? (url: String?.none, title: String?.none)
-                : (url: tab.pinnedURL ?? tab.url, title: tab.pinnedTitle ?? tab.title)
+                ? (url: String?.none, title: String?.none, favicon: String?.none)
+                : (url: tab.pinnedURL ?? tab.url, title: tab.pinnedTitle ?? tab.title,
+                   favicon: tab.pinnedURL == nil ? tab.faviconURL : tab.pinnedFaviconURL)
             slot.workspaceID = workspaceID
             slot.section = section
             slot.folderID = folderID
             slot.sortIndex = index
             slot.modifiedAt = stamp
             try slot.update(db)
-            if tab.pinnedURL != pinnedPage.url || tab.pinnedTitle != pinnedPage.title {
+            if tab.pinnedURL != pinnedPage.url || tab.pinnedTitle != pinnedPage.title || tab.pinnedFaviconURL != pinnedPage.favicon {
                 tab.pinnedURL = pinnedPage.url
                 tab.pinnedTitle = pinnedPage.title
+                tab.pinnedFaviconURL = pinnedPage.favicon
                 tab.modifiedAt = stamp
                 try tab.update(db)
             }
