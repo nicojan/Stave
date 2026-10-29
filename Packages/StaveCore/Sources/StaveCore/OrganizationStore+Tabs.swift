@@ -18,6 +18,10 @@ extension OrganizationStore {
     ) throws -> Tab {
         try database.writer.write { db in
             guard let workspace = try Workspace.fetchOne(db, key: workspaceID) else { throw StoreError.notFound }
+            if let containerID {
+                guard let container = try Container.fetchOne(db, key: containerID) else { throw StoreError.notFound }
+                guard container.profileID == workspace.profileID else { throw StoreError.crossProfileMove }
+            }
             return try insertRegularTab(
                 url: url, title: title, workspace: workspace, origin: origin,
                 containerID: containerID, edge: edge, faviconURL: nil, interactionState: nil, in: db
@@ -86,6 +90,11 @@ extension OrganizationStore {
         try database.writer.write { db in
             guard let archived = try ArchivedTab.fetchOne(db, key: id),
                   let workspace = try Workspace.fetchOne(db, key: workspaceID) else { throw StoreError.notFound }
+            guard archived.profileID == workspace.profileID else { throw StoreError.crossProfileMove }
+            // A container that no longer exists is left to Task 8 (R12); one that exists must be this profile's.
+            if let containerID = archived.containerID,
+               let container = try Container.fetchOne(db, key: containerID),
+               container.profileID != workspace.profileID { throw StoreError.crossProfileMove }
             let tab = try insertRegularTab(
                 url: archived.url, title: archived.title, workspace: workspace, origin: .commandBar,
                 containerID: archived.containerID, edge: .top,

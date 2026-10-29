@@ -118,28 +118,70 @@ struct TabTests {
         #expect(store.displayTitle(for: noHost) == "not a url")
     }
 
-    @Test func renormalizesWhenCrowded() throws {
-        let (store, _, _, _, ws) = try fixture()
+    /// Opens one tab first so the opener sits at index 1: midpoints are then 1 + 2^-k, which collapse in doubles near k = 53.
+    private func crowd(_ store: OrganizationStore, _ ws: Workspace) throws -> (opener: Tab, tail: Tab, links: [UUID]) {
+        _ = try open(store, "https://first.example", in: ws)
         let opener = try open(store, "https://opener.example", in: ws)
-        _ = try open(store, "https://tail.example", in: ws)
-        var expected: [UUID] = []
+        let tail = try open(store, "https://tail.example", in: ws)
+        var links: [UUID] = []
         for i in 0..<60 {
-            expected.insert(try open(store, "https://c\(i).example", in: ws, origin: .link(openerTabID: opener.id)).id, at: 0)
+            links.insert(try open(store, "https://c\(i).example", in: ws, origin: .link(openerTabID: opener.id)).id, at: 0)
         }
-        // Each link opens directly below the opener, so later ones sit above earlier ones.
-        let tabs = try store.regularTabs(workspaceID: ws.id)
-        #expect(tabs.map(\.id) == [opener.id] + expected + [tabs.last!.id])
-        #expect(tabs.count == 62)
+        return (opener, tail, links)
     }
 
-    @Test func renormalizedIndicesAreDistinct() throws {
+    @Test func renormalizesWhenCrowded() throws {
         let (store, database, _, _, ws) = try fixture()
-        let opener = try open(store, "https://opener.example", in: ws)
-        _ = try open(store, "https://tail.example", in: ws)
-        for i in 0..<60 { _ = try open(store, "https://c\(i).example", in: ws, origin: .link(openerTabID: opener.id)) }
+        let (opener, tail, links) = try crowd(store, ws)
+        // Each link opens directly below the opener, so later ones sit above earlier ones.
+        let tabs = try store.regularTabs(workspaceID: ws.id)
+        #expect(tabs.count == 63)
+        #expect(Array(tabs.dropFirst().map(\.id)) == [opener.id] + links + [tail.id])
         let indices = try database.writer.read { db in
-            try Double.fetchAll(db, Slot.filter(Column("workspaceID") == ws.id).select(Column("sortIndex")))
+            try Double.fetchAll(db, Slot.filter(Column("workspaceID") == ws.id).select(Column("sortIndex")).order(Column("sortIndex")))
         }
-        #expect(Set(indices).count == 62)
+        #expect(Set(indices).count == 63)
+        let minGap = zip(indices, indices.dropFirst()).map { $1 - $0 }.min() ?? 0
+        #expect(minGap >= 1e-9)
+    }
+
+    @Test func openTabRejectsForeignAndUnknownContainer() throws {
+        let (store, database, clock, _, ws) = try fixture()
+        let other = try store.createProfile(name: "Other")
+        let foreign = Container(profileID: other.id, name: "F", colorHex: "#000000", modifiedAt: clock.date)
+        try database.writer.write { db in try foreign.insert(db) }
+        #expect(throws: StoreError.crossProfileMove) {
+            try store.openTab(url: "https://x", title: "x", workspaceID: ws.id, origin: .commandBar, containerID: foreign.id, edge: .top)
+        }
+        #expect(throws: StoreError.notFound) {
+            try store.openTab(url: "https://x", title: "x", workspaceID: ws.id, origin: .commandBar, containerID: UUID(), edge: .top)
+        }
+        #expect(try store.regularTabs(workspaceID: ws.id).isEmpty)
+    }
+
+    @Test func restoreAcrossProfilesThrowsAndKeepsArchiveRow() throws {
+        let (store, database, clock, profileA, wsA) = try fixture()
+        let profileB = try store.createProfile(name: "B")
+        let wsB = try #require(try store.workspaces(profileID: profileB.id).first)
+        let container = Container(profileID: profileA.id, name: "A", colorHex: "#000000", modifiedAt: clock.date)
+        try database.writer.write { db in try container.insert(db) }
+        let tab = try store.openTab(url: "https://a.example", title: "a", workspaceID: wsA.id, origin: .commandBar, containerID: container.id, edge: .top)
+        guard case .archived(let id) = try store.closeTab(tab.id) else { Issue.record("expected archived"); return }
+        #expect(throws: StoreError.crossProfileMove) { try store.restoreArchivedTab(id, workspaceID: wsB.id) }
+        #expect(try store.archivedTabs(profileID: profileA.id).map(\.id) == [id])
+        #expect(try store.regularTabs(workspaceID: wsB.id).isEmpty)
+    }
+
+    @Test func archivedTabsExcludesOtherProfiles() throws {
+        let (store, _, _, profileA, wsA) = try fixture()
+        let profileB = try store.createProfile(name: "B")
+        let wsB = try #require(try store.workspaces(profileID: profileB.id).first)
+        let a = try open(store, "https://a.example", in: wsA)
+        let b = try open(store, "https://b.example", in: wsB)
+        guard case .archived(let idA) = try store.closeTab(a.id), case .archived(let idB) = try store.closeTab(b.id) else {
+            Issue.record("expected archived"); return
+        }
+        #expect(try store.archivedTabs(profileID: profileA.id).map(\.id) == [idA])
+        #expect(try store.archivedTabs(profileID: profileB.id).map(\.id) == [idB])
     }
 }
