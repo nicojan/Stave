@@ -42,7 +42,7 @@ extension OrganizationStore {
             let stamp = now()
             slot.section = .regular
             slot.folderID = nil
-            slot.sortIndex = try topRegularIndex(workspace: workspace, in: db)
+            slot.sortIndex = try regularIndex(workspaceID: workspace.id, origin: .commandBar, edge: .top, in: db)
             slot.modifiedAt = stamp
             try slot.update(db)
             tab.pinnedURL = nil

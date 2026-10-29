@@ -72,37 +72,44 @@ struct PinnedTests {
         #expect(throws: StoreError.notFound) { try store.createFolder(workspaceID: UUID(), parentFolderID: nil, title: "x") }
     }
 
+    /// In-folder indices (0, 1, 2) collide with the root tab X (1), so plain ON DELETE SET NULL would give [t1, X, t2, t3].
     @Test func deleteFolderKeepsTabs() throws {
         let (store, _, _, profile, ws) = try fixture()
-        let before = try open(store, "https://before.com", in: ws)
-        try store.pinTab(before.id, folderID: nil)
-        let folder = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "F")
-        let after = try open(store, "https://after.com", in: ws)
-        let t1 = try open(store, "https://t1.com", in: ws)
-        let t2 = try open(store, "https://t2.com", in: ws)
-        try store.pinTab(t1.id, folderID: folder.id)
-        try store.pinTab(t2.id, folderID: folder.id)
-        try store.pinTab(after.id, folderID: nil)
+        let folder = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "F") // root 0
+        let x = try open(store, "https://x.com", in: ws)
+        try store.pinTab(x.id, folderID: nil) // root 1
+        var inside: [UUID] = []
+        for name in ["t1", "t2", "t3"] {
+            let tab = try open(store, "https://\(name).com", in: ws)
+            try store.pinTab(tab.id, folderID: folder.id) // 0, 1, 2
+            inside.append(tab.id)
+        }
         try store.deleteFolder(folder.id)
-        #expect(tabIDs(try store.pinnedItems(workspaceID: ws.id)) == [before.id, t1.id, t2.id, after.id])
+        #expect(tabIDs(try store.pinnedItems(workspaceID: ws.id)) == inside + [x.id])
         #expect(try store.archivedTabs(profileID: profile.id).isEmpty)
     }
 
+    /// Top holds [loose1 0, Sub 1, loose2 2] while root tab X sits at 1; SET NULL alone would not keep Sub between the loose tabs.
     @Test func deleteTopFolderMovesSubfolderToRootWithItsTabs() throws {
         let (store, _, _, _, ws) = try fixture()
-        let top = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "Top")
-        let sub = try store.createFolder(workspaceID: ws.id, parentFolderID: top.id, title: "Sub")
-        let loose = try open(store, "https://loose.com", in: ws)
+        let top = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "Top") // root 0
+        let x = try open(store, "https://x.com", in: ws)
+        try store.pinTab(x.id, folderID: nil) // root 1
+        let loose1 = try open(store, "https://loose1.com", in: ws)
+        try store.pinTab(loose1.id, folderID: top.id) // 0
+        let sub = try store.createFolder(workspaceID: ws.id, parentFolderID: top.id, title: "Sub") // 1
+        let loose2 = try open(store, "https://loose2.com", in: ws)
+        try store.pinTab(loose2.id, folderID: top.id) // 2
         let inSub = try open(store, "https://insub.com", in: ws)
-        try store.pinTab(loose.id, folderID: top.id)
         try store.pinTab(inSub.id, folderID: sub.id)
         try store.deleteFolder(top.id)
         let items = try store.pinnedItems(workspaceID: ws.id)
-        #expect(items.count == 2)
-        guard case .folder(let movedSub, let children) = items[0] else { Issue.record("expected sub-folder first"); return }
+        #expect(items.count == 4)
+        #expect(tabIDs([items[0]]) == [loose1.id])
+        guard case .folder(let movedSub, let children) = items[1] else { Issue.record("expected sub-folder second"); return }
         #expect(movedSub.id == sub.id && movedSub.parentFolderID == nil)
         #expect(tabIDs(children) == [inSub.id])
-        #expect(tabIDs([items[1]]) == [loose.id])
+        #expect(tabIDs([items[2], items[3]]) == [loose2.id, x.id])
     }
 
     @Test func deleteNestedFolderMovesTabsToParentFolder() throws {

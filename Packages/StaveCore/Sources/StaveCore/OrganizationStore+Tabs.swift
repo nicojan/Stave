@@ -138,13 +138,13 @@ extension OrganizationStore {
         )
     }
 
-    /// The sort index for a new regular slot at the top of the workspace (`.commandBar` rule), renumbering first if crowded.
-    func topRegularIndex(workspace: Workspace, in db: Database) throws -> Double {
-        var slots = try regularSlots(workspaceID: workspace.id, in: db)
-        var index = try placementIndex(slots: slots, origin: .commandBar, edge: .top, in: db)
+    /// The sort index for a new regular slot in the workspace by `origin` and `edge`, renumbering first if crowded (R10).
+    func regularIndex(workspaceID: UUID, origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
+        var slots = try regularSlots(workspaceID: workspaceID, in: db)
+        var index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
         if isCrowded(index, among: slots.map(\.sortIndex)) {
             slots = try renumber(slots, in: db)
-            index = try placementIndex(slots: slots, origin: .commandBar, edge: .top, in: db)
+            index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
         }
         return index
     }
@@ -160,12 +160,7 @@ extension OrganizationStore {
         url: String, title: String, workspace: Workspace, origin: NewTabOrigin,
         containerID: UUID?, edge: NewTabEdge, faviconURL: String?, interactionState: Data?, in db: Database
     ) throws -> Tab {
-        var slots = try regularSlots(workspaceID: workspace.id, in: db)
-        var index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        if isCrowded(index, among: slots.map(\.sortIndex)) {
-            slots = try renumber(slots, in: db)
-            index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        }
+        let index = try regularIndex(workspaceID: workspace.id, origin: origin, edge: edge, in: db)
         let stamp = now()
         let slot = Slot(
             profileID: workspace.profileID, workspaceID: workspace.id, section: .regular,
