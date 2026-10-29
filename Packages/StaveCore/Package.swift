@@ -19,7 +19,8 @@ let package = Package(
         ),
         .testTarget(
             name: "StaveCoreTests",
-            dependencies: ["StaveCore"]
+            dependencies: ["StaveCore"],
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v6]
