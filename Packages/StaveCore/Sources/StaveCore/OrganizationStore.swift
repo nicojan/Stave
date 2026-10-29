@@ -105,19 +105,21 @@ public final class OrganizationStore: Sendable {
 
     // MARK: - Shared transaction helpers
 
-    private func insertProfile(name: String, in db: Database) throws -> Profile {
+    func insertProfile(name: String, withHomeWorkspace: Bool = true, in db: Database) throws -> Profile {
         let stamp = now()
         let maxIndex = try Double.fetchOne(db, Profile.select(max(Column("sortIndex"))))
         let profile = Profile(name: name, sortIndex: (maxIndex ?? -1) + 1, modifiedAt: stamp)
         try profile.insert(db)
-        _ = try insertWorkspace(
-            profileID: profile.id, name: Self.homeWorkspaceName,
-            icon: Self.homeWorkspaceIcon, colorHex: Self.homeWorkspaceColorHex, in: db
-        )
+        if withHomeWorkspace {
+            _ = try insertWorkspace(
+                profileID: profile.id, name: Self.homeWorkspaceName,
+                icon: Self.homeWorkspaceIcon, colorHex: Self.homeWorkspaceColorHex, in: db
+            )
+        }
         return profile
     }
 
-    private func insertWorkspace(profileID: UUID, name: String, icon: String, colorHex: String, in db: Database) throws -> Workspace {
+    func insertWorkspace(profileID: UUID, name: String, icon: String, colorHex: String, in db: Database) throws -> Workspace {
         let maxIndex = try Double.fetchOne(
             db, Workspace.filter(Column("profileID") == profileID).select(max(Column("sortIndex")))
         )
