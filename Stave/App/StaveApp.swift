@@ -7,17 +7,21 @@ struct StaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     // Windows are AppKit-managed (see AppDelegate); SwiftUI only needs a scene, which also hosts the Debug command.
+    #if DEBUG
     var body: some Scene {
         Settings { EmptyView() }
             .commands {
-                #if DEBUG
                 // Temporary (plan 1 Task 10): remove in plan 4
                 CommandMenu("Debug") {
                     Button("Add sample tab") { delegate.addSampleTab() }
                 }
-                #endif
             }
     }
+    #else
+    var body: some Scene {
+        Settings { EmptyView() }
+    }
+    #endif
 }
 
 /// Opens the store, restores one `NSWindow` per saved `WindowState`, and saves them on quit.
@@ -32,9 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var openWindows: [OpenWindow] = []
 
     private static let defaultContentSize = NSSize(width: 320, height: 640)
+    #if DEBUG
     // Temporary (plan 1 Task 10): remove in plan 4
     private static let sampleTabURL = "https://example.com/"
     private static let sampleTabLaunchArgument = "-StaveAddSampleTab"
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let environment: AppEnvironment
@@ -102,23 +108,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func show(_ state: WindowState, environment: AppEnvironment) {
         let window = NSWindow(
-            contentRect: initialFrame(for: state), styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered, defer: false
+            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
         )
         window.title = "Stave"
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: FoundationSidebarView(environment: environment, workspaceID: state.workspaceID))
-        if state.frame.isEmpty { window.center() }
+        if let stored = Self.storedFrame(state.frame) {
+            window.setFrame(stored, display: false)
+        } else {
+            window.center()
+        }
         window.makeKeyAndOrderFront(nil)
         openWindows.append(OpenWindow(state: state, window: window))
     }
 
-    /// The stored frame when it parses to a real rectangle; otherwise a default size (the caller centres it).
-    private func initialFrame(for state: WindowState) -> NSRect {
-        let stored = NSRectFromString(state.frame)
-        if !state.frame.isEmpty, stored.width > 0, stored.height > 0 { return stored }
-        return NSRect(origin: .zero, size: Self.defaultContentSize)
+    /// The saved frame as a window frame rect (`NSWindow.frame`, title bar included, the same kind of rect `applicationWillTerminate` saves),
+    /// or nil when it is empty, unparseable or has no area; the caller then keeps the default size and centres.
+    private static func storedFrame(_ string: String) -> NSRect? {
+        guard !string.isEmpty else { return nil }
+        let rect = NSRectFromString(string)
+        return rect.width > 0 && rect.height > 0 ? rect : nil
     }
 
     // MARK: - Failure
