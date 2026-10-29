@@ -88,7 +88,7 @@ public enum SlotKind: String, Codable, Sendable { case tab, split }   // only .t
 public enum NewTabOrigin: Sendable, Equatable { case commandBar, link(openerTabID: UUID), externalApp }
 public enum NewTabEdge: String, Codable, Sendable { case top, bottom }
 public enum CloseResult: Sendable, Equatable { case archived(UUID), unloaded }
-public enum StoreError: Error, Equatable { case notFound, newerSchema, folderTooDeep, crossProfileMove, lastWorkspace, containerInUse, notPinned }
+public enum StoreError: Error, Equatable { case notFound, newerSchema, folderTooDeep, crossProfileMove, lastWorkspace, lastProfile, containerInUse, notPinned }
 ```
 
 Records (GRDB `Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable`), all with `id: UUID` and `modifiedAt: Date`:
