@@ -88,15 +88,16 @@ public final class BrowserWindowModel {
     }
 
     private static func allTabs(in snapshot: SidebarSnapshot) -> [Tab] {
-        func pinnedTabs(_ items: [PinnedItem]) -> [Tab] {
-            items.flatMap { item -> [Tab] in
-                switch item {
-                case .tab(let tab): [tab]
-                case .folder(_, let children): pinnedTabs(children)
-                }
+        snapshot.essentials + pinnedTabs(snapshot.pinned) + snapshot.regular
+    }
+
+    private static func pinnedTabs(_ items: [PinnedItem]) -> [Tab] {
+        items.flatMap { item -> [Tab] in
+            switch item {
+            case .tab(let tab): [tab]
+            case .folder(_, let children): pinnedTabs(children)
             }
         }
-        return snapshot.essentials + pinnedTabs(snapshot.pinned) + snapshot.regular
     }
 
     // MARK: - Writes
@@ -289,6 +290,84 @@ public final class BrowserWindowModel {
         guard let tab = perform({ try store.restoreArchivedTab(id, workspaceID: snapshot.workspace.id) }) else { return }
         select(tab.id)
     }
+
+    // MARK: - Command bar
+
+    /// The profile's candidates plus the actions that apply now: pin, unpin, reset, close and copy only for what is selected.
+    public func commandCandidates() -> CommandCandidates {
+        var found: CommandCandidates
+        do {
+            found = try store.commandCandidates(profileID: snapshot.profile.id)
+        } catch {
+            lastError = StoreErrorText.message(for: error)
+            found = CommandCandidates(workspaces: workspaces)
+        }
+        var actions: [CommandAction] = [.newWorkspace, .newProfile, .newWindow, .toggleCompactMode, .importFromArc, .showArchive]
+        if let tab = selectedTab {
+            let pinned = Self.pinnedTabs(snapshot.pinned).contains { $0.id == tab.id }
+            let essential = snapshot.essentials.contains { $0.id == tab.id }
+            if !pinned && !essential { actions.append(.pinTab) }
+            if pinned { actions.append(.unpinTab) }
+            if tab.isDrifted { actions.append(.resetPinnedTab) }
+            actions += [.closeTab, .copyAddress]
+        }
+        actions += profiles.filter { $0.id != snapshot.profile.id }.map { .switchProfile(id: $0.id, name: $0.name) }
+        actions += containers.map { .newTabInContainer(id: $0.id, name: $0.name) }
+        found.actions = actions
+        return found
+    }
+
+    /// Runs the chosen row. Writes go through the same private door as every other method; what needs UI comes back as an outcome.
+    public func perform(_ result: CommandResult, mode: CommandBarMode) -> CommandOutcome {
+        switch result {
+        case .open(let url): open(url: url, mode: mode)
+        case .search(let query): return search(query, mode: mode)
+        case .tab(let found):
+            if let target = found.workspaceID { switchWorkspace(to: target) }
+            select(found.tab.id)
+        case .archived(let archived): restoreArchived(archived.id)
+        case .workspace(let workspace): switchWorkspace(to: workspace.id)
+        case .action(let action): return perform(action)
+        }
+        return .done
+    }
+
+    private func open(url: String, mode: CommandBarMode) {
+        if mode == .currentTab, selectedTabID != nil { navigateSelected(to: url) } else { openTab(url: url) }
+    }
+
+    private func search(_ query: String, mode: CommandBarMode) -> CommandOutcome {
+        let engine: SearchEngine?
+        do { engine = try store.setting(SettingKeys.searchEngine) } catch {
+            lastError = StoreErrorText.message(for: error)
+            return .done
+        }
+        guard let engine else { return .chooseSearchEngine }
+        open(url: engine.searchURL(for: query), mode: mode)
+        return .done
+    }
+
+    private func perform(_ action: CommandAction) -> CommandOutcome {
+        switch action {
+        case .newWorkspace: return .newWorkspace
+        case .newProfile: return .newProfile
+        case .newWindow: return .newWindow
+        case .importFromArc: return .showArcImport
+        case .showArchive: return .showArchive
+        case .toggleCompactMode: perform { try store.setSetting(SettingKeys.compactMode, !(try store.setting(SettingKeys.compactMode))) }
+        case .closeTab: if let id = selectedTabID { close(id) }
+        case .pinTab: if let id = selectedTabID { pin(id, folderID: nil) }
+        case .unpinTab: if let id = selectedTabID { unpin(id) }
+        case .resetPinnedTab: if let id = selectedTabID { resetPinned(id) }
+        case .copyAddress: if let tab = selectedTab { return .copy(tab.url) }
+        case .switchProfile(let id, _): switchProfile(to: id)
+        case .newTabInContainer(let id, _): openTab(url: Self.blankPage, containerID: id)
+        }
+        return .done
+    }
+
+    /// What a new tab in a container holds until the web layer exists.
+    static let blankPage = "about:blank"
 
     public func windowWillClose() { livePages.windowClosed(windowID) }
 }
