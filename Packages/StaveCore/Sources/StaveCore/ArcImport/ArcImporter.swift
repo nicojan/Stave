@@ -2,6 +2,9 @@ import Foundation
 
 /// Arc's default file locations and the one-call import: parse, plan, write.
 public enum ArcImporter {
+    /// Local State is a small JSON file; anything larger is not read.
+    public static let maximumLocalStateSize = 16 * 1024 * 1024
+
     public static func sidebarFile(home: URL) -> URL {
         arcFolder(home: home).appendingPathComponent("StorableSidebar.json")
     }
@@ -33,8 +36,8 @@ public enum ArcImporter {
     ) throws -> ArcImportReport {
         guard let size = regularFileSize(at: sidebarFile) else { throw ArcImportError.unreadable }
         guard size <= ArcSidebarParser.maximumFileSize else { throw ArcImportError.fileTooLarge }
-        guard let sidebar = try? Data(contentsOf: sidebarFile) else { throw ArcImportError.unreadable }
-        let localState = localStateFile.flatMap { try? Data(contentsOf: $0) }
+        guard let sidebar = try? Data(contentsOf: sidebarFile.resolvingSymlinksInPath()) else { throw ArcImportError.unreadable }
+        let localState = localStateFile.flatMap(readLocalState)
         return try run(sidebar: sidebar, localState: localState, options: options, into: store)
     }
 
@@ -50,8 +53,16 @@ public enum ArcImporter {
         return try store.importArc(plan)
     }
 
-    /// The size of a regular file, or nil for anything else (missing, a directory, unreadable attributes).
-    private static func regularFileSize(at url: URL) -> Int? {
+    /// Local State bytes, or nil (treated as absent) when it is not a regular file, is over the cap or cannot be read.
+    private static func readLocalState(_ url: URL) -> Data? {
+        let resolved = url.resolvingSymlinksInPath()
+        guard let size = regularFileSize(at: resolved), size <= maximumLocalStateSize else { return nil }
+        return try? Data(contentsOf: resolved)
+    }
+
+    /// The size of a regular file after resolving symlinks, or nil for anything else (missing, a directory, a device, a FIFO).
+    private static func regularFileSize(at link: URL) -> Int? {
+        let url = link.resolvingSymlinksInPath()
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey]
         guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
         return values.fileSize
