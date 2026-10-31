@@ -57,7 +57,11 @@ struct SidebarView: View {
             bottomBar
         }
         .defaultFocus($listFocused, !model.isCompact)
-        .onChange(of: presenter.sidebarFocusRequest) { listFocused = true }
+        .onChange(of: presenter.sidebarFocusRequest) {
+            // Clear, then set on the next turn, as after the command bar: a stale-true flag would give nothing the focus.
+            listFocused = false
+            Task { @MainActor in listFocused = true }
+        }
         .onChange(of: model.isCompact) { _, compact in
             // A hidden sidebar must not keep the keyboard; showing it again gives the list the focus back.
             listFocused = !compact

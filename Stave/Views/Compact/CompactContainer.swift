@@ -54,6 +54,7 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
             driver.setEnabled(compact)
         }
         .onChange(of: presenter.commandBar == nil) { _, closed in if closed { driver.expectKeyboardFocus() } }
+        .onChange(of: presenter.commandBar != nil, initial: true) { _, open in driver.commandBarOpen = open }
         .onChange(of: hold, initial: true) { _, new in driver.setHeld(new.isHeld) }
     }
 }

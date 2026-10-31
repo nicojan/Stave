@@ -21,6 +21,13 @@ final class CompactDriver {
     @ObservationIgnored private var sidebarWidth: () -> Double = { 0 }
     @ObservationIgnored private weak var window: NSWindow?
     @ObservationIgnored private var focusInside = false
+    /// The first responder is the hosting view (SwiftUI's own focus on a button), which says nothing about where: the previous answer stands
+    /// until a mouse event or a key other than Tab, then it counts as outside.
+    @ObservationIgnored private var focusUnknown = false
+    /// The last hold the view reported, kept while disabled so enabling replays it (VoiceOver, an open sheet or menu across a toggle).
+    @ObservationIgnored private var lastHold = false
+    /// Set by the container; Tab belongs to the command bar while it is open.
+    @ObservationIgnored var commandBarOpen = false
     /// Focus entering the sidebar reveals it only before this time: a key press (Tab) or the command bar closing arms it. Focus the system
     /// gives (a window showing, a click) never does.
     @ObservationIgnored private var keyboardIntentUntil: TimeInterval = 0
@@ -29,6 +36,7 @@ final class CompactDriver {
     @ObservationIgnored private var focusObservation: NSKeyValueObservation?
     @ObservationIgnored private var monitor: Any?
 
+    private static let tabKeyCode: UInt16 = 48
     private static var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     // MARK: - Mode
@@ -40,8 +48,12 @@ final class CompactDriver {
         reveal = CompactReveal()
         keyboardFocus = false
         focusInside = false
+        focusUnknown = false
         keyboardIntentUntil = 0
-        if on, voiceOverRunning { reveal.revealForKeyboard() }
+        if on {
+            if voiceOverRunning { reveal.revealForKeyboard() }
+            reveal.setHeld(lastHold, at: Self.now)
+        }
         syncReveal()
     }
 
@@ -66,6 +78,7 @@ final class CompactDriver {
     }
 
     func setHeld(_ held: Bool) {
+        lastHold = held
         guard enabled else { return }
         reveal.setHeld(held, at: Self.now)
         syncReveal()
@@ -88,8 +101,9 @@ final class CompactDriver {
     }
 
     /// A hidden sidebar must not receive keys (arrows would switch tabs, Delete close them, out of sight): the content takes the focus.
+    /// Hiding wins: focus in the sidebar or on the hosting view (which may be a sidebar button) is released.
     private func releaseSidebarFocus() {
-        guard let window, isFocusInsideSidebar() else { return }
+        guard enabled, let window, isFocusInsideSidebar() != false else { return }
         window.makeFirstResponder(nil) // also clears SwiftUI's own focus on a button, which lives on the hosting view
         focusInside = false
         keyboardFocus = false
@@ -134,7 +148,7 @@ final class CompactDriver {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
             MainActor.assumeIsolated { self?.observe(event) ?? false } ? nil : event
         }
-        focusInside = isFocusInsideSidebar()
+        focusInside = isFocusInsideSidebar() ?? false
         voiceOverObservation = NSWorkspace.shared.observe(\.isVoiceOverEnabled, options: [.initial, .new]) { [weak self] _, _ in
             Task { @MainActor in self?.voiceOverChanged() }
         }
@@ -161,6 +175,8 @@ final class CompactDriver {
         monitor = nil
         timer?.cancel()
         timer = nil
+        menuOpen = false
+        sheetOpen = false
         window = nil
     }
 
@@ -170,6 +186,11 @@ final class CompactDriver {
         if isEnteringSidebar(event) {
             enterSidebarByKeyboard()
             return true
+        }
+        if focusUnknown, event.type != .keyDown || event.keyCode != Self.tabKeyCode {
+            focusUnknown = false
+            focusInside = false
+            keyboardFocus = false
         }
         switch event.type {
         case .keyDown:
@@ -188,7 +209,7 @@ final class CompactDriver {
     /// Tab with a hidden sidebar and focus in the content: where Tab would land cannot be seen from AppKit (SwiftUI focus sits on the hosting
     /// view), so Tab itself is the way in. It reveals the sidebar, holds it, and asks the list for focus.
     private func isEnteringSidebar(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown, event.keyCode == 48, !isRevealed, !menuOpen, !sheetOpen,
+        guard event.type == .keyDown, event.keyCode == Self.tabKeyCode, !isRevealed, !menuOpen, !sheetOpen, !commandBarOpen,
               event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               !(window?.firstResponder is NSText)
         else { return false }
@@ -198,18 +219,21 @@ final class CompactDriver {
     private func enterSidebarByKeyboard() {
         keyboardIntentUntil = Self.now + 1
         reveal.revealForKeyboard()
-        keyboardFocus = true
         syncReveal()
-        focusSidebar()
+        focusSidebar() // the hold starts when the list's focus is observed (focusChanged), not before
     }
 
     /// Set by the container: asks the sidebar to give its list the keyboard focus.
     @ObservationIgnored var focusSidebar: () -> Void = {}
 
-    /// Focus moving into the sidebar by key (Tab) or by the command bar closing reveals it and holds while it has focus. Any other
-    /// responder, including the hosting view and none, counts as outside.
+    /// Focus moving into the sidebar by key (Tab) or by the command bar closing reveals it and holds while it has focus. The hosting view
+    /// is unknown (the previous answer stands); no responder counts as outside.
     private func focusChanged() {
-        let inside = isFocusInsideSidebar()
+        guard let inside = isFocusInsideSidebar() else {
+            focusUnknown = true
+            return
+        }
+        focusUnknown = false
         defer { focusInside = inside }
         guard enabled, inside != focusInside else { return }
         if inside {
@@ -222,22 +246,13 @@ final class CompactDriver {
         }
     }
 
-    /// Whether the keyboard focus is in the sidebar: the first responder, or for SwiftUI's own focus (a button, which leaves the hosting view as
-    /// responder) the accessibility-focused element, is centred within the sidebar's width. The sidebar and the content share one hosting view,
-    /// so geometry is what tells them apart; a hidden sidebar sits left of the window, which still counts as inside. Anything unknown (no
-    /// responder, no focused element) counts as outside.
-    private func isFocusInsideSidebar() -> Bool {
+    /// Whether the keyboard focus is in the sidebar: the first responder's centre lies within the sidebar's width. The sidebar and the content
+    /// share one hosting view, so geometry tells them apart; a hidden sidebar sits left of the window, which still counts as inside. Nil when
+    /// the first responder is the hosting view itself; false when there is no responder.
+    private func isFocusInsideSidebar() -> Bool? {
         guard let window else { return false }
-        let midX: Double
-        if let view = window.firstResponder as? NSView, view.window === window, view !== window.contentView {
-            midX = view.convert(view.bounds, to: nil).midX
-        } else if window.firstResponder === window.contentView,
-                  let element = NSApp.accessibilityApplicationFocusedUIElement() as? NSAccessibilityElementProtocol,
-                  case let frame = element.accessibilityFrame(), !frame.isEmpty {
-            midX = window.convertFromScreen(frame).midX
-        } else {
-            return false
-        }
-        return midX < sidebarWidth()
+        if window.firstResponder === window.contentView { return nil }
+        guard let view = window.firstResponder as? NSView, view.window === window else { return false }
+        return view.convert(view.bounds, to: nil).midX < sidebarWidth()
     }
 }

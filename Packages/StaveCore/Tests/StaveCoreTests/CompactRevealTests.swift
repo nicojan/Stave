@@ -129,6 +129,17 @@ struct CompactRevealTests {
         #expect(reveal.hideAt == 60 + CompactReveal.hideDelay)
     }
 
+    @Test func aHoldTakenBeforeTheSidebarShowsStillHoldsIt() {
+        // What the driver replays when compact mode is switched on while VoiceOver, a sheet or a menu is already holding.
+        var reveal = CompactReveal()
+        reveal.setHeld(true, at: 0)
+        reveal.pointerMoved(x: 0, sidebarWidth: width, at: 1)
+        reveal.pointerMoved(x: 400, sidebarWidth: width, at: 2)
+        #expect(reveal.hideAt == nil)
+        reveal.tick(at: 99)
+        #expect(reveal.isRevealed)
+    }
+
     @Test func leavingTheWindowCountsAsOutside() {
         var reveal = revealed()
         reveal.pointerLeft(at: 1)
