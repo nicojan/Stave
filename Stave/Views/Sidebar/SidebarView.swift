@@ -57,6 +57,7 @@ struct SidebarView: View {
             bottomBar
         }
         .defaultFocus($listFocused, !model.isCompact)
+        .onChange(of: presenter.sidebarFocusRequest) { listFocused = true }
         .onChange(of: model.isCompact) { _, compact in
             // A hidden sidebar must not keep the keyboard; showing it again gives the list the focus back.
             listFocused = !compact

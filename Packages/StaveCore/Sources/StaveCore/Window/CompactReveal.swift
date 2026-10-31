@@ -77,16 +77,19 @@ public struct CompactHold: Equatable, Sendable {
     public var dragInFlight: Bool
     /// Keyboard focus is in the sidebar and no mouse action has taken over since.
     public var keyboardFocusInside: Bool
+    /// VoiceOver is running: the sidebar stays revealed so its controls are always where VoiceOver can reach them.
+    public var voiceOverRunning: Bool
 
     public init(
         commandBarOpen: Bool = false, menuOpen: Bool = false, popoverOpen: Bool = false,
-        sheetOpen: Bool = false, dragInFlight: Bool = false, keyboardFocusInside: Bool = false
+        sheetOpen: Bool = false, dragInFlight: Bool = false, keyboardFocusInside: Bool = false, voiceOverRunning: Bool = false
     ) {
+        self.voiceOverRunning = voiceOverRunning
         self.commandBarOpen = commandBarOpen; self.menuOpen = menuOpen; self.popoverOpen = popoverOpen
         self.sheetOpen = sheetOpen; self.dragInFlight = dragInFlight; self.keyboardFocusInside = keyboardFocusInside
     }
 
     public var isHeld: Bool {
-        commandBarOpen || menuOpen || popoverOpen || sheetOpen || dragInFlight || keyboardFocusInside
+        commandBarOpen || menuOpen || popoverOpen || sheetOpen || dragInFlight || keyboardFocusInside || voiceOverRunning
     }
 }

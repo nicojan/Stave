@@ -11,6 +11,9 @@ final class SidebarPresenter {
     var showNewProfile = false
     /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.
     let drag = SidebarDragState()
+    /// Bumped to ask the sidebar list for the keyboard focus (compact mode's Tab).
+    private(set) var sidebarFocusRequest = 0
+    func requestSidebarFocus() { sidebarFocusRequest += 1 }
     /// Non-nil while the command bar is open.
     private(set) var commandBar: CommandBarModel?
     /// False when the bar closed by presenting a sheet, alert or popover, which must keep the focus it takes.

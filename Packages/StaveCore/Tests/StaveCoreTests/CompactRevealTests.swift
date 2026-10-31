@@ -148,5 +148,6 @@ struct CompactHoldTests {
         #expect(CompactHold(sheetOpen: true).isHeld)
         #expect(CompactHold(dragInFlight: true).isHeld)
         #expect(CompactHold(keyboardFocusInside: true).isHeld)
+        #expect(CompactHold(voiceOverRunning: true).isHeld)
     }
 }

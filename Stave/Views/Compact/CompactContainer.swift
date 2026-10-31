@@ -27,7 +27,8 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
             popoverOpen: presenter.showArchive,
             sheetOpen: driver.sheetOpen || presenter.workspaceEditor != nil || presenter.showNewProfile,
             dragInFlight: presenter.drag.payload != nil,
-            keyboardFocusInside: driver.keyboardFocus
+            keyboardFocusInside: driver.keyboardFocus,
+            voiceOverRunning: driver.voiceOverRunning
         )
     }
 
@@ -45,12 +46,14 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
             .offset(x: isHidden ? -(sidebarWidth.width + Self.shadowRadius * 2) : 0)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: Self.slideDuration), value: driver.isRevealed)
-        .clipped()
-        .background { CompactPointerView(driver: driver) }
+        .ignoresSafeArea() // the sidebar runs under the transparent title bar; the hosting view's bounds clip a hidden sidebar
+        .background { CompactPointerView(driver: driver).ignoresSafeArea() }
         .onChange(of: isCompact, initial: true) { _, compact in
             driver.setSidebarWidth { [sidebarWidth] in sidebarWidth.width }
+            driver.focusSidebar = { [presenter] in presenter.requestSidebarFocus() }
             driver.setEnabled(compact)
         }
+        .onChange(of: presenter.commandBar == nil) { _, closed in if closed { driver.expectKeyboardFocus() } }
         .onChange(of: hold, initial: true) { _, new in driver.setHeld(new.isHeld) }
     }
 }
@@ -79,7 +82,9 @@ private struct CompactPointerView: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { MainActor.assumeIsolated { driver?.attach(to: window) } }
+            MainActor.assumeIsolated {
+                if let window { driver?.attach(to: window) } else { driver?.detach() }
+            }
         }
 
         override func updateTrackingAreas() {

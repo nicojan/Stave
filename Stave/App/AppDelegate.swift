@@ -118,7 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuGeneration += 1
         let generation = menuGeneration
         let (items, compact): ([WorkspaceSwitchItem], Bool) = withObservationTracking {
-            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else { return ([], false) }
+            // With no browser window key (Settings in front) the checkmark follows the setting itself.
+            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else {
+                return ([], environment?.compactMode.isEnabled ?? false)
+            }
             let items = WorkspaceMenus.switchItems(
                 workspaces: controller.model.workspaces, currentID: controller.model.snapshot.workspace.id,
                 shortcutsEnabled: shortcuts.isEnabled
