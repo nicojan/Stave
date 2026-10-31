@@ -127,9 +127,7 @@ extension OrganizationStore {
 
     /// The title, or the URL's host when the title is empty, or the URL itself.
     public func displayTitle(for tab: Tab) -> String {
-        guard tab.title.isEmpty else { return tab.title }
-        if let host = URL(string: tab.url)?.host, !host.isEmpty { return host }
-        return tab.url
+        DisplayText.title(for: tab)
     }
 
     // MARK: - Helpers
