@@ -16,11 +16,13 @@
 		4980113BEC7EF77EB2BA1F9E /* AddressField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4301C5F96EF73A0EDEC6288D /* AddressField.swift */; };
 		49C5205452A55B2C1DC15B18 /* StaveCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3A214511A6FDDB04ECC1D28 /* StaveCore */; };
 		551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */; };
+		616C13F8718E2365EC357D6A /* SidebarPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */; };
 		7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381B620D30A72B457FDC56E5 /* SettingsView.swift */; };
 		9120B1829D328055C745B599 /* TabPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */; };
 		91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */; };
 		984B8D0F42BC2319E1F111F5 /* WorkspaceSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */; };
 		A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */; };
+		ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */; };
 		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
 		BA73175DC44727176C4A6AAA /* WorkspaceEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */; };
 		BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9003316572911593E1DFEE /* ArchivePopover.swift */; };
@@ -38,6 +40,8 @@
 		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		7ED2F2159BFD4065D57C6AFE /* Stave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Stave.entitlements; sourceTree = "<group>"; };
+		867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBarView.swift; sourceTree = "<group>"; };
+		8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPresenter.swift; sourceTree = "<group>"; };
 		995508A5262708F8EE5364E3 /* AppMenuState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuState.swift; sourceTree = "<group>"; };
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
@@ -73,6 +77,14 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		173E4C9CE531E23302434BA8 /* CommandBar */ = {
+			isa = PBXGroup;
+			children = (
+				867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */,
+			);
+			path = CommandBar;
+			sourceTree = "<group>";
+		};
 		21A24A833C93DF9ED96A4030 /* Content */ = {
 			isa = PBXGroup;
 			children = (
@@ -98,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */,
+				173E4C9CE531E23302434BA8 /* CommandBar */,
 				21A24A833C93DF9ED96A4030 /* Content */,
 				0631CD175876F9C48EF5AA42 /* Settings */,
 				C2073894525C070D00943647 /* Sidebar */,
@@ -129,6 +142,7 @@
 				FF9003316572911593E1DFEE /* ArchivePopover.swift */,
 				DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */,
 				DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */,
+				8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */,
 				DD86DD835E09A6113A128904 /* SidebarRowView.swift */,
 				ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */,
 				FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */,
@@ -224,10 +238,12 @@
 				BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */,
 				AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */,
 				07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */,
+				ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */,
 				32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */,
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,
 				A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */,
+				616C13F8718E2365EC357D6A /* SidebarPresenter.swift in Sources */,
 				019C68D69E15CA6023935959 /* SidebarRowView.swift in Sources */,
 				D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */,
 				2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */,

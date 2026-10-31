@@ -379,3 +379,96 @@ struct CommandBarTests {
         #expect(CommandAction.toggleCompactMode.title == "Toggle Compact Mode")
     }
 }
+
+// MARK: - Engine picker
+
+@MainActor
+struct CommandBarEnginePickerTests {
+    private func makeWindow() throws -> (BrowserWindowModel, OrganizationStore) {
+        let (store, _, _) = try makeTempStore(now: TestClock().now)
+        let profile = try store.ensureDefaultProfile()
+        let home = try #require(try store.workspaces(profileID: profile.id).first)
+        let window = try BrowserWindowModel(
+            store: store, revision: StoreRevision(), livePages: LivePageRegistry(),
+            state: WindowState(profileID: profile.id, workspaceID: home.id, selectedTabID: nil, frame: "", sortIndex: 0)
+        )
+        return (window, store)
+    }
+
+    @Test func choosingAnEngineStoresItThenRunsTheSearch() throws {
+        let (window, store) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.query = "cats"
+        #expect(bar.activate(in: window) == .stay)
+        #expect(bar.isChoosingEngine && bar.pendingSearch == "cats")
+        #expect(window.snapshot.regular.isEmpty)
+        #expect(try store.setting(SettingKeys.searchEngine) == nil)
+        bar.moveSelection(by: 1)
+        #expect(bar.selectedEngine == .duckDuckGo)
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try store.setting(SettingKeys.searchEngine) == .duckDuckGo)
+        #expect(window.searchEngine == .duckDuckGo)
+        #expect(window.selectedTab?.url == "https://duckduckgo.com/?q=cats")
+        #expect(window.snapshot.regular.count == 1)
+    }
+
+    @Test func engineSelectionStaysInRange() throws {
+        let (window, _) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.query = "cats"
+        _ = bar.activate(in: window)
+        bar.moveSelection(by: -3)
+        #expect(bar.selectedEngine == SearchEngine.allCases.first)
+        bar.moveSelection(by: 99)
+        #expect(bar.selectedEngine == SearchEngine.allCases.last)
+    }
+
+    @Test func javascriptTextNeverOpensAPage() throws {
+        let (window, _) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.query = "javascript:alert(1)"
+        #expect(bar.activate(in: window) == .stay)
+        #expect(bar.pendingSearch == "javascript:alert(1)")
+        #expect(window.snapshot.regular.isEmpty)
+    }
+
+    @Test func activatingAnActionReturnsItsOutcome() throws {
+        let (window, _) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.query = "show archive"
+        let index = try #require(bar.results.firstIndex(of: .action(.showArchive)))
+        bar.select(index: index)
+        #expect(bar.activate(in: window) == .close(.showArchive))
+    }
+
+    @Test func emptyResultsStay() throws {
+        let (window, _) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        #expect(bar.results.isEmpty)
+        #expect(bar.activate(in: window) == .stay)
+    }
+
+    @Test func clickingAnEngineSelectsIt() throws {
+        let (window, store) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.selectEngine(at: 2) // ignored: the picker is not showing
+        #expect(bar.engineIndex == 0)
+        bar.query = "cats"
+        _ = bar.activate(in: window)
+        bar.selectEngine(at: 2)
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try store.setting(SettingKeys.searchEngine) == SearchEngine.allCases[2])
+    }
+
+    @Test func typingLeavesTheEnginePicker() throws {
+        let (window, store) = try makeWindow()
+        let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
+        bar.query = "cats"
+        _ = bar.activate(in: window)
+        bar.query = "cats and dogs"
+        #expect(!bar.isChoosingEngine)
+        #expect(bar.activate(in: window) == .stay) // asks again, for the new text
+        #expect(bar.pendingSearch == "cats and dogs")
+        #expect(try store.setting(SettingKeys.searchEngine) == nil)
+    }
+}

@@ -14,12 +14,6 @@ enum WorkspaceEditorMode: Identifiable {
     }
 }
 
-/// Window-level UI requests the menus make of the sidebar: today, opening the workspace editor (Workspaces ▸ New Workspace…).
-@MainActor @Observable
-final class SidebarPresenter {
-    var workspaceEditor: WorkspaceEditorMode?
-}
-
 /// A sheet to create or edit a workspace: name, an emoji or one of 12 symbols, and a colour from the palette. Validation is
 /// `WorkspaceEditorRules`; Save is disabled until it passes. Pickers (not swatch buttons) keep every choice reachable by keyboard and labelled.
 struct WorkspaceEditor: View {

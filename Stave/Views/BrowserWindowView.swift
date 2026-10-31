@@ -6,22 +6,34 @@ import StaveCore
 struct BrowserWindowView: View {
     let model: BrowserWindowModel
     let presenter: SidebarPresenter
-    /// Opens the command bar in a mode. A no-op until Task 15 builds the bar.
-    var openCommandBar: (CommandBarMode) -> Void = { _ in }
     let revision: StoreRevision
     let sidebarWidth: SidebarWidthModel
 
     @State private var dragStartWidth: Double?
     @FocusState private var dividerFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The command bar's fade (decision 18); none under Reduce Motion.
+    private static let fadeDuration = 0.12
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(model: model, presenter: presenter, openCommandBar: openCommandBar)
+            SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) })
                 .frame(width: sidebarWidth.width)
             divider
             TabPlaceholderView(model: model)
         }
+        .overlay { commandBarLayer }
+        .animation(reduceMotion ? nil : .easeInOut(duration: Self.fadeDuration), value: presenter.commandBar != nil)
         .onChange(of: revision.value) { model.reload() }
+    }
+
+    @ViewBuilder
+    private var commandBarLayer: some View {
+        if let bar = presenter.commandBar {
+            CommandBarView(bar: bar, activate: { presenter.activate(in: model) }, close: { presenter.closeCommandBar() })
+                .transition(.opacity)
+        }
     }
 
     /// A 1 pt line with a wider invisible handle. Drag it, or focus it and use the arrow keys, or use it as a slider with VoiceOver.

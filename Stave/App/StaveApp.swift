@@ -10,8 +10,14 @@ struct StaveApp: App {
         Settings { SettingsView(shortcuts: delegate.menuState.shortcuts) }
             .commands {
                 CommandGroup(replacing: .newItem) {
+                    Button(CommandBarText.newTabMenuItem) { delegate.newTab() }
+                        .keyboardShortcut("t", modifiers: .command)
                     Button("New Window") { delegate.newWindow() }
                         .keyboardShortcut("n", modifiers: .command)
+                }
+                CommandGroup(after: .newItem) {
+                    Button(CommandBarText.openLocationMenuItem) { delegate.openLocation() }
+                        .keyboardShortcut("l", modifiers: .command)
                 }
                 CommandGroup(replacing: .saveItem) {
                     Button("Close Tab") { delegate.closeSelectedTab() }

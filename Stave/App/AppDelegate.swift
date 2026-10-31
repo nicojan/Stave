@@ -72,6 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⌘T: the command bar on the key browser window, for a new tab.
+    func newTab() { keyController?.openCommandBar(.newTab) }
+
+    /// ⌘L: the command bar on the key browser window, prefilled with the selected tab's address.
+    func openLocation() { keyController?.openCommandBar(.currentTab) }
+
     /// ⌘W: closes the selected tab when the key window is a browser window (or a sheet on one); otherwise closes the key window, as in any app.
     func closeSelectedTab() {
         guard let controller = keyController else { NSApp.keyWindow?.performClose(nil); return }
@@ -146,9 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func open(_ state: WindowState, environment: AppEnvironment) throws {
         // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it.
         environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID }))
-        let controller = try BrowserWindowController(state: state, environment: environment) { [weak self] closed in
-            self?.windowClosed(closed)
-        }
+        let controller = try BrowserWindowController(
+            state: state, environment: environment,
+            onNewWindow: { [weak self] in self?.newWindow() },
+            onClose: { [weak self] closed in self?.windowClosed(closed) }
+        )
         controllers = controllers + [controller]
         controller.show()
         refreshWorkspaceMenu()

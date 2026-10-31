@@ -16,7 +16,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     private let onClose: (BrowserWindowController) -> Void
     private var isClosed = false
 
-    init(state: WindowState, environment: AppEnvironment, onClose: @escaping (BrowserWindowController) -> Void) throws {
+    init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {
         let model = try BrowserWindowModel(
             store: environment.store, revision: environment.revision, livePages: environment.livePages, state: state
         )
@@ -29,6 +29,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             backing: .buffered, defer: false
         )
         super.init()
+        sidebarPresenter.newWindow = onNewWindow
         configureWindow()
         place(savedFrame: state.frame)
         window.title = windowTitle
@@ -70,6 +71,9 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     private var windowTitle: String {
         WindowTitle.title(selectedTab: model.selectedTab, workspaceName: model.snapshot.workspace.name)
     }
+
+    /// ⌘T and ⌘L (and the sidebar's address field and New Tab row) open the command bar in this window.
+    func openCommandBar(_ mode: CommandBarMode) { sidebarPresenter.openCommandBar(mode, for: model) }
 
     func show() { window.makeKeyAndOrderFront(nil) }
 

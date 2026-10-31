@@ -397,6 +397,15 @@ public final class BrowserWindowModel {
         return .done
     }
 
+    /// The chosen search engine, nil until one is chosen (or when the setting cannot be read).
+    public var searchEngine: SearchEngine? { (try? store.setting(SettingKeys.searchEngine)) ?? nil }
+
+    /// The engine picker's result: saves the engine, then runs the search that was waiting for it. A failed save shows its message and runs nothing.
+    public func chooseSearchEngine(_ engine: SearchEngine, thenSearching query: String, mode: CommandBarMode) {
+        guard perform({ try store.setSetting(SettingKeys.searchEngine, engine) }) != nil else { return }
+        open(url: engine.searchURL(for: query), mode: mode)
+    }
+
     private func open(url: String, mode: CommandBarMode) {
         if mode == .currentTab, selectedTabID != nil { navigateSelected(to: url) } else { openTab(url: url) }
     }

@@ -11,7 +11,7 @@ struct SidebarView: View {
 
     @FocusState private var listFocused: Bool
     @State private var dismissedErrorID: Int?
-    @State private var showArchive = false
+    @State private var newProfileName = ""
     @State private var prompt: FolderPrompt?
     @State private var promptText = ""
     @State private var slide: CGFloat = 0
@@ -49,6 +49,13 @@ struct SidebarView: View {
         }
         .defaultFocus($listFocused, true)
         .onChange(of: model.snapshot.workspace.id) { slideIn() }
+        .onChange(of: presenter.commandBar == nil) { _, closed in
+            guard closed else { return }
+            // Escape, a click outside or a performed row: back to the list. The flag can still read true while the text field held the real
+            // focus, so it is cleared first and set on the next turn.
+            listFocused = false
+            Task { @MainActor in listFocused = true }
+        }
         .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
         .background { SwipeCatcher { model.switchWorkspace(offset: $0) } }
@@ -112,13 +119,13 @@ struct SidebarView: View {
 
     private var bottomBar: some View {
         HStack {
-            Button { showArchive.toggle() } label: { Image(systemName: "archivebox") }
+            Button { presenter.showArchive.toggle() } label: { Image(systemName: "archivebox") }
                 .buttonStyle(.borderless)
                 .help(SidebarText.archiveButton)
                 .accessibilityLabel(SidebarText.archiveButton)
-                .popover(isPresented: $showArchive, arrowEdge: .trailing) {
+                .popover(isPresented: Binding(get: { presenter.showArchive }, set: { presenter.showArchive = $0 }), arrowEdge: .trailing) {
                     ArchivePopover(load: { model.archivedTabs() }, restore: { id in
-                        showArchive = false
+                        presenter.showArchive = false
                         model.restoreArchived(id)
                     })
                 }
@@ -128,6 +135,14 @@ struct SidebarView: View {
             WorkspaceSwitcher(model: model, presenter: presenter)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+        .alert(WorkspaceMenus.newProfilePrompt, isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {
+            TextField(WorkspaceMenus.profileName, text: $newProfileName)
+            Button(WorkspaceEditorRules.cancelButton, role: .cancel) {}
+            Button("Create") {
+                if let name = WorkspaceMenus.profileName(typed: newProfileName) { model.createProfile(name: name) }
+            }
+        }
+        .onChange(of: presenter.showNewProfile) { _, shown in if shown { newProfileName = "" } }
     }
 
     /// Slides the new workspace's list in from the direction of travel; nothing under Reduce Motion, and nothing for a profile switch (direction 0).
