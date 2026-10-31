@@ -25,17 +25,32 @@ public final class ArcImportFlow {
     @ObservationIgnored private let store: OrganizationStore
     @ObservationIgnored private let revision: StoreRevision
     @ObservationIgnored private let source: Source
+    @ObservationIgnored private let readLastImport: @Sendable (OrganizationStore) throws -> Date?
+    /// True when the import history couldn't be read, so "no earlier import" is unknown and nothing is imported.
+    @ObservationIgnored private var historyUnreadable = false
 
-    public init(store: OrganizationStore, revision: StoreRevision, source: Source) {
+    public convenience init(store: OrganizationStore, revision: StoreRevision, source: Source) {
+        self.init(store: store, revision: revision, source: source, readLastImport: { try $0.lastImport(source: .arc) })
+    }
+
+    /// `readLastImport` is injectable so tests can make the history read fail.
+    init(
+        store: OrganizationStore,
+        revision: StoreRevision,
+        source: Source,
+        readLastImport: @escaping @Sendable (OrganizationStore) throws -> Date?
+    ) {
         self.store = store
         self.revision = revision
         self.source = source
-        self.previousImport = try? store.lastImport(source: .arc)
+        self.readLastImport = readLastImport
+        refreshHistory()
     }
 
     /// With an earlier import (including one this flow just made), asks for confirmation first; otherwise imports. A no-op while importing.
     public func start() async {
         guard phase != .importing else { return }
+        guard historyIsKnown() else { return }
         if let previous = previousImport {
             phase = .confirmRepeat(previous: previous)
             return
@@ -46,6 +61,7 @@ public final class ArcImportFlow {
     /// Imports again after the user confirmed. A no-op while importing.
     public func confirmRepeat() async {
         guard phase != .importing else { return }
+        guard historyIsKnown() else { return }
         await run()
     }
 
@@ -58,6 +74,22 @@ public final class ArcImportFlow {
         guard ArcImporter.isAvailable(home: arcHome) else { return false }
         guard try store.lastImport(source: .arc) == nil else { return false }
         return try store.setting(SettingKeys.firstRunCompleted) == false
+    }
+
+    /// Reads the history (again, if it was unreadable). When it still can't be read, fails safe: no import.
+    private func historyIsKnown() -> Bool {
+        if historyUnreadable { refreshHistory() }
+        if historyUnreadable { phase = .failed(ArcImportCopy.historyUnreadable) }
+        return !historyUnreadable
+    }
+
+    private func refreshHistory() {
+        do {
+            previousImport = try readLastImport(store)
+            historyUnreadable = false
+        } catch {
+            historyUnreadable = true
+        }
     }
 
     private func run() async {
@@ -82,7 +114,8 @@ public final class ArcImportFlow {
         }.value
         switch outcome {
         case .success(let report):
-            previousImport = try? store.lastImport(source: .arc)
+            // A record was just written, so there is an import date: if the re-read fails, use this moment.
+            previousImport = (try? readLastImport(store)) ?? store.now()
             revision.bump()
             phase = .finished(ArcImportSummary(report: report))
         case .failure(let error):

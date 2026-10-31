@@ -2,6 +2,17 @@ import Foundation
 import Testing
 @testable import StaveCore
 
+/// A flag a `@Sendable` test closure can flip.
+final class FailSwitch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag: Bool
+    init(_ value: Bool) { flag = value }
+    var value: Bool {
+        get { lock.withLock { flag } }
+        set { lock.withLock { flag = newValue } }
+    }
+}
+
 @MainActor
 struct ArcImportFlowTests {
     private func makeStore() throws -> OrganizationStore {
@@ -102,8 +113,74 @@ struct ArcImportFlowTests {
         _ = await (a, b)
         // Whichever call ran first imported; the other either no-oped or asked to confirm. Never two imports.
         #expect(revision.value == 1)
-        let profile = try #require(try store.profiles().first)
-        #expect(try store.workspaces(profileID: profile.id).count == 3)
+        // basic.json brings 2 workspaces on top of the profile's Home workspace.
+        let reference = try makeStore()
+        let referenceReport = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: reference)
+        #expect(try workspaceCount(store) == (try workspaceCount(reference)))
+        #expect(referenceReport.imported.workspaces == 2)
+    }
+
+    @Test func confirmRepeatWhileImportingIsIgnored() async throws {
+        let store = try makeStore()
+        let revision = StoreRevision()
+        let flow = flow(store, revision, home: try makeHome())
+        async let a: Void = flow.start()
+        async let b: Void = flow.confirmRepeat()
+        _ = await (a, b)
+        #expect(revision.value == 1)
+        let reference = try makeStore()
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: reference)
+        #expect(try workspaceCount(store) == (try workspaceCount(reference)))
+    }
+
+    private struct ReadFailure: Error {}
+
+    @Test func unreadableHistoryFailsSafe() async throws {
+        let store = try makeStore()
+        let revision = StoreRevision()
+        let flow = ArcImportFlow(store: store, revision: revision, source: .arcOnThisMac(home: try makeHome()), readLastImport: { _ in throw ReadFailure() })
+        let before = try workspaceCount(store)
+        await flow.start()
+        #expect(flow.phase == .failed(ArcImportCopy.historyUnreadable))
+        await flow.confirmRepeat()
+        #expect(flow.phase == .failed(ArcImportCopy.historyUnreadable))
+        #expect(try workspaceCount(store) == before)
+        #expect(revision.value == 0)
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    @Test func historyReadableAgainAllowsTheImport() async throws {
+        let store = try makeStore()
+        let broken = FailSwitch(true)
+        let flow = ArcImportFlow(store: store, revision: StoreRevision(), source: .arcOnThisMac(home: try makeHome()), readLastImport: {
+            if broken.value { throw ReadFailure() }
+            return try $0.lastImport(source: .arc)
+        })
+        await flow.start()
+        #expect(flow.phase == .failed(ArcImportCopy.historyUnreadable))
+        broken.value = false
+        await flow.start()
+        guard case .finished = flow.phase else { Issue.record("phase was \(flow.phase)"); return }
+    }
+
+    @Test func historyUnreadableAfterSuccessStillAsksNextTime() async throws {
+        let store = try makeStore()
+        let calls = FailSwitch(false)
+        let flow = ArcImportFlow(store: store, revision: StoreRevision(), source: .arcOnThisMac(home: try makeHome()), readLastImport: {
+            // The init read succeeds (no history); every later read fails.
+            if calls.value { throw ReadFailure() }
+            calls.value = true
+            return try $0.lastImport(source: .arc)
+        })
+        await flow.start()
+        guard case .finished = flow.phase else { Issue.record("phase was \(flow.phase)"); return }
+        #expect(flow.previousImport != nil)
+        await flow.start()
+        #expect(flow.phase == .confirmRepeat(previous: try #require(flow.previousImport)))
+    }
+
+    @Test func historyCopy() {
+        #expect(ArcImportCopy.historyUnreadable == "Stave couldn't check whether you've imported from Arc before, so it didn't import.")
     }
 
     @Test func unpinnedOptionIsPassed() async throws {

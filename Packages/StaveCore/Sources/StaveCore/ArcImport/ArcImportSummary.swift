@@ -99,6 +99,8 @@ public enum ArcImportCopy {
         return "You imported from Arc on \(formatter.string(from: previous)). Importing again adds a second copy of everything it brings in. Nothing you have now is changed."
     }
 
+    public static let historyUnreadable = "Stave couldn't check whether you've imported from Arc before, so it didn't import."
+
     public static func errorMessage(for error: Error) -> String {
         switch error as? ArcImportError {
         case .fileTooLarge: "This file is over 64 MB, far larger than any Arc sidebar file, so Stave didn't open it."
