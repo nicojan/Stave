@@ -16,16 +16,35 @@ extension OrganizationStore {
     }
 
     public func setSetting<V>(_ key: SettingKey<V>, _ value: V) throws {
+        let text = try Self.encoded(value)
+        let stamp = now()
+        try database.writer.write { db in try Self.upsert(db, key: key.name, text: text, at: stamp) }
+    }
+
+    /// Finishes the first-run screen: the chosen engine and `firstRunCompleted` in one transaction, so a failure leaves neither.
+    public func completeFirstRun(engine: SearchEngine) throws {
+        let engineText = try Self.encoded(Optional(engine))
+        let doneText = try Self.encoded(true)
+        let stamp = now()
+        try database.writer.write { db in
+            try Self.upsert(db, key: SettingKeys.searchEngine.name, text: engineText, at: stamp)
+            try Self.upsert(db, key: SettingKeys.firstRunCompleted.name, text: doneText, at: stamp)
+        }
+    }
+
+    private static func encoded<V: Encodable>(_ value: V) throws -> String {
         let data = try JSONEncoder().encode(value)
         guard let text = String(data: data, encoding: .utf8) else { throw StoreError.notFound }
-        try database.writer.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO setting (key, value, modifiedAt) VALUES (?, ?, ?)
-                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, modifiedAt = excluded.modifiedAt
-                    """,
-                arguments: [key.name, text, now()]
-            )
-        }
+        return text
+    }
+
+    private static func upsert(_ db: Database, key: String, text: String, at stamp: Date) throws {
+        try db.execute(
+            sql: """
+                INSERT INTO setting (key, value, modifiedAt) VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, modifiedAt = excluded.modifiedAt
+                """,
+            arguments: [key, text, stamp]
+        )
     }
 }

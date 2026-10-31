@@ -10,6 +10,8 @@ final class AppMenuState {
     var shortcuts: WorkspaceShortcutsSetting?
     /// Nil until the store is open.
     var compactMode: CompactModeSetting?
+    /// Nil until the store is open.
+    var searchEngine: SearchEngineSetting?
     /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.
     var isCompact = false
 }

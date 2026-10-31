@@ -6,6 +6,7 @@ struct SettingsView: View {
     /// Nil until the app has opened its store.
     let shortcuts: WorkspaceShortcutsSetting?
     let compactMode: CompactModeSetting?
+    let searchEngine: SearchEngineSetting?
 
     var body: some View {
         Form {
@@ -25,7 +26,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if shortcuts == nil && compactMode == nil {
+            if let searchEngine {
+                Picker(SearchEngineSetting.title, selection: Binding(get: { searchEngine.engine }, set: { if let engine = $0 { searchEngine.set(engine) } })) {
+                    if searchEngine.engine == nil { Text(SearchEngineSetting.unchosenTitle).tag(SearchEngine?.none) }
+                    ForEach(SearchEngine.allCases, id: \.self) { Text($0.displayName).tag(Optional($0)) }
+                }
+                .accessibilityLabel(SearchEngineSetting.title)
+            }
+            if shortcuts == nil && compactMode == nil && searchEngine == nil {
                 Text("Stave's data is not open.").foregroundStyle(.secondary)
             }
         }

@@ -8,6 +8,9 @@ struct BrowserWindowView: View {
     let presenter: SidebarPresenter
     let revision: StoreRevision
     let sidebarWidth: SidebarWidthModel
+    let shortcuts: WorkspaceShortcutsSetting
+    let completeFirstRun: (SearchEngine, Bool) -> Void
+    let chooseAnotherFile: (ArcImportSession) -> Void
 
     @State private var dragStartWidth: Double?
     @FocusState private var dividerFocused: Bool
@@ -24,6 +27,17 @@ struct BrowserWindowView: View {
             content: { TabPlaceholderView(model: model) }
         )
         .overlay { commandBarLayer }
+        .sheet(item: Binding(get: { presenter.sheet }, set: { presenter.sheet = $0 })) { sheet in
+            switch sheet {
+            case .firstRun(let request):
+                FirstRunView(offersArcImport: request.offersArcImport, shortcuts: shortcuts, onContinue: completeFirstRun)
+            case .arcImport(let session):
+                ArcImportSheet(
+                    session: session, chooseAnotherFile: { chooseAnotherFile(session) },
+                    close: { presenter.sheet = nil }
+                )
+            }
+        }
         .onChange(of: revision.value) { model.reload() }
         // The bar acts on the window it opened in; a workspace or profile change (a menu shortcut, a swipe) closes it.
         .onChange(of: model.snapshot.workspace.id) { presenter.closeCommandBar() }

@@ -9,6 +9,8 @@ final class SidebarPresenter {
     var workspaceEditor: WorkspaceEditorMode?
     var showArchive = false
     var showNewProfile = false
+    /// The first-run or Arc import sheet on this window, if any.
+    var sheet: WindowSheet?
     /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.
     let drag = SidebarDragState()
     /// Bumped to ask the sidebar list for the keyboard focus (compact mode's Tab).
@@ -20,6 +22,8 @@ final class SidebarPresenter {
     @ObservationIgnored private(set) var returnsFocusToList = true
     /// Opens a window like ⌘N. Set by the window controller.
     @ObservationIgnored var newWindow: () -> Void = {}
+    /// Opens the Arc import like File ▸ Import from Arc…. Set by the window controller.
+    @ObservationIgnored var importFromArc: () -> Void = {}
 
     /// Opens (or reopens in another mode) the command bar from the window's current state.
     func openCommandBar(_ mode: CommandBarMode, for model: BrowserWindowModel) {
@@ -50,7 +54,7 @@ final class SidebarPresenter {
 
     private static func presentsPanel(_ outcome: CommandOutcome) -> Bool {
         switch outcome {
-        case .newWorkspace, .newProfile, .showArchive: true
+        case .newWorkspace, .newProfile, .showArchive, .showArcImport: true
         default: false
         }
     }
@@ -58,7 +62,7 @@ final class SidebarPresenter {
     private func handle(_ outcome: CommandOutcome) {
         switch outcome {
         case .done, .chooseSearchEngine: break // the bar keeps itself open for an engine choice and never reports it as a close
-        case .showArcImport: break // The Arc import sheet arrives with Task 19; until then this row does nothing.
+        case .showArcImport: importFromArc()
         case .showArchive: showArchive = true
         case .newWindow: newWindow()
         case .newWorkspace: workspaceEditor = .create

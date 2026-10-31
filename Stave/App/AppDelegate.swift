@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let menuState = AppMenuState()
     private var menuGeneration = 0
     private var keyObservers: [NSObjectProtocol] = []
+    private var importCoordinator: ImportCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -22,9 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.environment = environment
             menuState.shortcuts = environment.workspaceShortcuts
             menuState.compactMode = environment.compactMode
+            menuState.searchEngine = environment.searchEngine
+            importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
             observeKeyWindow()
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
+            presentFirstRunIfNeeded(environment)
             refreshWorkspaceMenu()
             environment.session.enableSaving() // a failed launch never reaches here, so it never writes
         } catch let failure as LaunchArguments.Failure {
@@ -97,6 +101,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌥⌘↑ / ⌥⌘↓: moves the key browser window's highlighted sidebar row one place up (-1) or down (+1). Nothing highlighted does nothing.
     func moveHighlightedRow(by delta: Int) { keyController?.model.moveHighlighted(by: delta) }
 
+    /// File ▸ Import from Arc…: on the key browser window (else the front one). One import at a time; an open one is brought forward.
+    func importFromArc() {
+        guard launchCompleted, let controller = frontController else { return }
+        importCoordinator?.open(on: controller)
+    }
+
+    // MARK: - First run
+
+    /// Shows the first-run sheet on the first window of this launch, once, while the setting says it has not been completed.
+    private func presentFirstRunIfNeeded(_ environment: AppEnvironment) {
+        guard let first = controllers.first else { return }
+        do {
+            guard try environment.store.setting(SettingKeys.firstRunCompleted) == false else { return }
+        } catch {
+            NSLog("Stave: could not read the first-run setting: \(error)")
+            return
+        }
+        let offers: Bool
+        do {
+            offers = try ArcImportFlow.shouldOfferOnFirstRun(arcHome: environment.arcHome, store: environment.store)
+        } catch {
+            NSLog("Stave: could not check whether to offer the Arc import: \(error)")
+            offers = false
+        }
+        first.sidebarPresenter.sheet = .firstRun(FirstRunRequest(offersArcImport: offers))
+    }
+
+    private func completeFirstRun(on controller: BrowserWindowController, engine: SearchEngine, importFromArc: Bool) {
+        guard let environment else { return }
+        do {
+            try environment.store.completeFirstRun(engine: engine)
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Stave couldn't save your choice."
+            alert.informativeText = StoreErrorText.message(for: error)
+            alert.addButton(withTitle: "OK")
+            alert.beginSheetModal(for: controller.window)
+            return
+        }
+        environment.revision.bump()
+        controller.sidebarPresenter.sheet = nil
+        if importFromArc { importCoordinator?.open(on: controller) }
+    }
+
     /// View ▸ Compact Mode (⌃⌘S): flips the setting through the store, so every window follows. Works with Settings key too.
     func toggleCompactMode() { environment?.compactMode.toggle() }
 
@@ -167,8 +216,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = try BrowserWindowController(
             state: state, environment: environment,
             onNewWindow: { [weak self] in self?.newWindow() },
+            onImportFromArc: { [weak self] in self?.importFromArc() },
             onClose: { [weak self] closed in self?.windowClosed(closed) }
         )
+        controller.onCompleteFirstRun = { [weak self, weak controller] engine, importArc in
+            guard let self, let controller else { return }
+            self.completeFirstRun(on: controller, engine: engine, importFromArc: importArc)
+        }
+        controller.onChooseAnotherFile = { [weak self] session in self?.importCoordinator?.chooseAnotherFile(for: session) }
         controllers = controllers + [controller]
         controller.show()
         refreshWorkspaceMenu()

@@ -16,6 +16,8 @@ final class AppEnvironment {
     let workspaceShortcuts: WorkspaceShortcutsSetting
     /// The compact-mode setting for Settings and the View menu; writing it bumps `revision`, so every window follows.
     let compactMode: CompactModeSetting
+    /// The search-engine setting for Settings; writing it bumps `revision`.
+    let searchEngine: SearchEngineSetting
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
 
@@ -47,6 +49,9 @@ final class AppEnvironment {
         let compact = CompactModeSetting(store: store, revision: revision)
         compact.onSaveError = { NSLog("Stave: could not save the compact mode setting: \($0)") }
         self.compactMode = compact
+        let engine = SearchEngineSetting(store: store, revision: revision)
+        engine.onSaveError = { NSLog("Stave: could not save the search engine: \($0)") }
+        self.searchEngine = engine
     }
 
     /// Launches with the Debug options when given, else the real bundle id and Application Support folder.

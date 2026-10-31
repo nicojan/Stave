@@ -7,6 +7,13 @@ public struct ArcImportSummary: Equatable, Sendable {
     public let changed: [String]
     public let skipped: [String]
 
+    init(headline: String, imported: [String], changed: [String], skipped: [String]) {
+        self.headline = headline
+        self.imported = imported
+        self.changed = changed
+        self.skipped = skipped
+    }
+
     public init(report: ArcImportReport) {
         let counts = report.imported
         let lines = Self.importedLines(counts)

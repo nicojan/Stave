@@ -14,9 +14,12 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     let sidebarPresenter = SidebarPresenter()
     private let environment: AppEnvironment
     private let onClose: (BrowserWindowController) -> Void
+    /// Set by the app delegate: the first-run sheet's Continue, and the import sheet's "Choose Another File…".
+    var onCompleteFirstRun: (SearchEngine, Bool) -> Void = { _, _ in }
+    var onChooseAnotherFile: (ArcImportSession) -> Void = { _ in }
     private var isClosed = false
 
-    init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {
+    init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onImportFromArc: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {
         let model = try BrowserWindowModel(
             store: environment.store, revision: environment.revision, livePages: environment.livePages, state: state
         )
@@ -30,6 +33,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         )
         super.init()
         sidebarPresenter.newWindow = onNewWindow
+        sidebarPresenter.importFromArc = onImportFromArc
         configureWindow()
         place(savedFrame: state.frame)
         window.title = windowTitle
@@ -45,7 +49,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.minSize = WindowFrameRestore.minimumSize
         window.delegate = self
-        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, revision: environment.revision, sidebarWidth: environment.sidebarWidth))
+        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, revision: environment.revision, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }))
         hosting.sizingOptions = [] // the window decides its size, not the SwiftUI content
         window.contentView = hosting
     }
