@@ -9,8 +9,6 @@ struct WorkspaceSwitcher: View {
     @Bindable var presenter: SidebarPresenter
     let drag: SidebarDragState
 
-    @State private var pendingDelete: Workspace?
-
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
@@ -33,14 +31,14 @@ struct WorkspaceSwitcher: View {
             }, cancel: { presenter.workspaceEditor = nil })
         }
         .alert(
-            pendingDelete.map { WorkspaceMenus.deleteConfirmation(name: $0.name) } ?? "",
-            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
+            presenter.pendingWorkspaceDelete.map { WorkspaceMenus.deleteConfirmation(name: $0.name) } ?? "",
+            isPresented: Binding(get: { presenter.pendingWorkspaceDelete != nil }, set: { if !$0 { presenter.pendingWorkspaceDelete = nil } })
         ) {
             Button(WorkspaceMenus.deleteButton, role: .destructive) {
-                if let pendingDelete { model.deleteWorkspace(pendingDelete.id) }
-                pendingDelete = nil
+                if let pending = presenter.pendingWorkspaceDelete { model.deleteWorkspace(pending.id) }
+                presenter.pendingWorkspaceDelete = nil
             }
-            Button(WorkspaceEditorRules.cancelButton, role: .cancel) { pendingDelete = nil }
+            Button(WorkspaceEditorRules.cancelButton, role: .cancel) { presenter.pendingWorkspaceDelete = nil }
         }
     }
 
@@ -75,14 +73,7 @@ struct WorkspaceSwitcher: View {
     }
 
     private func run(_ action: WorkspaceAction, on workspace: Workspace, index: Int) {
-        switch action {
-        case .edit: presenter.workspaceEditor = .edit(workspace)
-        case .delete: pendingDelete = workspace
-        case .moveLeft, .moveRight:
-            if let target = WorkspaceMenus.moveTarget(action, index: index, ids: model.workspaces.map(\.id)) {
-                model.moveWorkspace(workspace.id, after: target.afterID)
-            }
-        }
+        presenter.perform(action, on: workspace, in: model)
     }
 
     private func apply(_ draft: WorkspaceDraft, for mode: WorkspaceEditorMode) {

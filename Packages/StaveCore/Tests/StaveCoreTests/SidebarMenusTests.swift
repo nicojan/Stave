@@ -71,8 +71,9 @@ struct SidebarMenusTests {
     }
 
     @Test func viewTextRules() {
-        #expect(SidebarText.disclosureLabel(isOpen: true) == "Close folder")
-        #expect(SidebarText.disclosureLabel(isOpen: false) == "Open folder")
+        #expect(SidebarText.disclosureLabel(isOpen: true, title: "Reading") == "Close folder Reading")
+        #expect(SidebarText.disclosureLabel(isOpen: false, title: "Reading") == "Open folder Reading")
+        #expect(SidebarText.driftedLabel(title: "Post 42") == "Back to pinned page, Post 42")
         #expect(SidebarText.promptConfirm(for: .renameFolder) == "Rename")
         #expect(SidebarText.promptConfirm(for: .newFolder) == "Create")
         #expect(SidebarText.promptConfirm(for: .newFolderInside) == "Create")

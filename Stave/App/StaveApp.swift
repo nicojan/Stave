@@ -32,10 +32,17 @@ struct StaveApp: App {
                         .keyboardShortcut("s", modifiers: [.control, .command])
                 }
                 CommandMenu("Tab") {
+                    // The keyboard route to the row and Essentials context menus: the same SidebarMenus lists, on the highlighted item.
+                    ForEach(delegate.menuState.tabActions, id: \.self) { action in
+                        Button(action.menuTitle) { delegate.performSidebarAction(action) }
+                    }
+                    Divider()
                     Button(SidebarAction.moveUp.title) { delegate.moveHighlightedRow(by: -1) }
                         .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                        .disabled(!delegate.menuState.canMoveUp)
                     Button(SidebarAction.moveDown.title) { delegate.moveHighlightedRow(by: 1) }
                         .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                        .disabled(!delegate.menuState.canMoveDown)
                 }
                 CommandMenu(WorkspaceMenus.workspacesMenu) {
                     ForEach(delegate.menuState.workspaceItems, id: \.workspaceID) { item in
@@ -43,6 +50,11 @@ struct StaveApp: App {
                     }
                     Divider()
                     Button(WorkspaceMenus.newWorkspaceItem) { delegate.newWorkspace() }
+                    Divider()
+                    ForEach(delegate.menuState.workspaceActions, id: \.action) { item in
+                        Button(item.action.menuTitle) { delegate.performWorkspaceAction(item.action) }
+                            .disabled(!item.isEnabled)
+                    }
                 }
             }
     }

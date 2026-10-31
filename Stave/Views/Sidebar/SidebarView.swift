@@ -11,9 +11,7 @@ struct SidebarView: View {
 
     @FocusState private var listFocused: Bool
     @State private var dismissedErrorID: Int?
-    @State private var newProfileName = ""
     @State private var prompt: FolderPrompt?
-    @State private var promptText = ""
     @State private var slide: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -67,6 +65,9 @@ struct SidebarView: View {
             listFocused = !compact
         }
         .onChange(of: model.snapshot.workspace.id) { slideIn() }
+        .onChange(of: presenter.actionRequest) { _, request in
+            if let request { self.request(request.action, on: request.item) }
+        }
         .onChange(of: presenter.commandBar == nil) { _, closed in
             guard closed, presenter.returnsFocusToList else { return }
             // Escape, a click outside or a performed row: back to the list. The flag can still read true while the text field held the real
@@ -77,12 +78,17 @@ struct SidebarView: View {
         .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
         .ignoresSafeArea()
-        .alert(prompt?.action.title ?? "", isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
-            TextField(SidebarText.folderName, text: $promptText)
-            Button("Cancel", role: .cancel) {}
-            Button(prompt.map { SidebarText.promptConfirm(for: $0.action) } ?? "") {
-                if let prompt { model.run(prompt.action, on: prompt.item, typed: promptText) }
-            }
+        .sheet(item: $prompt) { prompt in
+            NamePromptSheet(
+                title: prompt.action.title, fieldLabel: SidebarText.folderName,
+                prefill: SidebarMenus.promptPrefill(action: prompt.action, currentTitle: prompt.currentTitle),
+                confirmTitle: SidebarText.promptConfirm(for: prompt.action),
+                confirm: { typed in
+                    model.run(prompt.action, on: prompt.item, typed: typed)
+                    self.prompt = nil
+                },
+                cancel: { self.prompt = nil }
+            )
         }
     }
 
@@ -170,14 +176,16 @@ struct SidebarView: View {
             WorkspaceSwitcher(model: model, presenter: presenter, drag: drag)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .alert(WorkspaceMenus.newProfilePrompt, isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {
-            TextField(WorkspaceMenus.profileName, text: $newProfileName)
-            Button(WorkspaceEditorRules.cancelButton, role: .cancel) {}
-            Button(WorkspaceMenus.createProfileButton) {
-                if let name = WorkspaceMenus.profileName(typed: newProfileName) { model.createProfile(name: name) }
-            }
+        .sheet(isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {
+            NamePromptSheet(
+                title: WorkspaceMenus.newProfilePrompt, fieldLabel: WorkspaceMenus.profileName, confirmTitle: WorkspaceMenus.createProfileButton,
+                confirm: { typed in
+                    if let name = WorkspaceMenus.profileName(typed: typed) { model.createProfile(name: name) }
+                    presenter.showNewProfile = false
+                },
+                cancel: { presenter.showNewProfile = false }
+            )
         }
-        .onChange(of: presenter.showNewProfile) { _, shown in if shown { newProfileName = "" } }
     }
 
     /// Slides the new workspace's list in from the direction of travel; nothing under Reduce Motion, and nothing for a profile switch (direction 0).
@@ -205,7 +213,6 @@ struct SidebarView: View {
             return
         }
         let current = model.rows.first { $0.id == item }?.title ?? ""
-        promptText = SidebarMenus.promptPrefill(action: action, currentTitle: current)
         prompt = FolderPrompt(action: action, item: item, currentTitle: current)
     }
 

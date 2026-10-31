@@ -27,6 +27,18 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
         }
     }
 
+    /// The title in the Tab menu, where an item that asks for a name ends in an ellipsis and the target is spelled out.
+    public var menuTitle: String {
+        switch self {
+        case .pin: "Pin Tab"
+        case .unpin: "Unpin Tab"
+        case .renameFolder: "Rename Folder…"
+        case .newFolderInside: "New Folder Inside…"
+        case .newFolder: "New Folder…"
+        default: title
+        }
+    }
+
     /// These need a name from the user, so the view asks for it and then calls `createFolder` or `renameFolder`.
     public var needsTitle: Bool { self == .renameFolder || self == .newFolderInside || self == .newFolder }
 
@@ -86,6 +98,27 @@ public enum SidebarMenus {
     /// The actions for an Essentials tile.
     public static func actions(forEssential tab: Tab) -> [SidebarAction] {
         (tab.isDrifted ? [.backToPinnedPage] : []) + [.removeFromEssentials]
+    }
+
+    /// What the Tab menu offers for the highlighted item, from the same lists as the context menu and the VoiceOver actions: an Essential's,
+    /// a row's, or nothing when nothing (or something stale) is highlighted; then New Folder, which needs no row. Close Tab is left out
+    /// (it is File ▸ Close Tab, ⌘W) and the moves are separate (`canMove`), because they carry the ⌥⌘↑ and ⌥⌘↓ shortcuts.
+    public static func menuActions(highlight: SidebarItemID?, rows: [SidebarRow], snapshot: SidebarSnapshot) -> [SidebarAction] {
+        let target: [SidebarAction]
+        if case .tab(let id)? = highlight, let essential = snapshot.essentials.first(where: { $0.id == id }) {
+            target = actions(forEssential: essential)
+        } else if let highlight, let row = rows.first(where: { $0.id == highlight }) {
+            target = actions(for: row)
+        } else {
+            target = []
+        }
+        return target.filter { $0 != .closeTab } + pinnedHeaderActions
+    }
+
+    /// Whether ⌥⌘↑ (`by: -1`) or ⌥⌘↓ (`by: 1`) has somewhere to move the highlighted item. Nothing highlighted: no.
+    public static func canMove(highlight: SidebarItemID?, by delta: Int, snapshot: SidebarSnapshot) -> Bool {
+        guard let highlight else { return false }
+        return SidebarDropPlanner.keyboardMove(highlight, by: delta, snapshot: snapshot) != nil
     }
 
     /// The actions for the "Pinned" header.

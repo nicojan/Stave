@@ -107,6 +107,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.model.moveHighlighted(by: delta)
     }
 
+    /// Workspaces ▸ Edit / Move / Delete: acts on the key browser window's current workspace.
+    func performWorkspaceAction(_ action: WorkspaceAction) {
+        guard let controller = keyController, allowed(.workspaceAction, on: controller) else { return }
+        controller.sidebarPresenter.perform(action, on: controller.model.snapshot.workspace, in: controller.model)
+    }
+
+    /// Tab menu items: act on the key browser window's highlighted sidebar row or Essential (New Folder needs none).
+    func performSidebarAction(_ action: SidebarAction) {
+        guard let controller = keyController, allowed(.sidebarAction, on: controller) else { return }
+        controller.sidebarPresenter.requestSidebarAction(action, on: controller.model.sidebarHighlight)
+    }
+
     /// File ▸ Import from Arc…: on the key browser window (else the front one). One import at a time; an open one is brought forward.
     func importFromArc() {
         guard launchCompleted, let controller = frontController else { return }
@@ -177,7 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return MenuCommandGate.isBusy(
             hasAttachedSheet: controller.window.attachedSheet != nil,
             isPicking: importCoordinator?.isPicking ?? false,
-            hasPendingSheet: presenter.sheet != nil || presenter.workspaceEditor != nil || presenter.showNewProfile
+            hasPendingSheet: presenter.sheet != nil || presenter.workspaceEditor != nil || presenter.showNewProfile || presenter.pendingWorkspaceDelete != nil
         )
     }
 
@@ -191,24 +203,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshWorkspaceMenu() {
         menuGeneration += 1
         let generation = menuGeneration
-        let (items, compact): ([WorkspaceSwitchItem], Bool) = withObservationTracking {
+        let menu: MenuSnapshot = withObservationTracking {
             // With no browser window key (Settings in front) the checkmark follows the setting itself.
             guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else {
-                return ([], environment?.compactMode.isEnabled ?? false)
+                return MenuSnapshot(compact: environment?.compactMode.isEnabled ?? false)
             }
-            let items = WorkspaceMenus.switchItems(
-                workspaces: controller.model.workspaces, currentID: controller.model.snapshot.workspace.id,
-                shortcutsEnabled: shortcuts.isEnabled
+            let model = controller.model
+            let workspaces = model.workspaces
+            let index = workspaces.firstIndex { $0.id == model.snapshot.workspace.id } ?? 0
+            return MenuSnapshot(
+                items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
+                compact: model.isCompact,
+                workspaceActions: WorkspaceMenus.menuItems(index: index, count: workspaces.count),
+                tabActions: SidebarMenus.menuActions(highlight: model.sidebarHighlight, rows: model.rows, snapshot: model.snapshot),
+                canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
+                canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot)
             )
-            return (items, controller.model.isCompact)
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.menuGeneration == generation else { return }
                 self.refreshWorkspaceMenu()
             }
         }
-        if menuState.workspaceItems != items { menuState.workspaceItems = items }
-        if menuState.isCompact != compact { menuState.isCompact = compact }
+        if menuState.workspaceItems != menu.items { menuState.workspaceItems = menu.items }
+        if menuState.isCompact != menu.compact { menuState.isCompact = menu.compact }
+        if menuState.workspaceActions != menu.workspaceActions { menuState.workspaceActions = menu.workspaceActions }
+        if menuState.tabActions != menu.tabActions { menuState.tabActions = menu.tabActions }
+        if menuState.canMoveUp != menu.canMoveUp { menuState.canMoveUp = menu.canMoveUp }
+        if menuState.canMoveDown != menu.canMoveDown { menuState.canMoveDown = menu.canMoveDown }
+    }
+
+    /// Everything the menus show for the key window, read in one observation pass.
+    private struct MenuSnapshot {
+        var items: [WorkspaceSwitchItem] = []
+        var compact = false
+        var workspaceActions: [WorkspaceMenuItem] = []
+        var tabActions: [SidebarAction] = []
+        var canMoveUp = false
+        var canMoveDown = false
     }
 
     private func observeKeyWindow() {

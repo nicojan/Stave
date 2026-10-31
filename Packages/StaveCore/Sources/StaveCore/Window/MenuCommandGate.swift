@@ -3,6 +3,7 @@ import Foundation
 /// Menu commands that act on the key browser window, and whether each may run while a sheet is attached to that window.
 public enum MenuCommand: CaseIterable, Sendable {
     case newTab, openLocation, newWindow, closeTab, closeWindow, switchWorkspace, moveRow, newWorkspace, importFromArc, toggleCompactMode
+    case workspaceAction, sidebarAction
 }
 
 public enum MenuCommandGate {

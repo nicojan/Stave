@@ -2,6 +2,13 @@ import AppKit
 import Observation
 import StaveCore
 
+/// One request from the Tab menu. The serial makes a repeat of the same request a new value.
+struct SidebarActionRequest: Equatable {
+    let serial: Int
+    let action: SidebarAction
+    let item: SidebarItemID?
+}
+
 /// Window-level UI requests that menus, the command bar and the sidebar make of one another: the workspace editor, the archive popover,
 /// the new-profile prompt and the command bar itself. Holds presentation state only; every rule is in StaveCore.
 @MainActor @Observable
@@ -13,6 +20,15 @@ final class SidebarPresenter {
     var sheet: WindowSheet?
     /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.
     let drag = SidebarDragState()
+    /// The workspace waiting for its delete confirmation; shown as an alert by the workspace switcher.
+    var pendingWorkspaceDelete: Workspace?
+    /// A sidebar action asked for from a menu; the sidebar runs it (asking for a name first when the action needs one).
+    private(set) var actionRequest: SidebarActionRequest?
+    private var actionSerial = 0
+    func requestSidebarAction(_ action: SidebarAction, on item: SidebarItemID?) {
+        actionSerial += 1
+        actionRequest = SidebarActionRequest(serial: actionSerial, action: action, item: item)
+    }
     /// Bumped to ask the sidebar list for the keyboard focus (compact mode's Tab).
     private(set) var sidebarFocusRequest = 0
     func requestSidebarFocus() { sidebarFocusRequest += 1 }
@@ -70,6 +86,20 @@ final class SidebarPresenter {
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        }
+    }
+
+    /// A workspace action on `workspace` (its button's menu, or the Workspaces menu for the current one): Edit opens the editor, Delete asks
+    /// for confirmation, the moves write through the model.
+    func perform(_ action: WorkspaceAction, on workspace: Workspace, in model: BrowserWindowModel) {
+        switch action {
+        case .edit: workspaceEditor = .edit(workspace)
+        case .delete: pendingWorkspaceDelete = workspace
+        case .moveLeft, .moveRight:
+            let ids = model.workspaces.map(\.id)
+            guard let index = ids.firstIndex(of: workspace.id),
+                  let target = WorkspaceMenus.moveTarget(action, index: index, ids: ids) else { return }
+            model.moveWorkspace(workspace.id, after: target.afterID)
         }
     }
 }

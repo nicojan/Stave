@@ -51,7 +51,6 @@ public enum AddressFieldText {
 public enum SidebarText {
     public static let newTabRow = "New Tab"
     public static let pinnedHeader = "Pinned"
-    public static let driftedButton = "Back to pinned page"
     public static let archiveButton = "Archive"
     public static let searchArchive = "Search archive"
     public static let archivedTabs = "Archived tabs"
@@ -63,8 +62,11 @@ public enum SidebarText {
     public static let dismissMessage = "Dismiss message"
     public static let restoreButton = "Restore"
 
-    /// The chevron button's label.
-    public static func disclosureLabel(isOpen: Bool) -> String { isOpen ? "Close folder" : "Open folder" }
+    /// The chevron button's label. It names the folder, so the rotor's list of buttons tells one chevron from the next.
+    public static func disclosureLabel(isOpen: Bool, title: String) -> String { (isOpen ? "Close folder " : "Open folder ") + title }
+
+    /// The drifted pinned tab's "back" button label, naming its tab for the same reason.
+    public static func driftedLabel(title: String) -> String { "Back to pinned page, \(title)" }
 
     /// The confirm button of the folder-name prompt.
     public static func promptConfirm(for action: SidebarAction) -> String { action == .renameFolder ? "Rename" : "Create" }

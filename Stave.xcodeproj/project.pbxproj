@@ -31,6 +31,7 @@
 		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
 		BA73175DC44727176C4A6AAA /* WorkspaceEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */; };
 		BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9003316572911593E1DFEE /* ArchivePopover.swift */; };
+		BF70579095B7404A5E926D85 /* NamePromptSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC23353CB79C824619134179 /* NamePromptSheet.swift */; };
 		C1ADFBA6FC7E8101D32464F9 /* AppMenuState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995508A5262708F8EE5364E3 /* AppMenuState.swift */; };
 		C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F806ED539F7D1586C99B13 /* SidebarDragState.swift */; };
 		C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */; };
@@ -59,6 +60,7 @@
 		BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCoordinator.swift; sourceTree = "<group>"; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
 		C81BBB8D6BF636D5428804CE /* FirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunView.swift; sourceTree = "<group>"; };
+		CC23353CB79C824619134179 /* NamePromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamePromptSheet.swift; sourceTree = "<group>"; };
 		D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactDriver.swift; sourceTree = "<group>"; };
 		DB1ED1C2442C79A2AE0927F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarActions.swift; sourceTree = "<group>"; };
@@ -179,6 +181,7 @@
 				4301C5F96EF73A0EDEC6288D /* AddressField.swift */,
 				FF9003316572911593E1DFEE /* ArchivePopover.swift */,
 				DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */,
+				CC23353CB79C824619134179 /* NamePromptSheet.swift */,
 				DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */,
 				37F806ED539F7D1586C99B13 /* SidebarDragState.swift */,
 				8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */,
@@ -287,6 +290,7 @@
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
 				4A6E8FB8ED8CC65D780164AD /* FirstRunView.swift in Sources */,
 				C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */,
+				BF70579095B7404A5E926D85 /* NamePromptSheet.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,
 				A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */,
 				C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */,

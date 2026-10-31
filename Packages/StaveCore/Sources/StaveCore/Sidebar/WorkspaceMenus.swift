@@ -13,6 +13,16 @@ public enum WorkspaceAction: Hashable, Sendable, CaseIterable {
         }
     }
 
+    /// The title in the Workspaces menu, which acts on the current workspace and so names it.
+    public var menuTitle: String {
+        switch self {
+        case .edit: "Edit Workspace…"
+        case .moveLeft: "Move Workspace Left"
+        case .moveRight: "Move Workspace Right"
+        case .delete: "Delete Workspace…"
+        }
+    }
+
     public var symbol: String {
         switch self {
         case .edit: "pencil"
@@ -49,6 +59,13 @@ public enum WorkspaceMenus {
         if index < count - 1 { items.append(WorkspaceMenuItem(action: .moveRight)) }
         items.append(WorkspaceMenuItem(action: .delete, isEnabled: count > 1))
         return items
+    }
+
+    /// The Workspaces menu's four items for the current workspace: always all four so the menu does not change shape, each enabled by the
+    /// same rule as `items(index:count:)` offers it.
+    public static func menuItems(index: Int, count: Int) -> [WorkspaceMenuItem] {
+        let offered = Set(items(index: index, count: count).filter(\.isEnabled).map(\.action))
+        return WorkspaceAction.allCases.map { WorkspaceMenuItem(action: $0, isEnabled: offered.contains($0)) }
     }
 
     /// Where `moveWorkspace(_:after:)` must put the workspace at `index` among `ids`: after the returned id (nil = first). Nil result when

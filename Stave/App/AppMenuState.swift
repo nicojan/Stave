@@ -14,4 +14,11 @@ final class AppMenuState {
     var searchEngine: SearchEngineSetting?
     /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.
     var isCompact = false
+    /// Workspaces ▸ Edit / Move / Delete for the key window's current workspace; empty with no browser window key.
+    var workspaceActions: [WorkspaceMenuItem] = []
+    /// Tab ▸ the actions for the highlighted sidebar row or Essential, then New Folder (`SidebarMenus.menuActions`).
+    var tabActions: [SidebarAction] = []
+    /// Whether ⌥⌘↑ and ⌥⌘↓ have somewhere to move the highlighted item.
+    var canMoveUp = false
+    var canMoveDown = false
 }

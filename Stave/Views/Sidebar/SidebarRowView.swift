@@ -29,7 +29,7 @@ struct SidebarRowView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(SidebarAction.backToPinnedPage.title)
-                .accessibilityLabel(SidebarText.driftedButton)
+                .accessibilityLabel(SidebarText.driftedLabel(title: row.title))
             }
         }
         .padding(.leading, CGFloat(row.depth) * 14)
@@ -45,7 +45,7 @@ struct SidebarRowView: View {
                 Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.caption2.weight(.bold)).frame(width: 12)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(SidebarText.disclosureLabel(isOpen: isOpen))
+            .accessibilityLabel(SidebarText.disclosureLabel(isOpen: isOpen, title: row.title))
         }
     }
 
