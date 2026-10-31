@@ -707,3 +707,36 @@ Every public struct gets a memberwise `public init`.
 - [ ] **Step 3: Commit** `docs: status and rules after plan 4`
 
 The plan's "Outcome" and "Carried into later plans" sections are added after execution, from the final review.
+
+## Outcome (2026-10-31)
+
+Built on `feat/window-sidebar`: all 21 tasks reviewed (spec and quality, with fix rounds), then the final whole-branch review and one fix wave. There are 519 package tests, and CI is green on macOS 14 (Xcode 16.2) and 15, Debug and Release. Review Focus 1–5 hold end to end. By-hand checks ran on throwaway synthetic data only; pointer, drag, swipe, hover and VoiceOver behaviour is on the "Nico checks" list below and has not been seen working.
+
+Departures from this plan, all made as rulings during execution:
+
+- **Added at Nico's request:** drag workspace buttons to reorder them (Task 16), with Move Left / Move Right kept as the keyboard path.
+- **Live pages:** `LivePageRegistry` tracks each window's wanted tab and the owner; when the owner lets go, the window that has waited longest takes the page. `BrowserWindowModel.placement` is computed from the registry, not cached.
+- **Window session:** quitting saves before windows close and never drops windows from the saved set; window state is saved 0.5 s after the last change (decision 33 read as "saved"); saving starts only after every restored window opened; an empty set is never saved; closing the last window still quits.
+- **Selection:** closing a selected Essential selects the next Essential, else the previous; switching to the current workspace keeps the selection; ⌘W and ⌫ act only on a highlighted tab row, ⌫ with nothing highlighted does nothing.
+- **Command bar:** a blank tab stores an empty URL and shows "New Tab"; ⌘L prefills only http/https addresses and edits the tab it opened on; the bar closes when its window's workspace changes or the window resigns key; the engine picker starts with nothing highlighted; IPv4 octets with a leading zero and non-ASCII host text become searches; the no-engine row reads "Search for ‹q›" with "Choose a search engine" below it.
+- **Import copy:** at a count of 1 the verb agrees ("1 unpinned tab … wasn't imported", "1 item … was imported once"); an unreadable import history fails safe with "Stave couldn't check whether you've imported from Arc before, so it didn't import."
+- **Arc files:** a symlinked Arc file is followed and must be a regular file; Local State gets the same checks with a 16 MiB cap. A Debug launch with `-StaveDataDirectory` but no `-StaveArcHome` isolates the Arc home inside the data folder; a Debug flag present with an unusable value stops the launch.
+- **Never lose data:** a pinned tab or Essential that has drifted from its pinned page archives that page when it becomes regular (drag or Unpin) and when it is restored from the archive.
+- **Drag and drop:** an in-app drop is accepted only when it belongs to the drag Stave started (drag pasteboard `changeCount`) and carries what `onDrag` wrote.
+- **Compact mode:** hiding the sidebar takes keyboard focus out of it; only a real keypress, Tab or the command bar closing reveals it; while VoiceOver runs the sidebar stays revealed.
+- **Sheets:** while a browser window has a sheet up, window commands are disabled (Compact Mode stays); the archive opened from the keyboard is a sheet, from a mouse click a popover; Quit (⌘Q, Dock, logout) ends every sheet first, because AppKit refuses to quit with a sheet attached.
+- **Rules in StaveCore:** frame restore, sidebar width, window title, launch arguments, menu enablement, workspace editor validation, hex colours and all label text moved out of the views.
+
+Nico checks (not seen by the build sessions): two-finger swipe both ways and over the workspace strip; every drag in Task 16 (tab into Reading, pinned tab into Essentials, folder into folder, tab onto Work, tab out to TextEdit, Work dragged before Home and kept after relaunch, abandon a drag then drop a Safari link onto New Tab, a tab from another window, a three-finger drag-lock drag); right-click menus on whole rows, tiles, workspace buttons; compact edge-hover reveal and 0.4 s hide, held while a menu, popover, sheet or drag is open; the slide with and without Reduce Motion; a VoiceOver session (sidebar, rotor, import report); the mouse-clicked archive popover; the NSOpenPanel (pick `local-state.json` → "doesn't contain an Arc sidebar"); ⌘Q and Dock Quit with a sheet up; dragging the sidebar divider; workspace tint on a coloured workspace.
+
+## Carried into later plans
+
+- **Plan 3 (web engine):**
+  - A stored `tab.url` reaches navigation without `AddressInput.classify`; the web layer must check the scheme before loading any stored URL (Arc-imported URLs are hostile).
+  - Unloading a pinned tab or Essential doesn't release its live page; closing a selected Essential hands its page to a waiting window.
+  - Compact mode's Tab interception must not swallow Tab inside a `WKWebView`; Voice Control and Switch Control get no always-revealed sidebar; a drag can't reveal a hidden compact sidebar.
+  - Cross-window reload hangs on a SwiftUI `.onChange`; move it into the window controller before claims hold real pages.
+  - Decide with Nico how to treat a pasted `https://user@host` link (open as other browsers do, strip, refuse, or always show the real host).
+  - Remaining `LivePageRegistry` edge-case tests.
+- **Plan 5 (settings and polish):** the deferred minors from every task's review (store-internal tidy-ups, missing edge-case tests, literal strings left in views, the ⌘N nested-sheet gate bypass, dead `renameWorkspace`/`navigateSelected`, history ranking for blank "New Tab" rows, Dock-icon reopen with only Settings open, a failed workspace delete leaving the window switched, repeat-import detection inside the import transaction).
+- **Open questions for Nico:** whether dropping the selected tab onto another workspace should take the window with it; whether drifted pinned pages archived on Unpin/restore should be refused instead; whether Stave should stay open with no windows.
