@@ -15,7 +15,7 @@
 1. **Foundation** — this plan. *Done: merged to `main` at `9076fda` (PR #1).*
 2. **Arc import** — parser for `StorableSidebar.json` into `OrganizationStore` calls, synthetic fixtures, import report. Depends only on this plan. *Built: `docs/superpowers/plans/2026-10-29-stave-arc-import.md`, PR #2.*
 3. **Web layer** — tab web-view pool, restore of `interactionState`, popups tied to opener, data stores per profile/container/private window, content blocking, downloads, permissions. Depends on this plan and the Chorus engine tag (1.5.32+). *Not started: waiting on the engine tag.*
-4. **Window and sidebar** — real sidebar (Essentials grid, folders, drag and drop, archive), command bar, workspace switching, compact mode, "bring it here" placeholder, accessibility, and the Arc import's UI. *Planned in `2026-10-29-stave-window-sidebar.md`, approved, not yet built. It runs before plan 3, because pages are placeholders until the web layer lands.*
+4. **Window and sidebar** — real sidebar (Essentials grid, folders, drag and drop, archive), command bar, workspace switching, compact mode, "bring it here" placeholder, accessibility, and the Arc import's UI. *Built on `feat/window-sidebar`: `docs/superpowers/plans/2026-10-29-stave-window-sidebar.md`. It ran before plan 3, because pages are placeholders until the web layer lands.*
 5. **Browser basics and release** — default-browser registration, settings, site-compatibility tools, shortcuts, Sparkle, signing, notarization, Homebrew, the "beta is ready when" gate.
 
 ## Global Constraints
