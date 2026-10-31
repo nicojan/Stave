@@ -107,8 +107,9 @@ private struct WorkspaceButtonDrop: ViewModifier {
         content
             .overlay { indicator }
             .onDrag {
-                drag.begin(.workspace(workspace.id))
-                return NSItemProvider(object: workspace.name as NSString)
+                let written = SidebarDragPayload.label(workspace.name)
+                drag.begin(.workspace(workspace.id), written: written)
+                return SidebarDragState.provider(for: written)
             }
             .onDrop(of: SidebarDragState.acceptedTypes, delegate: WorkspaceDropDelegate(model: model, drag: drag, workspace: workspace, width: Self.width))
     }
@@ -158,12 +159,12 @@ private struct WorkspaceDropDelegate: DropDelegate {
         switch drag.livePayload {
         case .workspace(let dragged)?:
             let side: DropPosition = info.location.x < width / 2 ? .before : .after
-            let expected = model.workspaces.first { $0.id == dragged }.map { SidebarDragPayload.label($0.name) }
+            let expected = drag.written
             let target = workspace.id
             drag.end()
             return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.dropWorkspace(dragged, onto: target, side: side) }
         case .item(let item)?:
-            let expected = SidebarDropPlanner.dragPayload(for: item, snapshot: model.snapshot)
+            let expected = drag.written
             let target = workspace.id
             drag.end()
             return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.drop(item, onto: .workspace(target)) }

@@ -25,6 +25,13 @@ public enum SidebarDragPayload: Sendable, Equatable {
     case label(String)
 }
 
+/// What a drop carries: a URL when the pasteboard item has a URL type, otherwise its text, otherwise nothing readable.
+public enum SidebarDroppedContent: Sendable, Equatable {
+    case url(String)
+    case text(String)
+    case none
+}
+
 /// The rules of drag and drop and of the keyboard moves. Pure: the views ask it what a drop would do, and nil means "refuse, show no indicator".
 public enum SidebarDropPlanner {
     // MARK: - Drops
@@ -101,14 +108,15 @@ public enum SidebarDropPlanner {
         }
     }
 
-    /// Whether what a drop carries is what the sidebar put on the pasteboard for the remembered item: a link equals the tab's address, a label
-    /// the title (or workspace name). A foreign drag that slipped past the session check still fails here, and then nothing is applied.
-    public static func payloadMatches(expected: SidebarDragPayload?, droppedURL: String?, droppedText: String?) -> Bool {
-        switch expected {
-        case nil: false
-        case .link(let link)?:
-            droppedURL == (URL(string: link)?.absoluteString ?? link) || (droppedURL == nil && droppedText == link)
-        case .label(let label)?: droppedURL == nil && droppedText == label
+    /// Whether what a drop carries is what the sidebar put on the pasteboard for the drag: a link equals the tab's address, a label equals the
+    /// text written (title or workspace name). The caller reads the drop as a URL only when it has a URL type, else as text, so a label that
+    /// looks like a URL is still compared as a label. A foreign drag that slipped past the session check fails here and nothing is applied.
+    public static func payloadMatches(expected: SidebarDragPayload?, dropped: SidebarDroppedContent) -> Bool {
+        switch (expected, dropped) {
+        case (.link(let link)?, .url(let url)): url == (URL(string: link)?.absoluteString ?? link)
+        case (.link(let link)?, .text(let text)): text == link
+        case (.label(let label)?, .text(let text)): text == label
+        default: false
         }
     }
 

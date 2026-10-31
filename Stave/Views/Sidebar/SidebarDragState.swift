@@ -22,6 +22,9 @@ final class SidebarDragState {
     }
 
     private(set) var payload: Payload?
+    /// Exactly what `onDrag` wrote to the pasteboard for this drag. Drops compare the dropped content to this, never to a fresh read of the
+    /// snapshot, which can change mid-drag (a title or address updating).
+    private(set) var written: SidebarDragPayload?
     private(set) var target: SidebarDropTarget?
     private(set) var workspaceSlot: WorkspaceSlot?
     /// Who set the indicator, so a view that is left after the next one was entered does not clear the newer indicator.
@@ -41,9 +44,10 @@ final class SidebarDragState {
     private static let releasedPolls = 3
 
     /// A new drag starting anywhere in the sidebar replaces whatever was remembered.
-    func begin(_ payload: Payload) {
+    func begin(_ payload: Payload, written: SidebarDragPayload?) {
         end()
         self.payload = payload
+        self.written = written
         watchForAbandonment()
     }
 
@@ -51,6 +55,7 @@ final class SidebarDragState {
         watcher?.cancel()
         watcher = nil
         payload = nil
+        written = nil
         recordedCount = nil
         clearIndicator()
     }
@@ -170,9 +175,8 @@ enum DropVerifier {
         guard let expected, let provider = info.itemProviders(for: SidebarDragState.acceptedTypes).first else { return false }
         let box = ProviderBox(provider: provider)
         Task { @MainActor in
-            let url = await loadURL(box)
-            let text = await loadText(box)
-            if SidebarDropPlanner.payloadMatches(expected: expected, droppedURL: url, droppedText: text) { apply() }
+            let content = await load(box)
+            if SidebarDropPlanner.payloadMatches(expected: expected, dropped: content) { apply() }
         }
         return true
     }
@@ -180,18 +184,19 @@ enum DropVerifier {
     /// The provider is only read, by the system's own loading calls.
     private struct ProviderBox: @unchecked Sendable { let provider: NSItemProvider }
 
-    private static func loadURL(_ box: ProviderBox) async -> String? {
-        guard box.provider.canLoadObject(ofClass: URL.self) else { return nil }
-        return await withCheckedContinuation { continuation in
-            _ = box.provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url?.absoluteString) }
+    /// A URL only when the item has a registered type conforming to `public.url`; otherwise its string. Plain text must never be read as a URL.
+    private static func load(_ box: ProviderBox) async -> SidebarDroppedContent {
+        if box.provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            let url: String? = await withCheckedContinuation { continuation in
+                _ = box.provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url?.absoluteString) }
+            }
+            return url.map(SidebarDroppedContent.url) ?? .none
         }
-    }
-
-    private static func loadText(_ box: ProviderBox) async -> String? {
-        guard box.provider.canLoadObject(ofClass: NSString.self) else { return nil }
-        return await withCheckedContinuation { continuation in
+        guard box.provider.canLoadObject(ofClass: NSString.self) else { return .none }
+        let text: String? = await withCheckedContinuation { continuation in
             _ = box.provider.loadObject(ofClass: NSString.self) { text, _ in continuation.resume(returning: (text as? NSString).map { $0 as String }) }
         }
+        return text.map(SidebarDroppedContent.text) ?? .none
     }
 }
 
@@ -219,7 +224,7 @@ struct FixedDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let item = item() else { drag.end(); return false }
-        let expected = SidebarDropPlanner.dragPayload(for: item, snapshot: model.snapshot)
+        let expected = drag.written
         drag.end()
         return DropVerifier.verifiedApply(info: info, expected: expected) { [model, target] in model.drop(item, onto: target) }
     }

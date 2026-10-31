@@ -56,8 +56,9 @@ private struct EssentialTileDrop: ViewModifier {
             .background(SizeReader(size: $size))
             .overlay { indicator }
             .onDrag {
-                drag.begin(.item(.tab(tab.id)))
-                return SidebarDragState.provider(for: SidebarDropPlanner.dragPayload(for: .tab(tab.id), snapshot: model.snapshot))
+                let written = SidebarDropPlanner.dragPayload(for: .tab(tab.id), snapshot: model.snapshot)
+                drag.begin(.item(.tab(tab.id)), written: written)
+                return SidebarDragState.provider(for: written)
             }
             .onDrop(of: SidebarDragState.acceptedTypes, delegate: EssentialDropDelegate(model: model, drag: drag, tabID: tab.id, index: index, width: size.width))
     }
@@ -102,7 +103,7 @@ private struct EssentialDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let found = accepted(info) else { drag.end(); return false }
-        let expected = SidebarDropPlanner.dragPayload(for: found.item, snapshot: model.snapshot)
+        let expected = drag.written
         drag.end()
         return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.drop(found.item, onto: found.target) }
     }

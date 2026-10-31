@@ -15,8 +15,9 @@ struct SidebarRowDrop: ViewModifier {
             .background(SizeReader(size: $size))
             .overlay { indicator }
             .onDrag {
-                drag.begin(.item(row.id))
-                return SidebarDragState.provider(for: SidebarDropPlanner.dragPayload(for: row.id, snapshot: model.snapshot))
+                let written = SidebarDropPlanner.dragPayload(for: row.id, snapshot: model.snapshot)
+                drag.begin(.item(row.id), written: written)
+                return SidebarDragState.provider(for: written)
             }
             .onDrop(of: SidebarDragState.acceptedTypes, delegate: RowDropDelegate(model: model, drag: drag, row: row, height: size.height))
     }
@@ -61,7 +62,7 @@ struct RowDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         guard let found = accepted(info) else { drag.end(); return false }
-        let expected = SidebarDropPlanner.dragPayload(for: found.item, snapshot: model.snapshot)
+        let expected = drag.written
         drag.end()
         return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.drop(found.item, onto: found.target) }
     }

@@ -97,14 +97,22 @@ struct SidebarDropPlannerTests {
     }
 
     @Test func aDropMustCarryWhatWasPutOnThePasteboard() {
-        #expect(SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: "https://example.com/a", droppedText: nil))
-        #expect(SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: nil, droppedText: "https://example.com/a"))
-        #expect(!SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: "https://example.org/other", droppedText: nil))
-        #expect(!SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: nil, droppedText: nil))
-        #expect(SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: nil, droppedText: "Reading"))
-        #expect(!SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: "https://example.com/a", droppedText: "Reading"))
-        #expect(!SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: nil, droppedText: "Other"))
-        #expect(!SidebarDropPlanner.payloadMatches(expected: nil, droppedURL: "https://example.com/a", droppedText: nil))
+        func matches(_ expected: SidebarDragPayload?, _ dropped: SidebarDroppedContent) -> Bool {
+            SidebarDropPlanner.payloadMatches(expected: expected, dropped: dropped)
+        }
+        #expect(matches(.link("https://example.com/a"), .url("https://example.com/a")))
+        #expect(matches(.link("https://example.com/a"), .text("https://example.com/a")))
+        #expect(!matches(.link("https://example.com/a"), .url("https://example.org/other")))
+        #expect(!matches(.link("https://example.com/a"), .none))
+        // A label with no URL type is read as text and matches.
+        #expect(matches(.label("Reading"), .text("Reading")))
+        #expect(!matches(.label("Reading"), .text("Other")))
+        #expect(!matches(.label("Reading"), .url("https://example.com/a")))
+        // Label text that looks like a URL is still a label: read as text, it matches; a real URL item does not.
+        #expect(matches(.label("https://example.com/x"), .text("https://example.com/x")))
+        #expect(!matches(.label("https://example.com/x"), .url("https://example.com/x")))
+        #expect(!matches(nil, .url("https://example.com/a")))
+        #expect(!matches(nil, .none))
     }
 
     @Test func ontoItselfIsNil() {
