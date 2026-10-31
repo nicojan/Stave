@@ -53,6 +53,7 @@ struct WindowSessionTests {
     @Test func sessionKeepsOrderAndSaves() throws {
         let (store, profile, ws) = try fixture()
         let session = WindowSession(store: store)
+        session.enableSaving()
         let a = state(profile, ws)
         let b = state(profile, ws)
         session.update(a)
@@ -72,6 +73,7 @@ struct WindowSessionTests {
     @Test func closingNonLastRemoves() throws {
         let (store, profile, ws) = try fixture()
         let session = WindowSession(store: store)
+        session.enableSaving()
         let a = state(profile, ws)
         let b = state(profile, ws)
         session.update(a)
@@ -85,6 +87,7 @@ struct WindowSessionTests {
     @Test func closingLastKeeps() throws {
         let (store, profile, ws) = try fixture()
         let session = WindowSession(store: store)
+        session.enableSaving()
         let a = state(profile, ws)
         session.update(a)
         session.windowClosed(a.id, isLast: true)

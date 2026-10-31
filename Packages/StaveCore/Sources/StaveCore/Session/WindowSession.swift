@@ -7,6 +7,9 @@ public final class WindowSession {
     private let store: OrganizationStore
     public private(set) var states: [WindowState] = []
 
+    /// False until the app has opened every saved window. While false nothing is written: a launch that fails part-way would otherwise
+    /// replace the user's saved windows with the few that did open.
+    public private(set) var isSavingEnabled = false
     private var saveTask: Task<Void, Never>?
     private let saveDelay: Duration
     /// Called when a debounced save fails.
@@ -15,6 +18,15 @@ public final class WindowSession {
     public init(store: OrganizationStore, saveDelay: Duration = .milliseconds(500)) {
         self.store = store
         self.saveDelay = saveDelay
+    }
+
+    /// Called by the app once the launch loop has finished successfully. A failed launch never calls it.
+    public func enableSaving() { isSavingEnabled = true }
+
+    /// Drops every state whose window is not live. Called when a window opens: a window kept because it was the last to close (and
+    /// has no live controller) is replaced by the new one instead of being saved beside it.
+    public func discardStates(exceptLive liveWindowIDs: Set<UUID>) {
+        states = states.filter { liveWindowIDs.contains($0.id) }
     }
 
     /// One save for all windows, `saveDelay` after the last call. Every call restarts the delay.
@@ -51,6 +63,7 @@ public final class WindowSession {
 
     /// Writes every state with `sortIndex` 0, 1, 2… in the current order.
     public func save() throws {
+        guard isSavingEnabled else { return }
         let numbered = states.enumerated().map { offset, state -> WindowState in
             var copy = state
             copy.sortIndex = Double(offset)

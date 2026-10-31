@@ -118,6 +118,7 @@ struct WindowSessionSaveTests {
         _ = try store.ensureDefaultProfile()
         let windows = try store.restoredWindows()
         let session = WindowSession(store: store, saveDelay: .milliseconds(80))
+        session.enableSaving()
         session.update(windows[0])
         session.scheduleSave()
         session.scheduleSave()
@@ -135,6 +136,7 @@ struct WindowSessionSaveTests {
         _ = try store.ensureDefaultProfile()
         let window = try store.restoredWindows()[0]
         let session = WindowSession(store: store, saveDelay: .milliseconds(80))
+        session.enableSaving()
         session.update(window)
         session.scheduleSave()
         try session.saveNow()
@@ -142,5 +144,68 @@ struct WindowSessionSaveTests {
         try await Task.sleep(for: .milliseconds(300))
         // A delayed save that ran after the removal would have saved nothing, and restore would invent a different default window.
         #expect(try store.restoredWindows().first?.id == window.id)
+    }
+}
+
+@MainActor
+struct WindowSessionLaunchTests {
+    @Test func nothingIsWrittenWhileSavingIsDisabled() async throws {
+        let store = try makeTempStore(now: TestClock().now).0
+        _ = try store.ensureDefaultProfile()
+        let saved = try store.restoredWindows()[0]
+        try store.saveWindows([saved])
+        let session = WindowSession(store: store, saveDelay: .milliseconds(50))
+        #expect(!session.isSavingEnabled)
+        var other = saved
+        other.id = UUID()
+        session.update(other) // a launch that got only this far
+        session.scheduleSave()
+        try session.saveNow()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(try store.restoredWindows().map(\.id) == [saved.id])
+    }
+
+    @Test func enablingLetsTheSessionSave() async throws {
+        let store = try makeTempStore(now: TestClock().now).0
+        _ = try store.ensureDefaultProfile()
+        let saved = try store.restoredWindows()[0]
+        try store.saveWindows([saved])
+        let session = WindowSession(store: store, saveDelay: .milliseconds(50))
+        var other = saved
+        other.id = UUID()
+        session.update(other)
+        session.enableSaving()
+        session.scheduleSave()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(try store.restoredWindows().map(\.id) == [other.id])
+    }
+
+    @Test func closingTheLastWindowKeepsItUntilANewWindowOpensWithNoneLive() throws {
+        let store = try makeTempStore(now: TestClock().now).0
+        _ = try store.ensureDefaultProfile()
+        let first = try store.restoredWindows()[0]
+        let session = WindowSession(store: store)
+        session.enableSaving()
+        session.update(first)
+        session.windowClosed(first.id, isLast: true)
+        #expect(session.states.map(\.id) == [first.id]) // kept for the next launch
+        session.discardStates(exceptLive: []) // a new window opens with no live window
+        var second = first
+        second.id = UUID()
+        session.update(second)
+        #expect(session.states.map(\.id) == [second.id])
+        try session.saveNow()
+        #expect(try store.restoredWindows().map(\.id) == [second.id]) // quit saves one
+    }
+
+    @Test func discardKeepsStatesOfLiveWindows() {
+        let session = WindowSession(store: try! makeTempStore(now: TestClock().now).0)
+        let profile = UUID(), workspace = UUID()
+        let live = WindowState(profileID: profile, workspaceID: workspace, frame: "", sortIndex: 0)
+        let gone = WindowState(profileID: profile, workspaceID: workspace, frame: "", sortIndex: 1)
+        session.update(live)
+        session.update(gone)
+        session.discardStates(exceptLive: [live.id])
+        #expect(session.states.map(\.id) == [live.id])
     }
 }

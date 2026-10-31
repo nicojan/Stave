@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.environment = environment
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
+            environment.session.enableSaving() // a failed launch never reaches here, so it never writes
         } catch let failure as LaunchArguments.Failure {
             presentLaunchArgumentFailure(failure)
             return
@@ -94,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ state: WindowState, environment: AppEnvironment) throws {
+        // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it.
+        environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID }))
         let controller = try BrowserWindowController(state: state, environment: environment) { [weak self] closed in
             self?.windowClosed(closed)
         }
