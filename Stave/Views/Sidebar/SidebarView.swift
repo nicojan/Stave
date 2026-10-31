@@ -2,54 +2,144 @@ import AppKit
 import SwiftUI
 import StaveCore
 
-/// The sidebar of one window: pinned and regular rows over the sidebar material, tinted by the workspace colour. Plan 4 grows it in later tasks.
+/// The sidebar of one window: address field, Essentials, the pinned tree, a New Tab row and the regular tabs over the sidebar material,
+/// tinted by the workspace colour. State here is layout and focus only; every rule lives in StaveCore.
 struct SidebarView: View {
-    let model: BrowserWindowModel
+    @Bindable var model: BrowserWindowModel
+    let openCommandBar: (CommandBarMode) -> Void
 
     @FocusState private var listFocused: Bool
-    @State private var dismissedError: String?
-    /// The highlighted row. A tab row mirrors the model's selection; a folder row is only highlighted (it is not a tab, so the selection stays).
-    @State private var highlighted: SidebarItemID?
+    @State private var dismissedErrorID: Int?
+    @State private var showArchive = false
+    @State private var prompt: FolderPrompt?
+    @State private var promptText = ""
+
+    /// A folder action waiting for a name.
+    private struct FolderPrompt: Identifiable {
+        let id = UUID()
+        let action: SidebarAction
+        let item: SidebarItemID?
+        let currentTitle: String
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            List(selection: $highlighted) {
-                ForEach(model.rows) { row in
-                    SidebarRowView(row: row)
-                        .tag(row.id)
-                }
+            AddressField(tab: model.selectedTab) { openCommandBar(.currentTab) }
+                .padding(.horizontal, 10).padding(.bottom, 8)
+            if !model.snapshot.essentials.isEmpty {
+                EssentialsGrid(
+                    essentials: model.snapshot.essentials, selectedID: model.selectedTabID,
+                    select: { model.select($0) }, perform: { request($0, on: .tab($1)) }
+                )
+                .padding(.horizontal, 10).padding(.bottom, 8)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .focused($listFocused)
-            .accessibilityLabel("Tabs")
-            .onAppear {
-                Task { listFocused = true } // after the window has made its first view key
-                highlighted = model.selectedTabID.map { .tab($0) }
-            }
-            .onChange(of: highlighted) { _, new in
-                if case .tab(let id)? = new { model.select(id) }
-            }
-            .onChange(of: model.selectedTabID) { _, new in
-                if let new { highlighted = .tab(new) } else if case .tab? = highlighted { highlighted = nil }
-            }
+            list
             errorBanner
+            bottomBar
         }
         .defaultFocus($listFocused, true)
         .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
         .ignoresSafeArea()
-        .onChange(of: model.lastError) { _, new in if new == nil { dismissedError = nil } }
+        .alert(prompt?.action.title ?? "", isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
+            TextField("Folder name", text: $promptText)
+            Button("Cancel", role: .cancel) {}
+            Button(prompt?.action == .renameFolder ? "Rename" : "Create") {
+                if let prompt { model.run(prompt.action, on: prompt.item, typed: promptText) }
+            }
+        }
+    }
+
+    private var list: some View {
+        List(selection: $model.sidebarHighlight) {
+            Section {
+                ForEach(model.rows.filter { !$0.isRegular }) { rowView($0) }
+            } header: {
+                Text(SidebarText.pinnedHeader)
+                    .sidebarActions(SidebarMenus.pinnedHeaderActions) { request($0, on: nil) }
+            }
+            newTabRow
+            ForEach(model.rows.filter(\.isRegular)) { rowView($0) }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .focused($listFocused)
+        .accessibilityLabel("Tabs")
+        .onDeleteCommand { model.closeSelectedTab() }
+        .onKeyPress(.leftArrow) { arrow(.left) }
+        .onKeyPress(.rightArrow) { arrow(.right) }
+        .onAppear {
+            Task { listFocused = true } // after the window has made its first view key
+            model.sidebarHighlight = model.selectedTabID.map { .tab($0) }
+        }
+        .onChange(of: model.sidebarHighlight) { _, new in
+            if case .tab(let id)? = new { model.select(id) }
+        }
+        .onChange(of: model.selectedTabID) { _, new in
+            if let new { model.sidebarHighlight = .tab(new) } else if case .tab? = model.sidebarHighlight { model.sidebarHighlight = nil }
+        }
+    }
+
+    private func rowView(_ row: SidebarRow) -> some View {
+        SidebarRowView(row: row, setFolderOpen: { model.setFolderOpen($0, $1) }, perform: { request($0, on: $1) })
+            .tag(row.id)
+    }
+
+    private var newTabRow: some View {
+        Button { openCommandBar(.newTab) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "plus").foregroundStyle(.secondary).frame(width: 16).accessibilityHidden(true)
+                Text(SidebarText.newTabRow)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(SidebarText.newTabRow)
+    }
+
+    private var bottomBar: some View {
+        HStack {
+            Button { showArchive.toggle() } label: { Image(systemName: "archivebox") }
+                .buttonStyle(.borderless)
+                .help(SidebarText.archiveButton)
+                .accessibilityLabel(SidebarText.archiveButton)
+                .popover(isPresented: $showArchive, arrowEdge: .top) {
+                    ArchivePopover(load: { model.archivedTabs() }, restore: { id in
+                        showArchive = false
+                        model.restoreArchived(id)
+                    })
+                }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private func arrow(_ key: SidebarArrow) -> KeyPress.Result {
+        guard let change = SidebarKeys.folderChange(highlight: model.sidebarHighlight, key: key, rows: model.rows) else { return .ignored }
+        model.setFolderOpen(change.folderID, change.isOpen)
+        return .handled
+    }
+
+    /// Runs the action, or asks for a name first when it needs one.
+    private func request(_ action: SidebarAction, on item: SidebarItemID?) {
+        guard action.needsTitle else {
+            if let item { model.run(action, on: item) }
+            return
+        }
+        let current = model.rows.first { $0.id == item }?.title ?? ""
+        promptText = SidebarMenus.promptPrefill(action: action, currentTitle: current)
+        prompt = FolderPrompt(action: action, item: item, currentTitle: current)
     }
 
     @ViewBuilder
     private var errorBanner: some View {
-        if let message = model.lastError, message != dismissedError {
+        if let message = model.lastError, model.lastErrorID != dismissedErrorID {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true)
                 Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                Button { dismissedError = message } label: { Image(systemName: "xmark") }
+                Button { dismissedErrorID = model.lastErrorID } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Dismiss message")
             }
@@ -57,36 +147,6 @@ struct SidebarView: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             .padding(8)
             .accessibilityElement(children: .contain)
-        }
-    }
-}
-
-private struct SidebarRowView: View {
-    let row: SidebarRow
-
-    var body: some View {
-        HStack(spacing: 6) {
-            icon
-            Text(row.title).lineLimit(1).truncationMode(.tail)
-            Spacer(minLength: 0)
-            if let hex = row.containerColorHex {
-                Circle().fill(Color(hex: hex)).frame(width: 7, height: 7).accessibilityHidden(true)
-            }
-        }
-        .padding(.leading, CGFloat(row.depth) * 14)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.accessibilityLabel)
-    }
-
-    @ViewBuilder
-    private var icon: some View {
-        switch row.kind {
-        case .folder(let isOpen, _):
-            Image(systemName: isOpen ? "folder.fill" : "folder").foregroundStyle(.secondary).frame(width: 16)
-        case .pinnedTab:
-            Image(systemName: "pin.fill").font(.caption).foregroundStyle(.secondary).frame(width: 16)
-        case .regularTab:
-            Image(systemName: "globe").foregroundStyle(.secondary).frame(width: 16)
         }
     }
 }
@@ -115,18 +175,4 @@ private struct VisualEffect: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
-}
-
-extension Color {
-    /// `#RRGGBB`; anything else is the system grey, so a bad stored value still draws.
-    init(hex: String) {
-        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        guard digits.count == 6, let value = UInt32(digits, radix: 16) else {
-            self = .gray
-            return
-        }
-        self.init(
-            red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255
-        )
-    }
 }

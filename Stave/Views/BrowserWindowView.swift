@@ -5,6 +5,8 @@ import StaveCore
 /// The sidebar width is the app-wide `SidebarWidthModel`, so every window shows the same width.
 struct BrowserWindowView: View {
     let model: BrowserWindowModel
+    /// Opens the command bar in a mode. A no-op until Task 15 builds the bar.
+    var openCommandBar: (CommandBarMode) -> Void = { _ in }
     let revision: StoreRevision
     let sidebarWidth: SidebarWidthModel
 
@@ -13,7 +15,7 @@ struct BrowserWindowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(model: model)
+            SidebarView(model: model, openCommandBar: openCommandBar)
                 .frame(width: sidebarWidth.width)
             divider
             TabPlaceholderView(model: model)

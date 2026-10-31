@@ -67,8 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌘W: closes the selected tab when the key window is a browser window (or a sheet on one); otherwise closes the key window, as in any app.
     func closeSelectedTab() {
         guard let controller = keyController else { NSApp.keyWindow?.performClose(nil); return }
-        guard let id = controller.model.selectedTabID else { return }
-        controller.model.close(id)
+        controller.model.closeSelectedTab()
     }
 
     /// ⇧⌘W: closes the browser window the key window belongs to; otherwise the key window itself.

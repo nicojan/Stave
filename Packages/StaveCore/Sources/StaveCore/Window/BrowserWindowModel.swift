@@ -14,7 +14,13 @@ public final class BrowserWindowModel {
     public private(set) var profiles: [Profile]
     public private(set) var containers: [Container]
     public private(set) var selectedTabID: UUID?
-    public private(set) var lastError: String?
+    public private(set) var lastError: String? {
+        didSet { if lastError != nil { lastErrorID += 1 } }
+    }
+    /// Bumped on every error, even a repeat of the same text, so a dismissed banner shows again for a new occurrence.
+    public private(set) var lastErrorID = 0
+    /// The highlighted sidebar row, set by the sidebar. A tab row mirrors the selection; a folder row is only highlighted.
+    public var sidebarHighlight: SidebarItemID?
     /// -1, 0 or +1: the direction of the last workspace switch, for the slide animation.
     public private(set) var lastSwitchDirection = 0
     public var frame: String
@@ -245,6 +251,49 @@ public final class BrowserWindowModel {
         guard let result = perform({ try store.closeTab(tabID) }) else { return }
         if case .archived = result { livePages.tabRemoved(tabID) }
         if wasSelected { select(next) }
+    }
+
+    /// ⌘W: closes what the highlighted row names. With a folder highlighted it does nothing.
+    public func closeSelectedTab() {
+        guard let id = SidebarKeys.tabToClose(highlight: sidebarHighlight, selected: selectedTabID) else { return }
+        close(id)
+    }
+
+    /// Runs a sidebar action on a tab or folder. Returns false for the actions that need a name first (`needsTitle`), which the view runs itself.
+    @discardableResult
+    public func run(_ action: SidebarAction, on item: SidebarItemID) -> Bool {
+        switch (action, item) {
+        case (.pin, .tab(let id)): pin(id, folderID: nil)
+        case (.unpin, .tab(let id)): unpin(id)
+        case (.addToEssentials, .tab(let id)): makeEssential(id)
+        case (.backToPinnedPage, .tab(let id)): resetPinned(id)
+        case (.closeTab, .tab(let id)): close(id)
+        case (.removeFromPinned, .tab(let id)): remove(id) { removePinned($0) }
+        case (.removeFromEssentials, .tab(let id)): remove(id) { removeEssential($0) }
+        case (.deleteFolder, .folder(let id)): deleteFolder(id)
+        default: return false
+        }
+        return true
+    }
+
+    /// Finishes a folder action that asked for a name: New Folder at the top, New Folder Inside the folder `item` names, or Rename it.
+    /// A blank rename changes nothing.
+    public func run(_ action: SidebarAction, on item: SidebarItemID?, typed: String) {
+        guard action.needsTitle, let title = SidebarMenus.folderTitle(typed: typed, action: action) else { return }
+        switch (action, item) {
+        case (.newFolder, _): createFolder(title: title, parentID: nil)
+        case (.newFolderInside, .folder(let id)?): createFolder(title: title, parentID: id)
+        case (.renameFolder, .folder(let id)?): renameFolder(id, to: title)
+        default: break
+        }
+    }
+
+    /// Removing the selected tab follows the same selection rule as closing it.
+    private func remove(_ id: UUID, using removal: (UUID) -> Void) {
+        let wasSelected = id == selectedTabID
+        let next = wasSelected ? neighbour(of: id) : nil
+        removal(id)
+        if wasSelected, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { select(next) }
     }
 
     private func neighbour(of tabID: UUID) -> UUID? {
