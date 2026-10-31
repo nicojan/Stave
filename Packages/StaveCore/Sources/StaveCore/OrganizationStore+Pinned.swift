@@ -114,56 +114,6 @@ extension OrganizationStore {
         return slots.compactMap { bySlot[$0.id] }
     }
 
-    // MARK: - Folders
-
-    /// Folders nest at most one level: a parent that is itself nested throws `.folderTooDeep`.
-    @discardableResult
-    public func createFolder(workspaceID: UUID, parentFolderID: UUID?, title: String) throws -> Folder {
-        try database.writer.write { db in
-            guard try Workspace.fetchOne(db, key: workspaceID) != nil else { throw StoreError.notFound }
-            if let parentFolderID {
-                let parent = try requireFolder(parentFolderID, inWorkspace: workspaceID, in: db)
-                guard parent.parentFolderID == nil else { throw StoreError.folderTooDeep }
-            }
-            let folder = Folder(
-                workspaceID: workspaceID, parentFolderID: parentFolderID, title: title,
-                sortIndex: try nextPinnedIndex(workspaceID: workspaceID, parentID: parentFolderID, in: db),
-                modifiedAt: now()
-            )
-            try folder.insert(db)
-            return folder
-        }
-    }
-
-    /// Deletes the folder but keeps its contents: child tabs and sub-folders move to the folder's parent (root for a
-    /// top-level folder), in their existing order, starting at the deleted folder's position. Nothing is archived.
-    public func deleteFolder(_ id: UUID) throws {
-        try database.writer.write { db in
-            guard let folder = try Folder.fetchOne(db, key: id) else { throw StoreError.notFound }
-            let children = try pinnedChildren(workspaceID: folder.workspaceID, parentID: id, in: db)
-            let siblings = try pinnedChildren(workspaceID: folder.workspaceID, parentID: folder.parentFolderID, in: db)
-            let next = siblings.map(\.sortIndex).filter { $0 > folder.sortIndex }.min()
-            let gap = (next ?? folder.sortIndex + Double(children.count)) - folder.sortIndex
-            let stamp = now()
-            for (position, child) in children.enumerated() {
-                let index = folder.sortIndex + gap * Double(position) / Double(children.count)
-                switch child {
-                case .folder(var sub):
-                    sub.parentFolderID = folder.parentFolderID
-                    sub.sortIndex = index
-                    sub.modifiedAt = stamp
-                    try sub.update(db)
-                case .slot(var slot):
-                    slot.folderID = folder.parentFolderID
-                    slot.sortIndex = index
-                    slot.modifiedAt = stamp
-                    try slot.update(db)
-                }
-            }
-            _ = try folder.delete(db)
-        }
-    }
-
     /// The workspace's pinned tree: root folders and root tabs interleaved by sort index, folders carrying their children.
     public func pinnedItems(workspaceID: UUID) throws -> [PinnedItem] {
         try database.writer.read { db in try pinnedItems(workspaceID: workspaceID, in: db) }
@@ -202,7 +152,7 @@ extension OrganizationStore {
             .map(\.element)
     }
 
-    private func nextPinnedIndex(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> Double {
+    func nextPinnedIndex(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> Double {
         (try pinnedChildren(workspaceID: workspaceID, parentID: parentID, in: db).map(\.sortIndex).max() ?? -1) + 1
     }
 

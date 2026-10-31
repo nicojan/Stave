@@ -1,12 +1,16 @@
 import Foundation
 import GRDB
 
+/// What a move goes after: a tab, or (only in the pinned section, where folders share the ordering space) a folder.
+public enum MoveAnchor: Sendable, Equatable { case tab(UUID), folder(UUID) }
+
 extension OrganizationStore {
-    /// Moves a tab to a new place, directly after `previousTabID` in the target sibling list (nil = first).
+    /// Moves a tab to a new place, directly after `anchor` in the target sibling list (nil = first).
+    /// A `.folder` anchor is valid only in `.pinned`; an anchor that is not in the target list throws `.notFound`.
     /// `workspaceID` is nil exactly for `.essential`; `folderID` is allowed only with `.pinned`.
     /// Changing section applies the pin/unpin side effects (pinned page set or cleared). One transaction; every refusal changes nothing.
     public func moveTab(
-        _ id: UUID, toWorkspace workspaceID: UUID?, section: SlotSection, folderID: UUID?, after previousTabID: UUID?
+        _ id: UUID, toWorkspace workspaceID: UUID?, section: SlotSection, folderID: UUID?, after anchor: MoveAnchor?
     ) throws {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
@@ -14,7 +18,7 @@ extension OrganizationStore {
 
             let index = try moveIndex(
                 excluding: slot.id, workspaceID: workspaceID, profileID: slot.profileID,
-                section: section, folderID: folderID, after: previousTabID, in: db
+                section: section, folderID: folderID, after: anchor, in: db
             )
             let stamp = now()
             let pinnedPage = section == .regular
@@ -53,18 +57,18 @@ extension OrganizationStore {
         }
     }
 
-    /// The new sort index: the midpoint after `previousTabID` among the target siblings (without the moving slot).
+    /// The new sort index: the midpoint after the anchor among the target siblings (without the moving slot).
     /// A crowded result (R10) renumbers the siblings 0, 1, 2… first and is computed again.
     private func moveIndex(
         excluding movingSlotID: UUID, workspaceID: UUID?, profileID: UUID, section: SlotSection,
-        folderID: UUID?, after previousTabID: UUID?, in db: Database
+        folderID: UUID?, after anchor: MoveAnchor?, in db: Database
     ) throws -> Double {
         try uncrowdedIndex(
             siblings: {
                 try targetSiblings(workspaceID: workspaceID, profileID: profileID, section: section, folderID: folderID, in: db)
                     .filter { if case .slot(let slot) = $0 { slot.id != movingSlotID } else { true } }
             },
-            propose: { try midpoint(in: $0, after: previousTabID, in: db) },
+            propose: { try indexAfter(anchor, in: $0, in: db) },
             in: db
         )
     }
@@ -84,11 +88,18 @@ extension OrganizationStore {
         }
     }
 
-    private func midpoint(in list: [Child], after previousTabID: UUID?, in db: Database) throws -> Double {
-        guard let previousTabID else { return (list.first?.sortIndex ?? 1) - 1 }
-        guard let tab = try Tab.fetchOne(db, key: previousTabID),
-              let position = list.firstIndex(where: { if case .slot(let slot) = $0 { slot.id == tab.slotID } else { false } })
-        else { throw StoreError.notFound } // previous tab is not in the target list
+    /// The index directly after the anchor among `list` (nil = before the first). An anchor outside the list is `.notFound`.
+    func indexAfter(_ anchor: MoveAnchor?, in list: [Child], in db: Database) throws -> Double {
+        guard let anchor else { return (list.first?.sortIndex ?? 1) - 1 }
+        let position: Int?
+        switch anchor {
+        case .tab(let tabID):
+            let slotID = try Tab.fetchOne(db, key: tabID)?.slotID
+            position = list.firstIndex { $0.slot?.id == slotID && slotID != nil }
+        case .folder(let folderID):
+            position = list.firstIndex { if case .folder(let folder) = $0 { folder.id == folderID } else { false } }
+        }
+        guard let position else { throw StoreError.notFound }
         let previous = list[position].sortIndex
         guard position + 1 < list.count else { return previous + 1 }
         return (previous + list[position + 1].sortIndex) / 2

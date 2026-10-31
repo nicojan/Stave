@@ -72,6 +72,51 @@ public final class OrganizationStore: Sendable {
         }
     }
 
+    public func updateWorkspace(_ id: UUID, name: String, icon: String, colorHex: String) throws {
+        try writer.write { db in
+            guard var workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }
+            workspace.name = name
+            workspace.icon = icon
+            workspace.colorHex = colorHex
+            workspace.modifiedAt = now()
+            try workspace.update(db)
+        }
+    }
+
+    /// Moves the workspace directly after `previousID` among its profile's workspaces (nil = first).
+    /// A workspace of another profile throws `.crossProfileMove`; an unknown one (or itself) `.notFound`.
+    public func moveWorkspace(_ id: UUID, after previousID: UUID?) throws {
+        try writer.write { db in
+            guard var workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }
+            if let previousID {
+                guard let previous = try Workspace.fetchOne(db, key: previousID) else { throw StoreError.notFound }
+                guard previous.profileID == workspace.profileID else { throw StoreError.crossProfileMove }
+            }
+            let siblings = { try self.workspaces(profileID: workspace.profileID, in: db).filter { $0.id != id } }
+            func propose(_ list: [Workspace]) throws -> Double {
+                guard let previousID else { return (list.first?.sortIndex ?? 1) - 1 }
+                guard let position = list.firstIndex(where: { $0.id == previousID }) else { throw StoreError.notFound }
+                let previous = list[position].sortIndex
+                return position + 1 < list.count ? (previous + list[position + 1].sortIndex) / 2 : previous + 1
+            }
+            var list = try siblings()
+            var index = try propose(list)
+            if isCrowded(index, among: list.map(\.sortIndex)) {
+                let stamp = now()
+                for (position, var sibling) in list.enumerated() {
+                    sibling.sortIndex = Double(position)
+                    sibling.modifiedAt = stamp
+                    try sibling.update(db)
+                }
+                list = try siblings()
+                index = try propose(list)
+            }
+            workspace.sortIndex = index
+            workspace.modifiedAt = now()
+            try workspace.update(db)
+        }
+    }
+
     public func workspaces(profileID: UUID) throws -> [Workspace] {
         try writer.read { db in try workspaces(profileID: profileID, in: db) }
     }
