@@ -17,8 +17,7 @@ extension OrganizationStore {
             var (tab, slot) = try fetchPair(id, in: db)
             guard slot.section != .essential, let workspaceID = slot.workspaceID else { throw StoreError.notFound }
             if let folderID {
-                guard let folder = try Folder.fetchOne(db, key: folderID),
-                      folder.workspaceID == workspaceID else { throw StoreError.notFound }
+                _ = try requireFolder(folderID, inWorkspace: workspaceID, in: db)
             }
             let stamp = now()
             slot.section = .pinned
@@ -41,6 +40,7 @@ extension OrganizationStore {
             guard slot.section == .pinned, let workspaceID = slot.workspaceID,
                   let workspace = try Workspace.fetchOne(db, key: workspaceID) else { throw StoreError.notPinned }
             let stamp = now()
+            try archivePinnedPageIfDrifted(slot: slot, tab: tab, closedAt: stamp, in: db)
             slot.section = .regular
             slot.folderID = nil
             slot.sortIndex = try regularIndex(workspaceID: workspace.id, origin: .commandBar, edge: .top, in: db)
@@ -74,7 +74,7 @@ extension OrganizationStore {
     }
 
     public func isDrifted(_ tab: Tab) -> Bool {
-        tab.pinnedURL != nil && tab.url != tab.pinnedURL
+        tab.isDrifted
     }
 
     // MARK: - Essentials
@@ -84,9 +84,7 @@ extension OrganizationStore {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
             guard slot.section != .essential else { return }
-            let siblings = try Slot
-                .filter(Column("profileID") == slot.profileID && Column("section") == SlotSection.essential.rawValue)
-                .fetchAll(db)
+            let siblings = try essentialSlots(profileID: slot.profileID, in: db)
             let stamp = now()
             slot.section = .essential
             slot.workspaceID = nil
@@ -112,63 +110,9 @@ extension OrganizationStore {
     }
 
     func essentials(profileID: UUID, in db: Database) throws -> [Tab] {
-        let slots = try Slot
-            .filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
-            .order(Column("sortIndex"), Column("rowid"))
-            .fetchAll(db)
+        let slots = try essentialSlots(profileID: profileID, in: db)
         let bySlot = try tabsBySlot(slots, in: db)
         return slots.compactMap { bySlot[$0.id] }
-    }
-
-    // MARK: - Folders
-
-    /// Folders nest at most one level: a parent that is itself nested throws `.folderTooDeep`.
-    @discardableResult
-    public func createFolder(workspaceID: UUID, parentFolderID: UUID?, title: String) throws -> Folder {
-        try database.writer.write { db in
-            guard try Workspace.fetchOne(db, key: workspaceID) != nil else { throw StoreError.notFound }
-            if let parentFolderID {
-                guard let parent = try Folder.fetchOne(db, key: parentFolderID),
-                      parent.workspaceID == workspaceID else { throw StoreError.notFound }
-                guard parent.parentFolderID == nil else { throw StoreError.folderTooDeep }
-            }
-            let folder = Folder(
-                workspaceID: workspaceID, parentFolderID: parentFolderID, title: title,
-                sortIndex: try nextPinnedIndex(workspaceID: workspaceID, parentID: parentFolderID, in: db),
-                modifiedAt: now()
-            )
-            try folder.insert(db)
-            return folder
-        }
-    }
-
-    /// Deletes the folder but keeps its contents: child tabs and sub-folders move to the folder's parent (root for a
-    /// top-level folder), in their existing order, starting at the deleted folder's position. Nothing is archived.
-    public func deleteFolder(_ id: UUID) throws {
-        try database.writer.write { db in
-            guard let folder = try Folder.fetchOne(db, key: id) else { throw StoreError.notFound }
-            let children = try pinnedChildren(workspaceID: folder.workspaceID, parentID: id, in: db)
-            let siblings = try pinnedChildren(workspaceID: folder.workspaceID, parentID: folder.parentFolderID, in: db)
-            let next = siblings.map(\.sortIndex).filter { $0 > folder.sortIndex }.min()
-            let gap = (next ?? folder.sortIndex + Double(children.count)) - folder.sortIndex
-            let stamp = now()
-            for (position, child) in children.enumerated() {
-                let index = folder.sortIndex + gap * Double(position) / Double(children.count)
-                switch child {
-                case .folder(var sub):
-                    sub.parentFolderID = folder.parentFolderID
-                    sub.sortIndex = index
-                    sub.modifiedAt = stamp
-                    try sub.update(db)
-                case .slot(var slot):
-                    slot.folderID = folder.parentFolderID
-                    slot.sortIndex = index
-                    slot.modifiedAt = stamp
-                    try slot.update(db)
-                }
-            }
-            _ = try folder.delete(db)
-        }
     }
 
     /// The workspace's pinned tree: root folders and root tabs interleaved by sort index, folders carrying their children.
@@ -181,16 +125,6 @@ extension OrganizationStore {
     }
 
     // MARK: - Helpers
-
-    enum Child {
-        case folder(Folder), slot(Slot)
-        var sortIndex: Double {
-            switch self {
-            case .folder(let folder): folder.sortIndex
-            case .slot(let slot): slot.sortIndex
-            }
-        }
-    }
 
     func fetchPair(_ id: UUID, in db: Database) throws -> (Tab, Slot) {
         guard let tab = try Tab.fetchOne(db, key: id),
@@ -219,7 +153,7 @@ extension OrganizationStore {
             .map(\.element)
     }
 
-    private func nextPinnedIndex(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> Double {
+    func nextPinnedIndex(workspaceID: UUID, parentID: UUID?, in db: Database) throws -> Double {
         (try pinnedChildren(workspaceID: workspaceID, parentID: parentID, in: db).map(\.sortIndex).max() ?? -1) + 1
     }
 

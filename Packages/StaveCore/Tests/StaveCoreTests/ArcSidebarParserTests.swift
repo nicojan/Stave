@@ -388,4 +388,10 @@ struct ArcSidebarParserTests {
         }.value
         #expect(outcomes == [true, true])
     }
+
+    @Test func emptyUnrecognizedFavoritesContainerIsNotCounted() throws {
+        let items = [arcFavoritesJSON("FAV", children: [], marker: #"{"something":{}}"#)]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: []))
+        #expect(sidebar.unrecognizedFavoritesContainers == 0)
+    }
 }

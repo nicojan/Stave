@@ -124,4 +124,21 @@ struct ProfileWorkspaceTests {
         #expect(try reopened.workspaces(profileID: profile.id).map(\.name) == ["Home", "Extra"])
         #expect(try reopened.workspaces(profileID: profile.id).last?.id == extra.id)
     }
+
+    @Test func equalSortIndicesKeepInsertionOrder() throws {
+        let (store, database, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let workspaces = (0..<2).map { _ in
+            Workspace(profileID: profile.id, name: "Same", icon: "star", colorHex: "#000000", sortIndex: 50)
+        }
+        let profiles = (0..<2).map { _ in Profile(name: "Same", sortIndex: 50) }
+        try database.writer.write { db in
+            for workspace in workspaces { try workspace.insert(db) }
+            for profile in profiles { try profile.insert(db) }
+        }
+        let tied = try store.workspaces(profileID: profile.id).filter { $0.sortIndex == 50 }
+        #expect(tied.map(\.id) == workspaces.map(\.id))
+        let tiedProfiles = try store.profiles().filter { $0.sortIndex == 50 }
+        #expect(tiedProfiles.map(\.id) == profiles.map(\.id))
+    }
 }

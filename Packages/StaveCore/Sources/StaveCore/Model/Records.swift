@@ -84,6 +84,9 @@ public struct Tab: Codable, FetchableRecord, PersistableRecord, Sendable, Identi
         self.pinnedTitle = pinnedTitle; self.pinnedFaviconURL = pinnedFaviconURL; self.url = url; self.title = title; self.faviconURL = faviconURL
         self.interactionState = interactionState; self.lastActiveAt = lastActiveAt; self.modifiedAt = modifiedAt
     }
+
+    /// True when the tab is pinned and its current page differs from the pinned one. The one home of the drift rule.
+    public var isDrifted: Bool { pinnedURL != nil && url != pinnedURL }
 }
 
 /// Named containers only; throwaway containers are never stored.

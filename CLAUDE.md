@@ -20,3 +20,7 @@ Stave is a Zen-style web browser for macOS on WKWebView, a sibling of Chorus (`.
 - CI's macOS 14 runner has Xcode 16.2 / Swift 6.0.3. No Swift 6.1+ features, so GRDB is capped below 7.9. Never nest `try #require` inside `#expect`; hoist it to a `let`.
 - Nico's real Arc data (`~/Library/Application Support/Arc/`) is read only by throwaway programs kept outside the repo. Those programs print keys, types and counts, never titles, URLs or IDs, and nothing they read goes into a fixture, commit or log.
 - Data from outside (Arc files, later other browsers' files) is hostile input. A strange shape is reported to the user, never fatal, and never dropped silently.
+- By-hand checks launch the Debug app with `-StaveDataDirectory <folder>/data -StaveArcHome <folder>/home -StaveSeedSample`, using a throwaway folder under `/private/tmp` (literal path). The full procedure is "The by-hand check" in the plan 4 file.
+- Checks always pass `-StaveArcHome` pointing at a throwaway folder. A Debug launch with `-StaveDataDirectory` but no `-StaveArcHome` isolates the Arc home inside the data folder, but never rely on that.
+- Screenshots use `swift scripts/capture-window.swift Stave <path>.png` and accessibility labels use `scripts/ax-dump.sh Stave`. Screenshots stay in the session scratchpad, never in the repo.
+- Send keystrokes only after confirming Stave is frontmost in the same osascript call, and never click outside Stave.

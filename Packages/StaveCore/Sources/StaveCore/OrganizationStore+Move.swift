@@ -1,12 +1,16 @@
 import Foundation
 import GRDB
 
+/// What a move goes after: a tab, or (only in the pinned section, where folders share the ordering space) a folder.
+public enum MoveAnchor: Sendable, Equatable { case tab(UUID), folder(UUID) }
+
 extension OrganizationStore {
-    /// Moves a tab to a new place, directly after `previousTabID` in the target sibling list (nil = first).
+    /// Moves a tab to a new place, directly after `anchor` in the target sibling list (nil = first).
+    /// A `.folder` anchor is valid only in `.pinned`; an anchor that is not in the target list throws `.notFound`.
     /// `workspaceID` is nil exactly for `.essential`; `folderID` is allowed only with `.pinned`.
     /// Changing section applies the pin/unpin side effects (pinned page set or cleared). One transaction; every refusal changes nothing.
     public func moveTab(
-        _ id: UUID, toWorkspace workspaceID: UUID?, section: SlotSection, folderID: UUID?, after previousTabID: UUID?
+        _ id: UUID, toWorkspace workspaceID: UUID?, section: SlotSection, folderID: UUID?, after anchor: MoveAnchor?
     ) throws {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
@@ -14,9 +18,12 @@ extension OrganizationStore {
 
             let index = try moveIndex(
                 excluding: slot.id, workspaceID: workspaceID, profileID: slot.profileID,
-                section: section, folderID: folderID, after: previousTabID, in: db
+                section: section, folderID: folderID, after: anchor, in: db
             )
             let stamp = now()
+            if section == .regular, slot.section != .regular {
+                try archivePinnedPageIfDrifted(slot: slot, tab: tab, closedAt: stamp, in: db)
+            }
             let pinnedPage = section == .regular
                 ? (url: String?.none, title: String?.none, favicon: String?.none)
                 : (url: tab.pinnedURL ?? tab.url, title: tab.pinnedTitle ?? tab.title,
@@ -49,32 +56,24 @@ extension OrganizationStore {
         guard let workspace = try Workspace.fetchOne(db, key: workspaceID) else { throw StoreError.notFound }
         guard workspace.profileID == slot.profileID else { throw StoreError.crossProfileMove }
         if let folderID {
-            guard let folder = try Folder.fetchOne(db, key: folderID),
-                  folder.workspaceID == workspaceID else { throw StoreError.notFound } // folder of another workspace
+            _ = try requireFolder(folderID, inWorkspace: workspaceID, in: db) // folder of another workspace is not found
         }
     }
 
-    /// The new sort index: the midpoint after `previousTabID` among the target siblings (without the moving slot).
+    /// The new sort index: the midpoint after the anchor among the target siblings (without the moving slot).
     /// A crowded result (R10) renumbers the siblings 0, 1, 2… first and is computed again.
     private func moveIndex(
         excluding movingSlotID: UUID, workspaceID: UUID?, profileID: UUID, section: SlotSection,
-        folderID: UUID?, after previousTabID: UUID?, in db: Database
+        folderID: UUID?, after anchor: MoveAnchor?, in db: Database
     ) throws -> Double {
-        func siblings() throws -> [Child] {
-            try targetSiblings(workspaceID: workspaceID, profileID: profileID, section: section, folderID: folderID, in: db)
-                .filter { if case .slot(let slot) = $0 { slot.id != movingSlotID } else { true } }
-        }
-        func index(in list: [Child]) throws -> Double {
-            try midpoint(in: list, after: previousTabID, in: db)
-        }
-        var list = try siblings()
-        var result = try index(in: list)
-        if isCrowded(result, among: list.map(\.sortIndex)) {
-            try renumberSiblings(list, in: db)
-            list = try siblings()
-            result = try index(in: list)
-        }
-        return result
+        try uncrowdedIndex(
+            siblings: {
+                try targetSiblings(workspaceID: workspaceID, profileID: profileID, section: section, folderID: folderID, in: db)
+                    .filter { if case .slot(let slot) = $0 { slot.id != movingSlotID } else { true } }
+            },
+            propose: { try indexAfter(anchor, in: $0, in: db) },
+            in: db
+        )
     }
 
     private func targetSiblings(
@@ -88,37 +87,23 @@ extension OrganizationStore {
             guard let workspaceID else { throw StoreError.notFound }
             return try pinnedChildren(workspaceID: workspaceID, parentID: folderID, in: db)
         case .essential:
-            return try Slot
-                .filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
-                .order(Column("sortIndex"), Column("rowid"))
-                .fetchAll(db).map(Child.slot)
+            return try essentialSlots(profileID: profileID, in: db).map(Child.slot)
         }
     }
 
-    private func midpoint(in list: [Child], after previousTabID: UUID?, in db: Database) throws -> Double {
-        guard let previousTabID else { return (list.first?.sortIndex ?? 1) - 1 }
-        guard let tab = try Tab.fetchOne(db, key: previousTabID),
-              let position = list.firstIndex(where: { if case .slot(let slot) = $0 { slot.id == tab.slotID } else { false } })
-        else { throw StoreError.notFound } // previous tab is not in the target list
-        let previous = list[position].sortIndex
-        guard position + 1 < list.count else { return previous + 1 }
-        return (previous + list[position + 1].sortIndex) / 2
-    }
-
-    /// Rewrites the siblings' indices to 0, 1, 2… in their current order (folders and slots alike).
-    private func renumberSiblings(_ siblings: [Child], in db: Database) throws {
-        let stamp = now()
-        for (position, sibling) in siblings.enumerated() {
-            switch sibling {
-            case .folder(var folder):
-                folder.sortIndex = Double(position)
-                folder.modifiedAt = stamp
-                try folder.update(db)
-            case .slot(var slot):
-                slot.sortIndex = Double(position)
-                slot.modifiedAt = stamp
-                try slot.update(db)
-            }
+    /// The index directly after the anchor among `list` (nil = before the first). An anchor outside the list is `.notFound`.
+    func indexAfter(_ anchor: MoveAnchor?, in list: [Child], in db: Database) throws -> Double {
+        let indices = list.map(\.sortIndex)
+        guard let anchor else { return index(after: nil, among: indices) }
+        let position: Int?
+        switch anchor {
+        case .tab(let tabID):
+            let slotID = try Tab.fetchOne(db, key: tabID)?.slotID
+            position = list.firstIndex { $0.slot?.id == slotID && slotID != nil }
+        case .folder(let folderID):
+            position = list.firstIndex { if case .folder(let folder) = $0 { folder.id == folderID } else { false } }
         }
+        guard let position else { throw StoreError.notFound }
+        return index(after: position, among: indices)
     }
 }

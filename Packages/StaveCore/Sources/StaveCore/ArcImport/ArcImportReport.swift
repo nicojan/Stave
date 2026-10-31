@@ -27,11 +27,17 @@ public struct ArcImportReport: Equatable, Sendable {
         }
     }
 
+    /// Where an entry happened. A space label is its workspace name, plus " (n)" when two or more spaces in the import share the name.
+    public enum Place: Equatable, Sendable {
+        case space(String)
+        /// nil for the default profile (and for unrecognised markers merged into it), else the profile's planned name.
+        case favorites(profile: String?)
+    }
+
     public enum Flattened: Equatable, Sendable {
         /// Its contents moved up into the nearest allowed folder.
         case folderTooDeep(space: String, folder: String)
-        /// `space` is nil for a Favorite.
-        case splitView(space: String?, tabCount: Int)
+        case splitView(place: Place, tabCount: Int)
         case favoritesFolder(folder: String)
         /// An unpinned folder imported as regular tabs (`includeUnpinnedTabs`): regular tabs have no folders.
         case unpinnedFolder(space: String, folder: String)
@@ -39,8 +45,8 @@ public struct ArcImportReport: Equatable, Sendable {
 
     public enum Skipped: Equatable, Sendable {
         /// `scheme` is "" when the URL is empty or unparseable.
-        case nonWebURL(space: String?, title: String, scheme: String)
-        case unsupportedItem(space: String?, kind: String, title: String?)
+        case nonWebURL(place: Place, title: String, scheme: String)
+        case unsupportedItem(place: Place, kind: String, title: String?)
         /// Only when `includeUnpinnedTabs` is false and count > 0.
         case unpinnedTabs(space: String, count: Int)
         /// Ruling 4: imported into the default profile.
