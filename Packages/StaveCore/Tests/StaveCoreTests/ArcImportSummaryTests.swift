@@ -106,8 +106,8 @@ struct ArcImportSummaryTests {
     @Test func singularCountsInSkipped() {
         let s = summary(skipped: [.unpinnedTabs(space: "Work", count: 1), .duplicateItem(count: 1)])
         #expect(s.skipped == [
-            "1 unpinned tab in Work weren't imported. Turn on “Also import unpinned tabs” to bring them.",
-            "1 item appeared twice in Arc's file and were imported once.",
+            "1 unpinned tab in Work wasn't imported. Turn on “Also import unpinned tabs” to bring them.",
+            "1 item appeared twice in Arc's file and was imported once.",
         ])
     }
 

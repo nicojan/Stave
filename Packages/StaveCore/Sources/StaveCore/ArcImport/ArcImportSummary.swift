@@ -71,11 +71,11 @@ public struct ArcImportSummary: Equatable, Sendable {
             }
             return "\(itemName(title)) \(placeText(place)) is an Arc \(what), which Stave doesn't have."
         case .unpinnedTabs(let space, let count):
-            return "\(plural(count, "unpinned tab", "unpinned tabs")) in \(space) weren't imported. Turn on “Also import unpinned tabs” to bring them."
+            return "\(plural(count, "unpinned tab", "unpinned tabs")) in \(space) \(count == 1 ? "wasn't" : "weren't") imported. Turn on “Also import unpinned tabs” to bring them."
         case .unrecognizedProfile(let space):
             return "\(space) belonged to an Arc profile Stave couldn't identify, so it went into your first profile."
         case .duplicateItem(let count):
-            return "\(plural(count, "item", "items")) appeared twice in Arc's file and were imported once."
+            return "\(plural(count, "item", "items")) appeared twice in Arc's file and \(count == 1 ? "was" : "were") imported once."
         case .unrecognizedFavoritesProfile:
             return "Some Arc Favorites belonged to a profile Stave couldn't identify, so they became Essentials in your first profile."
         case .spaceContentsMissing(let space):
