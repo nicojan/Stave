@@ -125,7 +125,7 @@ extension OrganizationStore {
         return slots.compactMap { bySlot[$0.id] }
     }
 
-    /// The title, or the URL's host when the title is empty, or the URL itself.
+    /// The title, or the URL's host when the title is empty, or the URL itself, or "New Tab".
     public func displayTitle(for tab: Tab) -> String {
         DisplayText.title(for: tab)
     }

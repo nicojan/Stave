@@ -309,7 +309,8 @@ public final class BrowserWindowModel {
             if !pinned && !essential { actions.append(.pinTab) }
             if pinned { actions.append(.unpinTab) }
             if tab.isDrifted { actions.append(.resetPinnedTab) }
-            actions += [.closeTab, .copyAddress]
+            actions.append(.closeTab)
+            if !tab.url.isEmpty { actions.append(.copyAddress) }
         }
         actions += profiles.filter { $0.id != snapshot.profile.id }.map { .switchProfile(id: $0.id, name: $0.name) }
         actions += containers.map { .newTabInContainer(id: $0.id, name: $0.name) }
@@ -359,7 +360,7 @@ public final class BrowserWindowModel {
         case .pinTab: if let id = selectedTabID { pin(id, folderID: nil) }
         case .unpinTab: if let id = selectedTabID { unpin(id) }
         case .resetPinnedTab: if let id = selectedTabID { resetPinned(id) }
-        case .copyAddress: if let tab = selectedTab { return .copy(tab.url) }
+        case .copyAddress: if let tab = selectedTab, !tab.url.isEmpty { return .copy(tab.url) }
         case .switchProfile(let id, _): switchProfile(to: id)
         case .newTabInContainer(let id, _): openTab(url: "", containerID: id)
         }

@@ -344,6 +344,24 @@ struct CommandBarTests {
         #expect(CommandAction.resetPinnedTab.title == "Back to Pinned Page")
     }
 
+    @Test func copyAddressIsNotOfferedForAnEmptyURL() throws {
+        let world = try makeWorld()
+        let container = try world.store.createContainer(profileID: world.profile.id, name: "Shop", colorHex: "#34C759")
+        let model = try world.window()
+        model.openTab(url: "", containerID: container.id)
+        let actions = model.commandCandidates().actions
+        #expect(actions.contains(.closeTab) && actions.contains(.pinTab))
+        #expect(!actions.contains(.copyAddress))
+        #expect(model.perform(.action(.copyAddress), mode: .newTab) == .done)
+    }
+
+    @Test func untitledAddresslessTabIsFoundAsNewTab() {
+        let slot = UUID()
+        let blank = CommandTab(tab: Tab(slotID: slot, url: "", title: ""), section: .regular, workspaceID: nil, workspaceName: nil)
+        let found = CommandCandidates(tabs: [blank])
+        #expect(CommandBarSearch.results(query: "new t", candidates: found).dropFirst().first == .tab(blank))
+    }
+
     @Test func actionsOfferOtherProfilesAndContainers() throws {
         let world = try makeWorld()
         let other = try world.store.createProfile(name: "Other")

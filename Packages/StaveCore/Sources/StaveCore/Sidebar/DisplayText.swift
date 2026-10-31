@@ -9,8 +9,11 @@ public enum DisplayText {
     public static func title(title: String, url: String) -> String {
         guard title.isEmpty else { return title }
         if let host = URL(string: url)?.host, !host.isEmpty { return host }
-        return url
+        return url.isEmpty ? newTabTitle : url
     }
+
+    /// What a tab with neither a title nor an address (a fresh container tab) is called.
+    public static let newTabTitle = "New Tab"
 
     /// The URL's host without a leading `www.`; the whole string when there is no host.
     public static func address(for url: String) -> String {

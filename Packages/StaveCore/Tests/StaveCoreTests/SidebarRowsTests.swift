@@ -16,6 +16,16 @@ struct SidebarRowsTests {
         Tab(slotID: UUID(), url: url, title: title)
     }
 
+    @Test func untitledAddresslessTabReadsNewTab() throws {
+        let (_, snapshot, containers) = try home()
+        var blank = snapshot
+        blank.regular = [tab()]
+        blank.pinned = [.tab(tab())]
+        let rows = SidebarRows.build(blank, containers: containers)
+        #expect(rows.map(\.title) == ["New Tab", "New Tab"])
+        #expect(rows.map(\.accessibilityLabel) == ["New Tab, pinned tab", "New Tab, tab"])
+    }
+
     @Test func rowsInVisualOrder() throws {
         let (_, snapshot, containers) = try home()
         let rows = SidebarRows.build(snapshot, containers: containers)
@@ -92,6 +102,8 @@ struct SidebarRowsTests {
         #expect(DisplayText.title(for: tab(url: "https://www.example.com/x", title: "Hi")) == "Hi")
         #expect(DisplayText.title(for: tab(url: "https://www.example.com/x")) == "www.example.com")
         #expect(DisplayText.title(for: tab(url: "about:blank")) == "about:blank")
+        #expect(DisplayText.title(for: tab()) == "New Tab")
+        #expect(DisplayText.title(title: "", url: "") == "New Tab")
     }
 
     @Test func monogram() {
