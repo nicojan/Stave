@@ -10,6 +10,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
     let model: BrowserWindowModel
     let window: NSWindow
+    /// Lets the Workspaces menu ask this window's sidebar to open the workspace editor.
+    let sidebarPresenter = SidebarPresenter()
     private let environment: AppEnvironment
     private let onClose: (BrowserWindowController) -> Void
     private var isClosed = false
@@ -42,7 +44,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.minSize = WindowFrameRestore.minimumSize
         window.delegate = self
-        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, revision: environment.revision, sidebarWidth: environment.sidebarWidth))
+        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, revision: environment.revision, sidebarWidth: environment.sidebarWidth))
         hosting.sizingOptions = [] // the window decides its size, not the SwiftUI content
         window.contentView = hosting
     }

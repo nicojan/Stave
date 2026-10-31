@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import StaveCore
 
 /// Opens the store, restores one window per saved `WindowState`, and saves the set as it changes and on quit. Menu commands call into it.
@@ -9,14 +10,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isTerminating = false
     /// True once every saved window is open. A launch that fails part-way must not save its partial set over the user's windows.
     private var launchCompleted = false
+    /// What the Workspaces menu and Settings show; refreshed when the key window, its workspaces or the ⌃1–9 setting change.
+    let menuState = AppMenuState()
+    private var menuGeneration = 0
+    private var keyObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             let environment = try AppEnvironment.live(options: try DebugLaunchOptions.current)
             let windows = try environment.store.restoredWindows()
             self.environment = environment
+            menuState.shortcuts = environment.workspaceShortcuts
+            observeKeyWindow()
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
+            refreshWorkspaceMenu()
             environment.session.enableSaving() // a failed launch never reaches here, so it never writes
         } catch let failure as LaunchArguments.Failure {
             presentLaunchArgumentFailure(failure)
@@ -79,6 +87,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Workspaces menu
+
+    /// ⌃1–9 and the Workspaces menu items: the key browser window switches. With no browser window key (Settings, say) nothing happens.
+    func switchWorkspace(to id: UUID) {
+        keyController?.model.switchWorkspace(to: id)
+    }
+
+    /// Workspaces ▸ New Workspace…: opens the editor sheet on the key browser window.
+    func newWorkspace() {
+        keyController?.sidebarPresenter.workspaceEditor = .create
+    }
+
+    /// Rebuilds the menu's items from the key window's workspaces and the setting, and re-arms itself for the next change to either.
+    /// The key window is not observable, so window notifications call this too; a generation number retires the older trackers.
+    private func refreshWorkspaceMenu() {
+        menuGeneration += 1
+        let generation = menuGeneration
+        let items: [WorkspaceSwitchItem] = withObservationTracking {
+            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else { return [] }
+            return WorkspaceMenus.switchItems(
+                workspaces: controller.model.workspaces, currentID: controller.model.snapshot.workspace.id,
+                shortcutsEnabled: shortcuts.isEnabled
+            )
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.menuGeneration == generation else { return }
+                self.refreshWorkspaceMenu()
+            }
+        }
+        if menuState.workspaceItems != items { menuState.workspaceItems = items }
+    }
+
+    private func observeKeyWindow() {
+        let center = NotificationCenter.default
+        keyObservers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                // Deferred: during a resign, `NSApp.keyWindow` still names the old window.
+                Task { @MainActor in self?.refreshWorkspaceMenu() }
+            }
+        }
+    }
+
     // MARK: - Windows
 
     /// The browser window that is key, or the one a key sheet is attached to. Nil when the key window is something else (Settings).
@@ -101,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controllers = controllers + [controller]
         controller.show()
+        refreshWorkspaceMenu()
     }
 
     private func windowClosed(_ closed: BrowserWindowController) {
@@ -113,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         controllers = controllers.filter { $0 !== closed }
+        refreshWorkspaceMenu()
     }
 
     // MARK: - Failure

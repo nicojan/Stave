@@ -12,6 +12,8 @@ final class AppEnvironment {
     let session: WindowSession
     /// The one sidebar width of the app, shared by every window.
     let sidebarWidth: SidebarWidthModel
+    /// The ⌃1–9 setting as live state, read by the Workspaces menu and written by Settings.
+    let workspaceShortcuts: WorkspaceShortcutsSetting
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
 
@@ -37,6 +39,9 @@ final class AppEnvironment {
         let sidebarWidth = SidebarWidthModel(store: store)
         sidebarWidth.onSaveError = { NSLog("Stave: could not save the sidebar width: \($0)") }
         self.sidebarWidth = sidebarWidth
+        let shortcuts = WorkspaceShortcutsSetting(store: store)
+        shortcuts.onSaveError = { NSLog("Stave: could not save the workspace shortcut setting: \($0)") }
+        self.workspaceShortcuts = shortcuts
     }
 
     /// Launches with the Debug options when given, else the real bundle id and Application Support folder.

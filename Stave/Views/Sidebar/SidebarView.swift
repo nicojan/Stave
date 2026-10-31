@@ -6,6 +6,7 @@ import StaveCore
 /// tinted by the workspace colour. State here is layout and focus only; every rule lives in StaveCore.
 struct SidebarView: View {
     @Bindable var model: BrowserWindowModel
+    let presenter: SidebarPresenter
     let openCommandBar: (CommandBarMode) -> Void
 
     @FocusState private var listFocused: Bool
@@ -13,6 +14,12 @@ struct SidebarView: View {
     @State private var showArchive = false
     @State private var prompt: FolderPrompt?
     @State private var promptText = ""
+    @State private var slide: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How far the new workspace's list starts from its resting place, and how far it travels in 0.2 s (decision 18).
+    private static let slideDistance: CGFloat = 40
+    private static let slideDuration = 0.2
 
     /// A folder action waiting for a name.
     private struct FolderPrompt: Identifiable {
@@ -34,12 +41,17 @@ struct SidebarView: View {
                 .padding(.horizontal, 10).padding(.bottom, 8)
             }
             list
+                .offset(x: slide)
+                .opacity(1 - 0.6 * Double(abs(slide) / Self.slideDistance))
+                .clipped()
             errorBanner
             bottomBar
         }
         .defaultFocus($listFocused, true)
+        .onChange(of: model.snapshot.workspace.id) { slideIn() }
         .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
+        .background { SwipeCatcher { model.switchWorkspace(offset: $0) } }
         .ignoresSafeArea()
         .alert(prompt?.action.title ?? "", isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
             TextField(SidebarText.folderName, text: $promptText)
@@ -110,9 +122,24 @@ struct SidebarView: View {
                         model.restoreArchived(id)
                     })
                 }
-            Spacer(minLength: 0)
+            if WorkspaceMenus.showsProfileMenu(profileCount: model.profiles.count) {
+                ProfileMenu(model: model)
+            }
+            WorkspaceSwitcher(model: model, presenter: presenter)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    /// Slides the new workspace's list in from the direction of travel; nothing under Reduce Motion, and nothing for a profile switch (direction 0).
+    private func slideIn() {
+        let direction = model.lastSwitchDirection
+        guard !reduceMotion, direction != 0 else { return }
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { slide = CGFloat(direction) * Self.slideDistance }
+        Task { @MainActor in // next turn, so the start offset is drawn before the animation to rest
+            withAnimation(.easeOut(duration: Self.slideDuration)) { slide = 0 }
+        }
     }
 
     private func arrow(_ key: SidebarArrow) -> KeyPress.Result {

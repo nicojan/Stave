@@ -1,4 +1,5 @@
 import SwiftUI
+import StaveCore
 
 @main
 struct StaveApp: App {
@@ -6,7 +7,7 @@ struct StaveApp: App {
 
     // Windows are AppKit-managed (see AppDelegate); SwiftUI only needs a scene, which also hosts the menu commands.
     var body: some Scene {
-        Settings { EmptyView() }
+        Settings { SettingsView(shortcuts: delegate.menuState.shortcuts) }
             .commands {
                 CommandGroup(replacing: .newItem) {
                     Button("New Window") { delegate.newWindow() }
@@ -18,6 +19,24 @@ struct StaveApp: App {
                     Button("Close Window") { delegate.closeWindow() }
                         .keyboardShortcut("w", modifiers: [.command, .shift])
                 }
+                CommandMenu(WorkspaceMenus.workspacesMenu) {
+                    ForEach(delegate.menuState.workspaceItems, id: \.workspaceID) { item in
+                        workspaceItem(item)
+                    }
+                    Divider()
+                    Button(WorkspaceMenus.newWorkspaceItem) { delegate.newWorkspace() }
+                }
             }
+    }
+
+    /// One switch item; a checkmark marks the current workspace, and ⌃digit is attached only when the item has a digit.
+    @ViewBuilder
+    private func workspaceItem(_ item: WorkspaceSwitchItem) -> some View {
+        let toggle = Toggle(item.title, isOn: Binding(get: { item.isCurrent }, set: { _ in delegate.switchWorkspace(to: item.workspaceID) }))
+        if let digit = item.shortcutDigit, let character = String(digit).first {
+            toggle.keyboardShortcut(KeyEquivalent(character), modifiers: .control)
+        } else {
+            toggle
+        }
     }
 }
