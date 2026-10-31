@@ -10,6 +10,7 @@
 		019C68D69E15CA6023935959 /* SidebarRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD86DD835E09A6113A128904 /* SidebarRowView.swift */; };
 		07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */; };
 		0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */; };
+		12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */; };
 		2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3BA1703865C93D34246435 /* StaveApp.swift */; };
 		32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */; };
 		43B34A91418D69D440399677 /* SwipeCatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */; };
@@ -21,6 +22,7 @@
 		9120B1829D328055C745B599 /* TabPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */; };
 		91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */; };
 		984B8D0F42BC2319E1F111F5 /* WorkspaceSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */; };
+		99CB40616081101643172E0F /* CompactContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */; };
 		A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */; };
 		ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */; };
 		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
@@ -36,6 +38,7 @@
 		0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabPlaceholderView.swift; sourceTree = "<group>"; };
 		18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarRowDrop.swift; sourceTree = "<group>"; };
 		1942EB2B034830D345E030ED /* BrowserWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowController.swift; sourceTree = "<group>"; };
+		1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactContainer.swift; sourceTree = "<group>"; };
 		35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceEditor.swift; sourceTree = "<group>"; };
 		37F806ED539F7D1586C99B13 /* SidebarDragState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarDragState.swift; sourceTree = "<group>"; };
 		381B620D30A72B457FDC56E5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -49,6 +52,7 @@
 		995508A5262708F8EE5364E3 /* AppMenuState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuState.swift; sourceTree = "<group>"; };
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
+		D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactDriver.swift; sourceTree = "<group>"; };
 		DB1ED1C2442C79A2AE0927F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarActions.swift; sourceTree = "<group>"; };
 		DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentialsGrid.swift; sourceTree = "<group>"; };
@@ -97,6 +101,15 @@
 			path = Content;
 			sourceTree = "<group>";
 		};
+		2EF56A5AD52A919E8AF23C07 /* Compact */ = {
+			isa = PBXGroup;
+			children = (
+				1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */,
+				D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */,
+			);
+			path = Compact;
+			sourceTree = "<group>";
+		};
 		3B685D946852CE5994D9CEE8 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -115,6 +128,7 @@
 			children = (
 				58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */,
 				173E4C9CE531E23302434BA8 /* CommandBar */,
+				2EF56A5AD52A919E8AF23C07 /* Compact */,
 				21A24A833C93DF9ED96A4030 /* Content */,
 				0631CD175876F9C48EF5AA42 /* Settings */,
 				C2073894525C070D00943647 /* Sidebar */,
@@ -245,6 +259,8 @@
 				AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */,
 				07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */,
 				ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */,
+				99CB40616081101643172E0F /* CompactContainer.swift in Sources */,
+				12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */,
 				32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */,
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,

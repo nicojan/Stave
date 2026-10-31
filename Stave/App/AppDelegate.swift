@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let windows = try environment.store.restoredWindows()
             self.environment = environment
             menuState.shortcuts = environment.workspaceShortcuts
+            menuState.compactMode = environment.compactMode
             observeKeyWindow()
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
@@ -96,6 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌥⌘↑ / ⌥⌘↓: moves the key browser window's highlighted sidebar row one place up (-1) or down (+1). Nothing highlighted does nothing.
     func moveHighlightedRow(by delta: Int) { keyController?.model.moveHighlighted(by: delta) }
 
+    /// View ▸ Compact Mode (⌃⌘S): flips the setting through the store, so every window follows. Works with Settings key too.
+    func toggleCompactMode() { environment?.compactMode.toggle() }
+
     // MARK: - Workspaces menu
 
     /// ⌃1–9 and the Workspaces menu items: the key browser window switches. With no browser window key (Settings, say) nothing happens.
@@ -113,12 +117,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshWorkspaceMenu() {
         menuGeneration += 1
         let generation = menuGeneration
-        let items: [WorkspaceSwitchItem] = withObservationTracking {
-            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else { return [] }
-            return WorkspaceMenus.switchItems(
+        let (items, compact): ([WorkspaceSwitchItem], Bool) = withObservationTracking {
+            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else { return ([], false) }
+            let items = WorkspaceMenus.switchItems(
                 workspaces: controller.model.workspaces, currentID: controller.model.snapshot.workspace.id,
                 shortcutsEnabled: shortcuts.isEnabled
             )
+            return (items, controller.model.isCompact)
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.menuGeneration == generation else { return }
@@ -126,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         if menuState.workspaceItems != items { menuState.workspaceItems = items }
+        if menuState.isCompact != compact { menuState.isCompact = compact }
     }
 
     private func observeKeyWindow() {

@@ -24,6 +24,8 @@ public final class BrowserWindowModel {
     /// -1, 0 or +1: the direction of the last workspace switch, for the slide animation.
     public private(set) var lastSwitchDirection = 0
     public var frame: String
+    /// The compact-mode setting as last read; every window re-reads it with the rest of the store when the revision changes.
+    public private(set) var isCompact = false
 
     @ObservationIgnored private let store: OrganizationStore
     @ObservationIgnored private let revision: StoreRevision
@@ -53,6 +55,7 @@ public final class BrowserWindowModel {
         snapshot = loaded.snapshot; rows = loaded.rows; workspaces = loaded.workspaces
         profiles = loaded.profiles; containers = loaded.containers
         profileID = loaded.snapshot.profile.id; workspaceID = loaded.snapshot.workspace.id
+        isCompact = (try? store.setting(SettingKeys.compactMode)) ?? SettingKeys.compactMode.defaultValue
         selectedTabID = Self.allTabs(in: loaded.snapshot).contains { $0.id == state.selectedTabID } ? state.selectedTabID : nil
         if let selectedTabID { livePages.show(selectedTabID, in: windowID) }
     }
@@ -65,6 +68,7 @@ public final class BrowserWindowModel {
             snapshot = loaded.snapshot; rows = loaded.rows; workspaces = loaded.workspaces
             profiles = loaded.profiles; containers = loaded.containers
             profileID = loaded.snapshot.profile.id; workspaceID = loaded.snapshot.workspace.id
+            if let compact = try? store.setting(SettingKeys.compactMode), compact != isCompact { isCompact = compact }
         } catch {
             lastError = StoreErrorText.message(for: error)
             return
@@ -116,6 +120,11 @@ public final class BrowserWindowModel {
     }
 
     // MARK: - Writes
+
+    /// View ▸ Compact Mode and the command bar's action: flips the setting through the write path, so every window re-reads.
+    public func toggleCompactMode() {
+        perform { try store.setSetting(SettingKeys.compactMode, !(try store.setting(SettingKeys.compactMode))) }
+    }
 
     /// The one door for writes. Success: clear the error, bump the shared revision, re-read. Failure: show the message, re-read.
     @discardableResult
@@ -490,7 +499,7 @@ public final class BrowserWindowModel {
         case .newWindow: return .newWindow
         case .importFromArc: return .showArcImport
         case .showArchive: return .showArchive
-        case .toggleCompactMode: perform { try store.setSetting(SettingKeys.compactMode, !(try store.setting(SettingKeys.compactMode))) }
+        case .toggleCompactMode: toggleCompactMode()
         case .closeTab: if let id = selectedTabID { close(id) }
         case .pinTab: if let id = selectedTabID { pin(id, folderID: nil) }
         case .unpinTab: if let id = selectedTabID { unpin(id) }

@@ -9,6 +9,8 @@ final class SidebarPresenter {
     var workspaceEditor: WorkspaceEditorMode?
     var showArchive = false
     var showNewProfile = false
+    /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.
+    let drag = SidebarDragState()
     /// Non-nil while the command bar is open.
     private(set) var commandBar: CommandBarModel?
     /// False when the bar closed by presenting a sheet, alert or popover, which must keep the focus it takes.

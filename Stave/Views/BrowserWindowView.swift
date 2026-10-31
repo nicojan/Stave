@@ -1,7 +1,7 @@
 import SwiftUI
 import StaveCore
 
-/// One window's content: the sidebar beside the content area, with a draggable divider. Re-reads the model when any window writes to the store.
+/// One window's content: the sidebar beside the content area, with a draggable divider; in compact mode the sidebar overlays the content instead. Re-reads the model when any window writes to the store.
 /// The sidebar width is the app-wide `SidebarWidthModel`, so every window shows the same width.
 struct BrowserWindowView: View {
     let model: BrowserWindowModel
@@ -17,12 +17,12 @@ struct BrowserWindowView: View {
     private static let fadeDuration = 0.12
 
     var body: some View {
-        HStack(spacing: 0) {
-            SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) })
-                .frame(width: sidebarWidth.width)
-            divider
-            TabPlaceholderView(model: model)
-        }
+        CompactContainer(
+            isCompact: model.isCompact, sidebarWidth: sidebarWidth, presenter: presenter,
+            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }) },
+            divider: { divider },
+            content: { TabPlaceholderView(model: model) }
+        )
         .overlay { commandBarLayer }
         .onChange(of: revision.value) { model.reload() }
         // The bar acts on the window it opened in; a workspace or profile change (a menu shortcut, a swipe) closes it.

@@ -1,10 +1,11 @@
 import SwiftUI
 import StaveCore
 
-/// The Settings window. Only the ⌃1–9 toggle so far; the rest of Settings arrives with plan 5.
+/// The Settings window. Only the ⌃1–9 and compact-mode toggles so far; the rest of Settings arrives with plan 5.
 struct SettingsView: View {
     /// Nil until the app has opened its store.
     let shortcuts: WorkspaceShortcutsSetting?
+    let compactMode: CompactModeSetting?
 
     var body: some View {
         Form {
@@ -15,7 +16,16 @@ struct SettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
+            }
+            if let compactMode {
+                Toggle(CompactModeSetting.title, isOn: Binding(get: { compactMode.isEnabled }, set: { compactMode.set($0) }))
+                    .accessibilityLabel(CompactModeSetting.title)
+                Text(CompactModeSetting.note)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if shortcuts == nil && compactMode == nil {
                 Text("Stave's data is not open.").foregroundStyle(.secondary)
             }
         }

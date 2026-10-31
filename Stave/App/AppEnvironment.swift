@@ -14,6 +14,8 @@ final class AppEnvironment {
     let sidebarWidth: SidebarWidthModel
     /// The ⌃1–9 setting as live state, read by the Workspaces menu and written by Settings.
     let workspaceShortcuts: WorkspaceShortcutsSetting
+    /// The compact-mode setting for Settings and the View menu; writing it bumps `revision`, so every window follows.
+    let compactMode: CompactModeSetting
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
 
@@ -42,6 +44,9 @@ final class AppEnvironment {
         let shortcuts = WorkspaceShortcutsSetting(store: store)
         shortcuts.onSaveError = { NSLog("Stave: could not save the workspace shortcut setting: \($0)") }
         self.workspaceShortcuts = shortcuts
+        let compact = CompactModeSetting(store: store, revision: revision)
+        compact.onSaveError = { NSLog("Stave: could not save the compact mode setting: \($0)") }
+        self.compactMode = compact
     }
 
     /// Launches with the Debug options when given, else the real bundle id and Application Support folder.

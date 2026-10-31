@@ -8,4 +8,8 @@ final class AppMenuState {
     var workspaceItems: [WorkspaceSwitchItem] = []
     /// Nil until the store is open.
     var shortcuts: WorkspaceShortcutsSetting?
+    /// Nil until the store is open.
+    var compactMode: CompactModeSetting?
+    /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.
+    var isCompact = false
 }

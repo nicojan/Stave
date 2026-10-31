@@ -15,12 +15,13 @@ struct SidebarView: View {
     @State private var prompt: FolderPrompt?
     @State private var promptText = ""
     @State private var slide: CGFloat = 0
-    @State private var drag = SidebarDragState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How far the new workspace's list starts from its resting place, and how far it travels in 0.2 s (decision 18).
     private static let slideDistance: CGFloat = 40
     private static let slideDuration = 0.2
+
+    private var drag: SidebarDragState { presenter.drag }
 
     /// A folder action waiting for a name.
     private struct FolderPrompt: Identifiable {
@@ -55,7 +56,11 @@ struct SidebarView: View {
             .background { SwipeCatcher { model.switchWorkspace(offset: $0) } }
             bottomBar
         }
-        .defaultFocus($listFocused, true)
+        .defaultFocus($listFocused, !model.isCompact)
+        .onChange(of: model.isCompact) { _, compact in
+            // A hidden sidebar must not keep the keyboard; showing it again gives the list the focus back.
+            listFocused = !compact
+        }
         .onChange(of: model.snapshot.workspace.id) { slideIn() }
         .onChange(of: presenter.commandBar == nil) { _, closed in
             guard closed, presenter.returnsFocusToList else { return }
@@ -96,7 +101,7 @@ struct SidebarView: View {
         .onKeyPress(.leftArrow) { arrow(.left) }
         .onKeyPress(.rightArrow) { arrow(.right) }
         .onAppear {
-            Task { listFocused = true } // after the window has made its first view key
+            Task { listFocused = !model.isCompact } // after the window has made its first view key; a compact window starts with the sidebar hidden
             model.sidebarHighlight = model.selectedTabID.map { .tab($0) }
         }
         .onChange(of: model.sidebarHighlight) { _, new in

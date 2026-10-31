@@ -7,7 +7,7 @@ struct StaveApp: App {
 
     // Windows are AppKit-managed (see AppDelegate); SwiftUI only needs a scene, which also hosts the menu commands.
     var body: some Scene {
-        Settings { SettingsView(shortcuts: delegate.menuState.shortcuts) }
+        Settings { SettingsView(shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode) }
             .commands {
                 CommandGroup(replacing: .newItem) {
                     Button(CommandBarText.newTabMenuItem) { delegate.newTab() }
@@ -24,6 +24,10 @@ struct StaveApp: App {
                         .keyboardShortcut("w", modifiers: .command)
                     Button("Close Window") { delegate.closeWindow() }
                         .keyboardShortcut("w", modifiers: [.command, .shift])
+                }
+                CommandGroup(after: .sidebar) {
+                    Toggle(CompactModeSetting.menuTitle, isOn: Binding(get: { delegate.menuState.isCompact }, set: { _ in delegate.toggleCompactMode() }))
+                        .keyboardShortcut("s", modifiers: [.control, .command])
                 }
                 CommandMenu("Tab") {
                     Button(SidebarAction.moveUp.title) { delegate.moveHighlightedRow(by: -1) }
