@@ -176,11 +176,15 @@ extension OrganizationStore {
         return tab
     }
 
+    /// `TabPlacement` finds the opener by tab id, so the map holds one tab per slot plus the opener itself:
+    /// the opener may be a later tab of a split slot, which stands for the slot's index like its first tab does.
     private func placementIndex(slots: [Slot], origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
         let indexBySlot = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0.sortIndex) })
-        let indices = Dictionary(uniqueKeysWithValues: try tabsBySlot(slots, in: db).compactMap { slotID, tab in
-            indexBySlot[slotID].map { (tab.id, $0) }
-        })
+        var tabs = Array(try tabsBySlot(slots, in: db).values)
+        if case .link(let openerID) = origin, let opener = try Tab.fetchOne(db, key: openerID), indexBySlot[opener.slotID] != nil {
+            tabs.append(opener)
+        }
+        let indices = Dictionary(tabs.compactMap { tab in indexBySlot[tab.slotID].map { (tab.id, $0) } }, uniquingKeysWith: { first, _ in first })
         return TabPlacement.sortIndex(origin: origin, regularIndices: indices, edge: edge)
     }
 
