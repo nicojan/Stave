@@ -93,6 +93,8 @@ extension OrganizationStore {
             if let containerID = archived.containerID,
                let container = try Container.fetchOne(db, key: containerID),
                container.profileID != workspace.profileID { throw StoreError.crossProfileMove }
+            // Restoring makes a regular tab, which has no pinned page: a drifted row's pinned page is archived first, so it is never lost.
+            try archivePinnedPage(of: archived, closedAt: now(), in: db)
             let tab = try insertRegularTab(
                 url: archived.url, title: archived.title, workspace: workspace, origin: .commandBar,
                 containerID: archived.containerID, edge: .top,
@@ -156,6 +158,16 @@ extension OrganizationStore {
             profileID: slot.profileID, workspaceID: slot.workspaceID,
             url: pinnedURL, title: tab.pinnedTitle ?? "", faviconURL: tab.pinnedFaviconURL,
             containerID: tab.containerID, closedAt: closedAt, modifiedAt: closedAt
+        ).insert(db)
+    }
+
+    /// The archive-row twin of `archivePinnedPageIfDrifted`: a restored row that carries a pinned page different from its url archives that page.
+    func archivePinnedPage(of archived: ArchivedTab, closedAt: Date, in db: Database) throws {
+        guard let pinnedURL = archived.pinnedURL, pinnedURL != archived.url else { return }
+        try ArchivedTab(
+            profileID: archived.profileID, workspaceID: archived.workspaceID,
+            url: pinnedURL, title: archived.pinnedTitle ?? "", faviconURL: archived.pinnedFaviconURL,
+            containerID: archived.containerID, closedAt: closedAt, modifiedAt: closedAt
         ).insert(db)
     }
 

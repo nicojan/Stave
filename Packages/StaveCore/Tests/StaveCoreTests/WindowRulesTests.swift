@@ -214,4 +214,16 @@ struct WindowSessionLaunchTests {
         session.discardStates(exceptLive: [live.id])
         #expect(session.states.map(\.id) == [live.id])
     }
+
+    @Test func savingAnEmptyStateSetKeepsTheSavedWindows() throws {
+        let store = try makeTempStore(now: TestClock().now).0
+        _ = try store.ensureDefaultProfile()
+        let saved = try store.restoredWindows()[0]
+        try store.saveWindows([saved])
+        let session = WindowSession(store: store)
+        session.enableSaving()
+        try session.save()
+        try session.saveNow()
+        #expect(try store.restoredWindows().map(\.id) == [saved.id])
+    }
 }

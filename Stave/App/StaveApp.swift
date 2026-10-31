@@ -11,6 +11,10 @@ struct StaveApp: App {
     var body: some Scene {
         Settings { SettingsView(shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine) }
             .commands {
+                CommandGroup(replacing: .appTermination) {
+                    Button("Quit Stave") { delegate.quit() }
+                        .keyboardShortcut("q", modifiers: .command)
+                }
                 CommandGroup(replacing: .newItem) {
                     Button(CommandBarText.newTabMenuItem) { delegate.newTab() }
                         .keyboardShortcut("t", modifiers: .command)

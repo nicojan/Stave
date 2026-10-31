@@ -85,10 +85,41 @@ struct PinnedTests {
         let essentialRow = try #require(archived.first { $0.url == "https://e.com/drift" })
         #expect((pinnedRow.pinnedURL, pinnedRow.pinnedTitle, pinnedRow.pinnedFaviconURL) == ("https://p.com", "P", "https://p.com/i.png"))
         #expect((essentialRow.pinnedURL, essentialRow.pinnedTitle, essentialRow.pinnedFaviconURL) == ("https://e.com", "E", "https://e.com/i.png"))
-        // Restore still yields a regular tab at the top, at the drifted page.
+        // Restore yields a regular tab at the top, at the drifted page, and archives the pinned page it can no longer hold.
         let restored = try store.restoreArchivedTab(pinnedRow.id, workspaceID: ws.id)
         #expect(restored.url == "https://p.com/drift" && restored.pinnedURL == nil)
         #expect(try store.regularTabs(workspaceID: ws.id).first?.id == restored.id)
+        let after = try store.archivedTabs(profileID: profile.id)
+        let rescued = try #require(after.first { $0.url == "https://p.com" })
+        #expect((rescued.title, rescued.faviconURL, rescued.pinnedURL) == ("P", "https://p.com/i.png", nil))
+        #expect(rescued.workspaceID == ws.id && rescued.containerID == pinnedRow.containerID)
+        #expect(after.first { $0.id == pinnedRow.id } == nil)
+    }
+
+    @Test func restoringADriftedEssentialArchivesItsPinnedPage() throws {
+        let (store, _, _, profile, ws) = try fixture()
+        let essential = try open(store, "https://e.com", in: ws)
+        try store.updateNavigation(tabID: essential.id, url: "https://e.com", title: "E", faviconURL: nil, interactionState: nil)
+        try store.makeEssential(essential.id)
+        try store.updateNavigation(tabID: essential.id, url: "https://e.com/drift", title: "ED", faviconURL: nil, interactionState: nil)
+        try store.removeEssential(essential.id)
+        let row = try #require(try store.archivedTabs(profileID: profile.id).first { $0.url == "https://e.com/drift" })
+        _ = try store.restoreArchivedTab(row.id, workspaceID: ws.id)
+        let after = try store.archivedTabs(profileID: profile.id)
+        #expect(after.map(\.url) == ["https://e.com"])
+        #expect(after.first?.title == "E")
+    }
+
+    @Test func restoringANonDriftedPinnedRowArchivesNothing() throws {
+        let (store, _, _, profile, ws) = try fixture()
+        let pinned = try open(store, "https://p.com", in: ws)
+        try store.updateNavigation(tabID: pinned.id, url: "https://p.com", title: "P", faviconURL: nil, interactionState: nil)
+        try store.pinTab(pinned.id, folderID: nil)
+        try store.removePinnedTab(pinned.id)
+        let row = try #require(try store.archivedTabs(profileID: profile.id).first)
+        #expect(row.pinnedURL == nil || row.pinnedURL == row.url)
+        _ = try store.restoreArchivedTab(row.id, workspaceID: ws.id)
+        #expect(try store.archivedTabs(profileID: profile.id).isEmpty)
     }
 
     @Test func resetRegularThrowsNotPinned() throws {

@@ -65,6 +65,8 @@ public final class WindowSession {
     /// Writes every state with `sortIndex` 0, 1, 2… in the current order.
     public func save() throws {
         guard isSavingEnabled else { return }
+        // An empty set is never written: `saveWindows([])` deletes every saved window, and an empty state set only means nothing is known yet.
+        guard !states.isEmpty else { return }
         let numbered = states.enumerated().map { offset, state -> WindowState in
             var copy = state
             copy.sortIndex = Double(offset)

@@ -64,7 +64,19 @@ final class SidebarPresenter {
         }
     }
 
+    /// Clears every sheet-driving state, so SwiftUI dismisses what it presents. Used when the app quits.
+    func dismissAllSheets() {
+        sheet = nil
+        workspaceEditor = nil
+        showNewProfile = false
+        pendingWorkspaceDelete = nil
+        showArchiveSheet = false
+        showArchive = false
+        commandBar = nil
+    }
+
     func closeCommandBar() {
+        guard commandBar != nil else { return } // nothing open: a late close must not reset focus a panel-presenting close just gave up
         returnsFocusToList = true
         commandBar = nil
     }

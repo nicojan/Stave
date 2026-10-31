@@ -16,6 +16,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var keyObservers: [NSObjectProtocol] = []
     private var importCoordinator: ImportCoordinator?
 
+    /// The default quit handler would refuse with a sheet up, and the first-run sheet cannot be dismissed, so ours ends the sheets first.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleQuitEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEQuitApplication)
+        )
+    }
+
+    @objc private func handleQuitEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        quit()
+    }
+
+    /// Quitting never waits on a sheet: every sheet on every window ends (an open file picker is a sheet, so it is cancelled), then the app
+    /// terminates through the usual save path. An import in flight is one transaction, so quitting during it is atomic.
+    func quit() {
+        for controller in controllers { controller.sidebarPresenter.dismissAllSheets() }
+        for window in NSApp.windows {
+            var chain: [NSWindow] = []
+            var next = window.attachedSheet
+            while let sheet = next { chain.append(sheet); next = sheet.attachedSheet }
+            for sheet in chain.reversed() {
+                if let panel = sheet as? NSOpenPanel { panel.cancel(nil) }
+                sheet.sheetParent?.endSheet(sheet, returnCode: .cancel)
+            }
+        }
+        NSApp.terminate(nil)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             let environment = try AppEnvironment.live(options: try DebugLaunchOptions.current)
@@ -281,8 +309,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ state: WindowState, environment: AppEnvironment) throws {
-        // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it.
-        environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID }))
         let controller = try BrowserWindowController(
             state: state, environment: environment,
             onNewWindow: { [weak self] in self?.newWindow() },
@@ -294,6 +320,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.completeFirstRun(on: controller, engine: engine, importFromArc: importArc)
         }
         controller.onChooseAnotherFile = { [weak self] session in self?.importCoordinator?.chooseAnotherFile(for: session) }
+        // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it. Only after the
+        // controller exists: a failed init must leave the saved set alone.
+        environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID } + [controller.model.windowID]))
         controllers = controllers + [controller]
         controller.show()
         refreshWorkspaceMenu()
