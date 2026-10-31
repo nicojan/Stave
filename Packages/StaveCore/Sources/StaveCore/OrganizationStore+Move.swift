@@ -90,7 +90,8 @@ extension OrganizationStore {
 
     /// The index directly after the anchor among `list` (nil = before the first). An anchor outside the list is `.notFound`.
     func indexAfter(_ anchor: MoveAnchor?, in list: [Child], in db: Database) throws -> Double {
-        guard let anchor else { return (list.first?.sortIndex ?? 1) - 1 }
+        let indices = list.map(\.sortIndex)
+        guard let anchor else { return index(after: nil, among: indices) }
         let position: Int?
         switch anchor {
         case .tab(let tabID):
@@ -100,8 +101,6 @@ extension OrganizationStore {
             position = list.firstIndex { if case .folder(let folder) = $0 { folder.id == folderID } else { false } }
         }
         guard let position else { throw StoreError.notFound }
-        let previous = list[position].sortIndex
-        guard position + 1 < list.count else { return previous + 1 }
-        return (previous + list[position + 1].sortIndex) / 2
+        return index(after: position, among: indices)
     }
 }

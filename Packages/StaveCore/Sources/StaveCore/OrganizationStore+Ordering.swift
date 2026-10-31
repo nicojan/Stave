@@ -38,14 +38,31 @@ extension OrganizationStore {
     func uncrowdedIndex(
         siblings: () throws -> [Child], propose: ([Child]) throws -> Double, in db: Database
     ) throws -> Double {
+        try uncrowdedIndex(
+            siblings: siblings, sortIndex: \.sortIndex, propose: propose, renumber: { try renumber($0, in: db) }
+        )
+    }
+
+    /// The crowd-and-renumber loop for any ordered kind: the caller supplies the fetch, the index lookup and the renumbering write.
+    func uncrowdedIndex<Item>(
+        siblings: () throws -> [Item], sortIndex: (Item) -> Double,
+        propose: ([Item]) throws -> Double, renumber: ([Item]) throws -> Void
+    ) throws -> Double {
         var list = try siblings()
         var index = try propose(list)
-        if isCrowded(index, among: list.map(\.sortIndex)) {
-            try renumber(list, in: db)
+        if isCrowded(index, among: list.map(sortIndex)) {
+            try renumber(list)
             list = try siblings()
             index = try propose(list)
         }
         return index
+    }
+
+    /// The midpoint rule over sorted indices: nil `position` = before the first; the last position = one past it; otherwise halfway to the next.
+    func index(after position: Int?, among sortIndices: [Double]) -> Double {
+        guard let position else { return (sortIndices.first ?? 1) - 1 }
+        guard position + 1 < sortIndices.count else { return sortIndices[position] + 1 }
+        return (sortIndices[position] + sortIndices[position + 1]) / 2
     }
 
     /// The profile's Essentials slots in stored order.

@@ -93,24 +93,22 @@ public final class OrganizationStore: Sendable {
                 guard previous.profileID == workspace.profileID else { throw StoreError.crossProfileMove }
             }
             let siblings = { try self.workspaces(profileID: workspace.profileID, in: db).filter { $0.id != id } }
-            func propose(_ list: [Workspace]) throws -> Double {
-                guard let previousID else { return (list.first?.sortIndex ?? 1) - 1 }
-                guard let position = list.firstIndex(where: { $0.id == previousID }) else { throw StoreError.notFound }
-                let previous = list[position].sortIndex
-                return position + 1 < list.count ? (previous + list[position + 1].sortIndex) / 2 : previous + 1
-            }
-            var list = try siblings()
-            var index = try propose(list)
-            if isCrowded(index, among: list.map(\.sortIndex)) {
-                let stamp = now()
-                for (position, var sibling) in list.enumerated() {
-                    sibling.sortIndex = Double(position)
-                    sibling.modifiedAt = stamp
-                    try sibling.update(db)
+            let index = try uncrowdedIndex(
+                siblings: siblings, sortIndex: \.sortIndex,
+                propose: { list in
+                    guard let previousID else { return self.index(after: nil, among: list.map(\.sortIndex)) }
+                    guard let position = list.firstIndex(where: { $0.id == previousID }) else { throw StoreError.notFound }
+                    return self.index(after: position, among: list.map(\.sortIndex))
+                },
+                renumber: { list in
+                    let stamp = self.now()
+                    for (position, var sibling) in list.enumerated() {
+                        sibling.sortIndex = Double(position)
+                        sibling.modifiedAt = stamp
+                        try sibling.update(db)
+                    }
                 }
-                list = try siblings()
-                index = try propose(list)
-            }
+            )
             workspace.sortIndex = index
             workspace.modifiedAt = now()
             try workspace.update(db)

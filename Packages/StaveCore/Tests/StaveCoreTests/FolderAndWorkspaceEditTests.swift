@@ -109,6 +109,16 @@ struct FolderAndWorkspaceEditTests {
         #expect(try database.writer.read { db in try Folder.fetchAll(db) } == before)
     }
 
+    @Test func moveChildlessFolderIntoItselfRefused() throws {
+        let (store, database, _, _, ws) = try fixture()
+        let a = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "A")
+        let b = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "B") // no sub-folders
+        let before = try database.writer.read { db in try Folder.fetchAll(db) }
+        #expect(throws: StoreError.folderTooDeep) { try store.moveFolder(b.id, toParent: b.id, after: nil) }
+        #expect(try database.writer.read { db in try Folder.fetchAll(db) } == before)
+        #expect(try rootIDs(store, ws) == [a.id, b.id])
+    }
+
     @Test func moveFolderOtherWorkspaceRefused() throws {
         let (store, database, _, profile, ws) = try fixture()
         let other = try store.createWorkspace(profileID: profile.id, name: "O", icon: "star", colorHex: "#000000")
