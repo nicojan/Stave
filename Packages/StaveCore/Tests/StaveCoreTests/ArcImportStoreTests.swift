@@ -351,7 +351,13 @@ struct ArcImportStoreTests {
     }
 
     @Test func oversizedLocalStateIsTreatedAsAbsent() throws {
-        let names = try profileNames { url in try makeSparseFile(at: url, size: ArcImporter.maximumLocalStateSize + 1) }
+        // Valid Local State padded with trailing whitespace (legal JSON) past the cap: without the cap it would decode and name the profile.
+        let names = try profileNames { url in
+            var data = try arcFixture("local-state")
+            data.append(Data(repeating: UInt8(ascii: " "), count: ArcImporter.maximumLocalStateSize + 1 - data.count))
+            #expect(data.count == ArcImporter.maximumLocalStateSize + 1)
+            try data.write(to: url)
+        }
         #expect(!names.contains("Client Work"))
         #expect(names.contains("Profile 1"))
     }
