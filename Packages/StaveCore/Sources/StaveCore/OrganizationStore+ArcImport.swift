@@ -24,6 +24,7 @@ extension OrganizationStore {
                 }
                 try writeEssentials(planned.essentials, profileID: profile.id, counts: &counts, in: db)
             }
+            try ImportRecord(source: .arc, importedAt: now(), modifiedAt: now()).insert(db)
             return ArcImportReport(imported: counts, flattened: plan.flattened, skipped: plan.skipped)
         }
     }

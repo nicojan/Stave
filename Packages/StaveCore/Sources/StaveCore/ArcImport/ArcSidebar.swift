@@ -2,6 +2,7 @@ import Foundation
 
 public enum ArcImportError: Error, Equatable {
     case fileTooLarge
+    case unreadable
     case notJSON
     case noSidebar
     case tooDeep
