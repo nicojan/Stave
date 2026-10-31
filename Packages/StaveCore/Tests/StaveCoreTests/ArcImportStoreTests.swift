@@ -64,7 +64,8 @@ struct ArcImportStoreTests {
             if let f = findFolder("Level 2", in: try store.pinnedItems(workspaceID: w.id)) { level2 = f.0 }
         }
         let l1 = try #require(level1)
-        #expect(try #require(level2).parentFolderID == l1.0.id)
+        let l2 = try #require(level2)
+        #expect(l2.parentFolderID == l1.0.id)
     }
 
     private func findFolder(_ title: String, in items: [PinnedItem]) -> (Folder, [PinnedItem])? {

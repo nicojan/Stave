@@ -176,7 +176,8 @@ struct ArcImportFlowTests {
         guard case .finished = flow.phase else { Issue.record("phase was \(flow.phase)"); return }
         #expect(flow.previousImport != nil)
         await flow.start()
-        #expect(flow.phase == .confirmRepeat(previous: try #require(flow.previousImport)))
+        let previous = try #require(flow.previousImport)
+        #expect(flow.phase == .confirmRepeat(previous: previous))
     }
 
     @Test func historyCopy() {
