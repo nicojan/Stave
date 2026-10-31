@@ -108,6 +108,11 @@ extension OrganizationStore {
         }
     }
 
+    /// Run once at launch: trims the archive to the last 30 days.
+    public func launchMaintenance() throws {
+        _ = try trimArchive(olderThan: 30)
+    }
+
     // MARK: - Reading
 
     public func regularTabs(workspaceID: UUID) throws -> [Tab] {
@@ -196,5 +201,12 @@ extension OrganizationStore {
         if let below, index - below < Self.minimumIndexGap { return true }
         if let above, above - index < Self.minimumIndexGap { return true }
         return !index.isFinite
+    }
+}
+
+extension OrganizationStore {
+    /// True when no tab exists in any section.
+    func isTabless() throws -> Bool {
+        try database.writer.read { db in try Tab.fetchCount(db) == 0 }
     }
 }
