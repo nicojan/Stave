@@ -20,7 +20,7 @@ struct SidebarRowView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(row.accessibilityLabel)
-            .sidebarActions(SidebarMenus.actions(for: row)) { perform($0, row.id) }
+            .sidebarAccessibilityActions(actions) { perform($0, row.id) }
             if case .pinnedTab(drifted: true) = row.kind {
                 Button { perform(.backToPinnedPage, row.id) } label: {
                     Image(systemName: "arrow.uturn.backward").font(.caption)
@@ -32,7 +32,11 @@ struct SidebarRowView: View {
         }
         .padding(.leading, CGFloat(row.depth) * 14)
         .accessibilityElement(children: .contain)
+        .contentShape(Rectangle())
+        .sidebarContextMenu(actions) { perform($0, row.id) }
     }
+
+    private var actions: [SidebarAction] { SidebarMenus.actions(for: row) }
 
     @ViewBuilder
     private var disclosure: some View {
@@ -41,7 +45,7 @@ struct SidebarRowView: View {
                 Image(systemName: isOpen ? "chevron.down" : "chevron.right").font(.caption2.weight(.bold)).frame(width: 12)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(isOpen ? "Close folder" : "Open folder")
+            .accessibilityLabel(SidebarText.disclosureLabel(isOpen: isOpen))
         }
     }
 

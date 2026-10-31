@@ -16,7 +16,10 @@ public final class SidebarWidthModel {
     @ObservationIgnored private let store: OrganizationStore
     @ObservationIgnored private let saveDelay: Duration
     @ObservationIgnored private var storedWidth: Double
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// The pending delayed save. Internal so tests can await it instead of sleeping; a cancelled task finishes at once.
+    @ObservationIgnored private(set) var saveTask: Task<Void, Never>?
+    /// How many times the width was written to the store; lets a test prove a save did not happen.
+    @ObservationIgnored private(set) var writeCount = 0
     /// Called when the debounced save fails; the width stays as set.
     @ObservationIgnored public var onSaveError: (@MainActor (Error) -> Void)?
 
@@ -48,6 +51,7 @@ public final class SidebarWidthModel {
         do {
             try store.setSetting(SettingKeys.sidebarWidth, width)
             storedWidth = width
+            writeCount += 1
         } catch {
             onSaveError?(error)
         }

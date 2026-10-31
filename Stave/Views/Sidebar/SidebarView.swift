@@ -42,9 +42,9 @@ struct SidebarView: View {
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
         .ignoresSafeArea()
         .alert(prompt?.action.title ?? "", isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
-            TextField("Folder name", text: $promptText)
+            TextField(SidebarText.folderName, text: $promptText)
             Button("Cancel", role: .cancel) {}
-            Button(prompt?.action == .renameFolder ? "Rename" : "Create") {
+            Button(prompt.map { SidebarText.promptConfirm(for: $0.action) } ?? "") {
                 if let prompt { model.run(prompt.action, on: prompt.item, typed: promptText) }
             }
         }
@@ -64,8 +64,8 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .focused($listFocused)
-        .accessibilityLabel("Tabs")
-        .onDeleteCommand { model.closeSelectedTab() }
+        .accessibilityLabel(SidebarText.tabs)
+        .onDeleteCommand { model.closeHighlightedTab() }
         .onKeyPress(.leftArrow) { arrow(.left) }
         .onKeyPress(.rightArrow) { arrow(.right) }
         .onAppear {
@@ -104,7 +104,7 @@ struct SidebarView: View {
                 .buttonStyle(.borderless)
                 .help(SidebarText.archiveButton)
                 .accessibilityLabel(SidebarText.archiveButton)
-                .popover(isPresented: $showArchive, arrowEdge: .top) {
+                .popover(isPresented: $showArchive, arrowEdge: .trailing) {
                     ArchivePopover(load: { model.archivedTabs() }, restore: { id in
                         showArchive = false
                         model.restoreArchived(id)
@@ -141,7 +141,7 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
                 Button { dismissedErrorID = model.lastErrorID } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("Dismiss message")
+                    .accessibilityLabel(SidebarText.dismissMessage)
             }
             .padding(10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))

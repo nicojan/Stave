@@ -15,7 +15,7 @@ struct EssentialsGrid: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Essentials")
+        .accessibilityLabel(SidebarText.essentials)
     }
 
     private func tile(_ tab: StaveCore.Tab) -> some View {

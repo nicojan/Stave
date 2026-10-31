@@ -10,7 +10,8 @@ public final class WindowSession {
     /// False until the app has opened every saved window. While false nothing is written: a launch that fails part-way would otherwise
     /// replace the user's saved windows with the few that did open.
     public private(set) var isSavingEnabled = false
-    private var saveTask: Task<Void, Never>?
+    /// The pending delayed save. Internal so tests can await it instead of sleeping; a cancelled task finishes at once.
+    private(set) var saveTask: Task<Void, Never>?
     private let saveDelay: Duration
     /// Called when a debounced save fails.
     public var onSaveError: (@MainActor (Error) -> Void)?

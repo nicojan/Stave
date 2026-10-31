@@ -15,10 +15,10 @@ struct ArchivePopover: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Search archive", text: $query)
+            TextField(SidebarText.searchArchive, text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
-                .accessibilityLabel("Search archive")
+                .accessibilityLabel(SidebarText.searchArchive)
                 .onSubmit { restoreTarget() }
                 .padding(10)
             Divider()
@@ -29,7 +29,7 @@ struct ArchivePopover: View {
             } else {
                 List(results, selection: $selection) { tab in row(tab).tag(tab.id) }
                     .listStyle(.plain)
-                    .accessibilityLabel("Archived tabs")
+                    .accessibilityLabel(SidebarText.archivedTabs)
                     .onKeyPress(.return) { restoreTarget(); return .handled }
             }
         }
@@ -48,9 +48,9 @@ struct ArchivePopover: View {
                 if !tab.url.isEmpty { Text(tab.url).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle) }
             }
             Spacer(minLength: 0)
-            Button("Restore") { restore(tab.id) }
+            Button(SidebarText.restoreButton) { restore(tab.id) }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Restore \(title)")
+                .accessibilityLabel(SidebarText.restoreLabel(title: title))
         }
     }
 

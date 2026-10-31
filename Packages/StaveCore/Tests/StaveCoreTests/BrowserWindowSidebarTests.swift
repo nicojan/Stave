@@ -71,21 +71,84 @@ struct BrowserWindowSidebarTests {
         #expect(model.run(.newFolder, on: .tab(tab)) == false)
     }
 
+    private func tabIDs(_ model: BrowserWindowModel) -> [UUID] {
+        model.rows.compactMap { if case .tab(let id) = $0.id { id } else { nil } }
+    }
+
     @Test func removingTheSelectedPinnedTabSelectsItsNeighbour() throws {
         let (model, _) = try makeModel()
+        let ids = tabIDs(model)
         let pinned = try #require(model.rows.first { if case .pinnedTab = $0.kind { true } else { false } })
         guard case .tab(let id) = pinned.id else { return }
+        let index = try #require(ids.firstIndex(of: id))
+        let expected = ids[index + 1] // not the last row, so the tab below is the neighbour
         model.select(id)
         #expect(model.run(.removeFromPinned, on: pinned.id))
         #expect(!model.rows.contains { $0.id == pinned.id })
-        #expect(model.selectedTabID != id)
+        #expect(model.selectedTabID == expected)
+    }
+
+    @Test func removingTheLastRowSelectsTheOneAbove() throws {
+        let (model, _) = try makeModel()
+        let ids = tabIDs(model)
+        let last = try #require(ids.last)
+        model.select(last)
+        model.close(last)
+        #expect(model.selectedTabID == ids[ids.count - 2])
     }
 
     @Test func deleteFolderKeepsItsTabs() throws {
         let (model, _) = try makeModel()
+        let before = Set(tabIDs(model))
         let folder = try #require(model.rows.first { if case .folder = $0.kind { true } else { false } })
         #expect(model.run(.deleteFolder, on: folder.id))
         #expect(!model.rows.contains { $0.id == folder.id })
+        #expect(Set(tabIDs(model)) == before) // every tab the folder held is still in the sidebar
+    }
+
+    @Test func aDeletedHighlightedFolderDoesNotSilenceTheCloseShortcut() throws {
+        let (model, _) = try makeModel()
+        let tab = try regularID(model)
+        model.select(tab)
+        let folder = try #require(model.rows.first { if case .folder = $0.kind { true } else { false } })
+        model.sidebarHighlight = folder.id
+        model.run(.deleteFolder, on: folder.id)
+        #expect(model.sidebarHighlight == .tab(tab)) // fell back to the selection
+        model.closeSelectedTab()
+        #expect(!model.rows.contains { $0.id == .tab(tab) })
+    }
+
+    @Test func aFolderHighlightFromAnotherWorkspaceIsDropped() throws {
+        let (model, _) = try makeModel()
+        let essential = try #require(model.snapshot.essentials.first)
+        model.select(essential.id)
+        let folder = try #require(model.rows.first { if case .folder = $0.kind { true } else { false } })
+        model.sidebarHighlight = folder.id
+        model.switchWorkspace(number: 2) // the Essential stays selected, the folder's row is gone
+        #expect(model.selectedTabID == essential.id)
+        #expect(model.sidebarHighlight == .tab(essential.id))
+        #expect(SidebarKeys.closeShortcutTarget(highlight: model.sidebarHighlight, selected: model.selectedTabID) == essential.id)
+    }
+
+    @Test func aHighlightedEssentialIsKept() throws {
+        let (model, _) = try makeModel()
+        let essential = try #require(model.snapshot.essentials.first)
+        model.select(essential.id)
+        model.sidebarHighlight = .tab(essential.id) // an Essential has no row
+        model.reload()
+        #expect(model.sidebarHighlight == .tab(essential.id))
+    }
+
+    @Test func deleteKeyDoesNothingWithoutAHighlight() throws {
+        let (model, _) = try makeModel()
+        let tab = try regularID(model)
+        model.select(tab)
+        model.sidebarHighlight = nil
+        model.closeHighlightedTab()
+        #expect(model.rows.contains { $0.id == .tab(tab) })
+        model.sidebarHighlight = .tab(tab)
+        model.closeHighlightedTab()
+        #expect(!model.rows.contains { $0.id == .tab(tab) })
     }
 
     @Test func foldersAreNamedThroughTheModel() throws {
@@ -103,6 +166,6 @@ struct BrowserWindowSidebarTests {
         model.run(.newFolderInside, on: top.id, typed: "Inner")
         #expect(model.rows.contains { $0.title == "Inner" && $0.parentFolderID != nil })
         model.run(.closeTab, on: top.id, typed: "x") // not a naming action: ignored
-        #expect(model.rows.count > count)
+        #expect(model.rows.count == count + 3) // Projects, New Folder, Inner
     }
 }

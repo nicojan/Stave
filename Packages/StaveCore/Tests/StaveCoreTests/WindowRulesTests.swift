@@ -56,18 +56,22 @@ struct SidebarWidthTests {
         model.nudge(by: 10)
         #expect(model.width == 330)
         #expect(try store.setting(SettingKeys.sidebarWidth) == 260)
-        try await Task.sleep(for: .milliseconds(400))
+        await model.saveTask?.value
         #expect(try store.setting(SettingKeys.sidebarWidth) == 330)
+        #expect(model.writeCount == 1)
     }
 
     @Test func settingBackToTheStoredWidthCancelsThePendingSave() async throws {
         let store = try makeTempStore(now: TestClock().now).0
         let model = SidebarWidthModel(store: store, saveDelay: .milliseconds(80))
         model.set(300)
+        let first = model.saveTask
         model.set(260) // same as stored: the earlier save is cancelled, nothing is written
-        try await Task.sleep(for: .milliseconds(300))
+        await first?.value
+        await model.saveTask?.value
         #expect(try store.setting(SettingKeys.sidebarWidth) == 260)
         #expect(model.width == 260)
+        #expect(model.writeCount == 0)
     }
 
     @Test func aSecondModelOnTheSameStoreReadsTheSavedWidth() throws {
@@ -127,7 +131,7 @@ struct WindowSessionSaveTests {
         moved.frame = "{{10, 20}, {900, 700}}"
         session.update(moved)
         session.scheduleSave()
-        try await Task.sleep(for: .milliseconds(400))
+        await session.saveTask?.value
         #expect(try store.restoredWindows().first?.frame == "{{10, 20}, {900, 700}}")
     }
 
@@ -139,9 +143,10 @@ struct WindowSessionSaveTests {
         session.enableSaving()
         session.update(window)
         session.scheduleSave()
+        let pending = session.saveTask
         try session.saveNow()
         session.windowClosed(window.id, isLast: false)
-        try await Task.sleep(for: .milliseconds(300))
+        await pending?.value // without the cancel in saveNow this task would now save the emptied state
         // A delayed save that ran after the removal would have saved nothing, and restore would invent a different default window.
         #expect(try store.restoredWindows().first?.id == window.id)
     }
@@ -160,8 +165,9 @@ struct WindowSessionLaunchTests {
         other.id = UUID()
         session.update(other) // a launch that got only this far
         session.scheduleSave()
+        let pending = session.saveTask
         try session.saveNow()
-        try await Task.sleep(for: .milliseconds(300))
+        await pending?.value
         #expect(try store.restoredWindows().map(\.id) == [saved.id])
     }
 
@@ -176,7 +182,7 @@ struct WindowSessionLaunchTests {
         session.update(other)
         session.enableSaving()
         session.scheduleSave()
-        try await Task.sleep(for: .milliseconds(300))
+        await session.saveTask?.value
         #expect(try store.restoredWindows().map(\.id) == [other.id])
     }
 

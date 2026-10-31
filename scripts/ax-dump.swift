@@ -1,5 +1,5 @@
 // Usage: swift scripts/ax-dump.swift <process name>   (normally run through scripts/ax-dump.sh)
-// Prints "role | description | value" for every accessibility element of the process's front window.
+// Prints "role (subrole) | description | value" for every accessibility element of the process's front window.
 // It reads AXDescription directly: System Events' `description` returns the role description instead for many SwiftUI controls.
 // Needs Accessibility permission for the terminal.
 import AppKit
@@ -20,7 +20,8 @@ func dump(_ element: AXUIElement) {
     let description = attribute(element, kAXDescriptionAttribute) as? String ?? ""
     let raw = attribute(element, kAXValueAttribute)
     let value = (raw as? String) ?? (raw as? NSNumber).map { "\($0)" } ?? ""
-    print("\(role) | \(description) | \(value)")
+    let subrole = attribute(element, kAXSubroleAttribute) as? String
+    print("\(role)\(subrole.map { " (\($0))" } ?? "") | \(description) | \(value)")
     for child in (attribute(element, kAXChildrenAttribute) as? [AXUIElement]) ?? [] { dump(child) }
 }
 

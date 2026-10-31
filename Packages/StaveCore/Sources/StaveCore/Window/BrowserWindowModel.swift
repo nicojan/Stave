@@ -70,6 +70,15 @@ public final class BrowserWindowModel {
             return
         }
         if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { clearSelection() }
+        dropStaleHighlight()
+    }
+
+    /// A highlight whose row is gone (deleted folder, other workspace) would silence ⌘W and ⌫, so it falls back to the selection.
+    /// An Essential has no row, so the selected tab's own id is a valid highlight too.
+    private func dropStaleHighlight() {
+        guard let highlight = sidebarHighlight, !rows.contains(where: { $0.id == highlight }) else { return }
+        if case .tab(let id) = highlight, id == selectedTabID { return }
+        sidebarHighlight = selectedTabID.map { .tab($0) }
     }
 
     private struct Loaded {
@@ -255,7 +264,13 @@ public final class BrowserWindowModel {
 
     /// ⌘W: closes what the highlighted row names. With a folder highlighted it does nothing.
     public func closeSelectedTab() {
-        guard let id = SidebarKeys.tabToClose(highlight: sidebarHighlight, selected: selectedTabID) else { return }
+        guard let id = SidebarKeys.closeShortcutTarget(highlight: sidebarHighlight, selected: selectedTabID) else { return }
+        close(id)
+    }
+
+    /// ⌫: closes the highlighted tab row; with a folder or nothing highlighted it does nothing.
+    public func closeHighlightedTab() {
+        guard let id = SidebarKeys.deleteKeyTarget(highlight: sidebarHighlight) else { return }
         close(id)
     }
 

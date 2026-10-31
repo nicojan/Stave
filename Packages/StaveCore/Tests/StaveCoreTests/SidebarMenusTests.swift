@@ -55,12 +55,32 @@ struct SidebarMenusTests {
 
     // MARK: - Keys
 
-    @Test func deleteActsOnlyOnATabRow() {
+    @Test func closeShortcutFallsBackToTheSelectionOnlyWithNoHighlight() {
         let tab = UUID(), other = UUID()
-        #expect(SidebarKeys.tabToClose(highlight: .tab(tab), selected: other) == tab)
-        #expect(SidebarKeys.tabToClose(highlight: .folder(UUID()), selected: other) == nil)
-        #expect(SidebarKeys.tabToClose(highlight: nil, selected: other) == other)
-        #expect(SidebarKeys.tabToClose(highlight: nil, selected: nil) == nil)
+        #expect(SidebarKeys.closeShortcutTarget(highlight: .tab(tab), selected: other) == tab)
+        #expect(SidebarKeys.closeShortcutTarget(highlight: .folder(UUID()), selected: other) == nil)
+        #expect(SidebarKeys.closeShortcutTarget(highlight: nil, selected: other) == other)
+        #expect(SidebarKeys.closeShortcutTarget(highlight: nil, selected: nil) == nil)
+    }
+
+    @Test func deleteKeyActsOnlyOnAHighlightedTabRow() {
+        let tab = UUID()
+        #expect(SidebarKeys.deleteKeyTarget(highlight: .tab(tab)) == tab)
+        #expect(SidebarKeys.deleteKeyTarget(highlight: .folder(UUID())) == nil)
+        #expect(SidebarKeys.deleteKeyTarget(highlight: nil) == nil)
+    }
+
+    @Test func viewTextRules() {
+        #expect(SidebarText.disclosureLabel(isOpen: true) == "Close folder")
+        #expect(SidebarText.disclosureLabel(isOpen: false) == "Open folder")
+        #expect(SidebarText.promptConfirm(for: .renameFolder) == "Rename")
+        #expect(SidebarText.promptConfirm(for: .newFolder) == "Create")
+        #expect(SidebarText.promptConfirm(for: .newFolderInside) == "Create")
+        #expect(SidebarText.restoreLabel(title: "Old receipt") == "Restore Old receipt")
+        let tab = Tab(slotID: UUID(), url: "https://example.com/", title: "T")
+        #expect(AddressFieldText.isPlaceholder(for: nil))
+        #expect(AddressFieldText.isPlaceholder(for: Tab(slotID: UUID(), url: "", title: "")))
+        #expect(!AddressFieldText.isPlaceholder(for: tab))
     }
 
     @Test func arrowsOpenAndCloseAFolder() {

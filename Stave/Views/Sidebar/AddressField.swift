@@ -12,7 +12,7 @@ struct AddressField: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
                 Text(AddressFieldText.text(for: tab))
                     .lineLimit(1).truncationMode(.middle)
-                    .foregroundStyle(tab == nil || tab?.url.isEmpty == true ? .secondary : .primary)
+                    .foregroundStyle(AddressFieldText.isPlaceholder(for: tab) ? .secondary : .primary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
