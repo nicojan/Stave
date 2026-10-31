@@ -11,6 +11,8 @@ final class SidebarPresenter {
     var showNewProfile = false
     /// Non-nil while the command bar is open.
     private(set) var commandBar: CommandBarModel?
+    /// False when the bar closed by presenting a sheet, alert or popover, which must keep the focus it takes.
+    @ObservationIgnored private(set) var returnsFocusToList = true
     /// Opens a window like ⌘N. Set by the window controller.
     @ObservationIgnored var newWindow: () -> Void = {}
 
@@ -18,11 +20,16 @@ final class SidebarPresenter {
     func openCommandBar(_ mode: CommandBarMode, for model: BrowserWindowModel) {
         commandBar = CommandBarModel(
             mode: mode, candidates: model.commandCandidates(), currentURL: model.selectedTab?.url,
-            currentWorkspaceID: model.snapshot.workspace.id, searchEngine: model.searchEngine
+            currentWorkspaceID: model.snapshot.workspace.id, searchEngine: model.searchEngine,
+            currentTabID: model.selectedTabID
         )
+        returnsFocusToList = true
     }
 
-    func closeCommandBar() { commandBar = nil }
+    func closeCommandBar() {
+        returnsFocusToList = true
+        commandBar = nil
+    }
 
     /// Runs the bar's selected row. The bar closes unless it needs an engine choice; an outcome the window cannot handle is handled here.
     func activate(in model: BrowserWindowModel) {
@@ -30,8 +37,16 @@ final class SidebarPresenter {
         switch bar.activate(in: model) {
         case .stay: return
         case .close(let outcome):
+            returnsFocusToList = !Self.presentsPanel(outcome)
             commandBar = nil
             handle(outcome)
+        }
+    }
+
+    private static func presentsPanel(_ outcome: CommandOutcome) -> Bool {
+        switch outcome {
+        case .newWorkspace, .newProfile, .showArchive: true
+        default: false
         }
     }
 

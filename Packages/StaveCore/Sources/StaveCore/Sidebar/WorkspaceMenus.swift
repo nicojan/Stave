@@ -99,6 +99,7 @@ public enum WorkspaceMenus {
     public static let profileMenu = "Profile"
     public static let newProfileItem = "New Profile…"
     public static let newProfilePrompt = "New Profile"
+    public static let createProfileButton = "Create"
     public static let profileName = "Profile name"
 
     /// The profile menu (decision 3) shows with two or more profiles.

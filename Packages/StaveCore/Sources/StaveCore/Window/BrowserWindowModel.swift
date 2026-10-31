@@ -383,10 +383,12 @@ public final class BrowserWindowModel {
     }
 
     /// Runs the chosen row. Writes go through the same private door as every other method; what needs UI comes back as an outcome.
-    public func perform(_ result: CommandResult, mode: CommandBarMode) -> CommandOutcome {
+    /// `target` is the tab a `.currentTab` address change applies to (the bar captures it when it opens); with no target it is the selected tab.
+    /// A target that no longer exists gets a new tab instead.
+    public func perform(_ result: CommandResult, mode: CommandBarMode, target: UUID? = nil) -> CommandOutcome {
         switch result {
-        case .open(let url): open(url: url, mode: mode)
-        case .search(let query): return search(query, mode: mode)
+        case .open(let url): open(url: url, mode: mode, target: target)
+        case .search(let query): return search(query, mode: mode, target: target)
         case .tab(let found):
             if let target = found.workspaceID { switchWorkspace(to: target) }
             select(found.tab.id)
@@ -401,23 +403,26 @@ public final class BrowserWindowModel {
     public var searchEngine: SearchEngine? { (try? store.setting(SettingKeys.searchEngine)) ?? nil }
 
     /// The engine picker's result: saves the engine, then runs the search that was waiting for it. A failed save shows its message and runs nothing.
-    public func chooseSearchEngine(_ engine: SearchEngine, thenSearching query: String, mode: CommandBarMode) {
+    public func chooseSearchEngine(_ engine: SearchEngine, thenSearching query: String, mode: CommandBarMode, target: UUID? = nil) {
         guard perform({ try store.setSetting(SettingKeys.searchEngine, engine) }) != nil else { return }
-        open(url: engine.searchURL(for: query), mode: mode)
+        open(url: engine.searchURL(for: query), mode: mode, target: target)
     }
 
-    private func open(url: String, mode: CommandBarMode) {
-        if mode == .currentTab, selectedTabID != nil { navigateSelected(to: url) } else { openTab(url: url) }
+    private func open(url: String, mode: CommandBarMode, target: UUID?) {
+        guard mode == .currentTab else { return openTab(url: url) }
+        guard let id = target ?? selectedTabID else { return openTab(url: url) }
+        guard (try? store.tabExists(id)) == true else { return openTab(url: url) }
+        perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
     }
 
-    private func search(_ query: String, mode: CommandBarMode) -> CommandOutcome {
+    private func search(_ query: String, mode: CommandBarMode, target: UUID?) -> CommandOutcome {
         let engine: SearchEngine?
         do { engine = try store.setting(SettingKeys.searchEngine) } catch {
             lastError = StoreErrorText.message(for: error)
             return .done
         }
         guard let engine else { return .chooseSearchEngine }
-        open(url: engine.searchURL(for: query), mode: mode)
+        open(url: engine.searchURL(for: query), mode: mode, target: target)
         return .done
     }
 

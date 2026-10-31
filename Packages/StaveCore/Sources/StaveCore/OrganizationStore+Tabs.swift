@@ -44,6 +44,10 @@ extension OrganizationStore {
         }
     }
 
+    public func tabExists(_ id: UUID) throws -> Bool {
+        try database.writer.read { db in try Tab.fetchOne(db, key: id) != nil }
+    }
+
     public func markActive(tabID: UUID) throws {
         try database.writer.write { db in
             guard var tab = try Tab.fetchOne(db, key: tabID) else { throw StoreError.notFound }

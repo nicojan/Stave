@@ -110,6 +110,9 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - NSWindowDelegate
 
+    /// The bar belongs to the window it opened in; losing key (another window, Settings) closes it, so two windows never show a bar at once.
+    func windowDidResignKey(_ notification: Notification) { sidebarPresenter.closeCommandBar() }
+
     func windowDidMove(_ notification: Notification) { frameChanged() }
     func windowDidResize(_ notification: Notification) { frameChanged() }
 

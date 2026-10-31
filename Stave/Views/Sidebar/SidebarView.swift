@@ -50,7 +50,7 @@ struct SidebarView: View {
         .defaultFocus($listFocused, true)
         .onChange(of: model.snapshot.workspace.id) { slideIn() }
         .onChange(of: presenter.commandBar == nil) { _, closed in
-            guard closed else { return }
+            guard closed, presenter.returnsFocusToList else { return }
             // Escape, a click outside or a performed row: back to the list. The flag can still read true while the text field held the real
             // focus, so it is cleared first and set on the next turn.
             listFocused = false
@@ -130,7 +130,7 @@ struct SidebarView: View {
                     })
                 }
             if WorkspaceMenus.showsProfileMenu(profileCount: model.profiles.count) {
-                ProfileMenu(model: model)
+                ProfileMenu(model: model, presenter: presenter)
             }
             WorkspaceSwitcher(model: model, presenter: presenter)
         }
@@ -138,7 +138,7 @@ struct SidebarView: View {
         .alert(WorkspaceMenus.newProfilePrompt, isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {
             TextField(WorkspaceMenus.profileName, text: $newProfileName)
             Button(WorkspaceEditorRules.cancelButton, role: .cancel) {}
-            Button("Create") {
+            Button(WorkspaceMenus.createProfileButton) {
                 if let name = WorkspaceMenus.profileName(typed: newProfileName) { model.createProfile(name: name) }
             }
         }

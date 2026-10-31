@@ -403,6 +403,11 @@ struct CommandBarEnginePickerTests {
         #expect(bar.isChoosingEngine && bar.pendingSearch == "cats")
         #expect(window.snapshot.regular.isEmpty)
         #expect(try store.setting(SettingKeys.searchEngine) == nil)
+        #expect(bar.selectedEngine == nil) // nothing is preselected
+        #expect(bar.activate(in: window) == .stay) // Return with nothing chosen stays
+        #expect(try store.setting(SettingKeys.searchEngine) == nil)
+        bar.moveSelection(by: 1)
+        #expect(bar.selectedEngine == .google) // the first ↓ highlights the first engine
         bar.moveSelection(by: 1)
         #expect(bar.selectedEngine == .duckDuckGo)
         #expect(bar.activate(in: window) == .close(.done))
@@ -417,6 +422,9 @@ struct CommandBarEnginePickerTests {
         let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
         bar.query = "cats"
         _ = bar.activate(in: window)
+        bar.moveSelection(by: -1)
+        #expect(bar.selectedEngine == nil) // ↑ with nothing highlighted does nothing
+        bar.moveSelection(by: 1)
         bar.moveSelection(by: -3)
         #expect(bar.selectedEngine == SearchEngine.allCases.first)
         bar.moveSelection(by: 99)
@@ -452,7 +460,7 @@ struct CommandBarEnginePickerTests {
         let (window, store) = try makeWindow()
         let bar = CommandBarModel(mode: .newTab, candidates: window.commandCandidates(), currentURL: nil)
         bar.selectEngine(at: 2) // ignored: the picker is not showing
-        #expect(bar.engineIndex == 0)
+        #expect(bar.engineIndex == nil)
         bar.query = "cats"
         _ = bar.activate(in: window)
         bar.selectEngine(at: 2)
@@ -470,5 +478,73 @@ struct CommandBarEnginePickerTests {
         #expect(bar.activate(in: window) == .stay) // asks again, for the new text
         #expect(bar.pendingSearch == "cats and dogs")
         #expect(try store.setting(SettingKeys.searchEngine) == nil)
+    }
+
+    // MARK: - The target tab of .currentTab
+
+    private func twoTabs(_ window: BrowserWindowModel, _ store: OrganizationStore) throws -> (a: Tab, b: Tab, work: Workspace) {
+        let profile = window.snapshot.profile
+        let work = try store.createWorkspace(profileID: profile.id, name: "Work", icon: "", colorHex: "#FFFFFF")
+        let a = try store.openTab(url: "https://example.com/a", title: "A", workspaceID: window.snapshot.workspace.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        let b = try store.openTab(url: "https://example.com/b", title: "B", workspaceID: work.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        window.reload()
+        window.select(a.id)
+        return (a, b, work)
+    }
+
+    private func url(of id: UUID, _ store: OrganizationStore) throws -> String? {
+        try store.commandCandidates(profileID: try #require(try store.profiles().first).id).tabs.first { $0.tab.id == id }?.tab.url
+    }
+
+    @Test func currentTabNavigatesTheTabCapturedAtOpen() throws {
+        let (window, store) = try makeWindow()
+        let (a, b, work) = try twoTabs(window, store)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: a.url, currentTabID: a.id)
+        window.switchWorkspace(to: work.id)
+        window.select(b.id) // a menu shortcut changed the selection while the bar was open
+        bar.query = "https://example.net/new"
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try url(of: a.id, store) == "https://example.net/new")
+        #expect(try url(of: b.id, store) == "https://example.com/b")
+    }
+
+    @Test func currentTabOpensANewTabWhenTheTargetIsGone() throws {
+        let (window, store) = try makeWindow()
+        let (a, b, _) = try twoTabs(window, store)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: a.url, currentTabID: a.id)
+        window.close(a.id)
+        window.select(b.id)
+        bar.query = "https://example.net/new"
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try url(of: b.id, store) == "https://example.com/b")
+        #expect(window.selectedTab?.url == "https://example.net/new")
+        #expect(window.selectedTabID != b.id)
+    }
+
+    @Test func currentTabWithNoTabSelectedAtOpenNeverTakesALaterSelection() throws {
+        let (window, store) = try makeWindow()
+        let (_, b, work) = try twoTabs(window, store)
+        window.select(nil)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: nil, currentTabID: nil)
+        window.switchWorkspace(to: work.id)
+        window.select(b.id)
+        bar.query = "https://example.net/new"
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try url(of: b.id, store) == "https://example.com/b")
+    }
+
+    @Test func chosenEngineInCurrentTabModeNavigatesTheCapturedTab() throws {
+        let (window, store) = try makeWindow()
+        let (a, b, work) = try twoTabs(window, store)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: a.url, currentTabID: a.id)
+        bar.query = "cats"
+        #expect(bar.activate(in: window) == .stay)
+        window.switchWorkspace(to: work.id)
+        window.select(b.id)
+        bar.moveSelection(by: 1)
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try url(of: a.id, store) == "https://www.google.com/search?q=cats")
+        #expect(try url(of: b.id, store) == "https://example.com/b")
+        #expect(try store.setting(SettingKeys.searchEngine) == .google)
     }
 }

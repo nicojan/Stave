@@ -112,9 +112,8 @@ struct WorkspaceIconView: View {
 /// The profile menu (decision 3): the profiles, a checkmark on the current one, and New Profile…. Shown by the sidebar with two or more profiles.
 struct ProfileMenu: View {
     @Bindable var model: BrowserWindowModel
-
-    @State private var showNewProfile = false
-    @State private var newProfileName = ""
+    /// New Profile… asks the presenter, which owns the one name prompt (shared with the command bar's New Profile row).
+    let presenter: SidebarPresenter
 
     var body: some View {
         Menu {
@@ -125,10 +124,7 @@ struct ProfileMenu: View {
                 ))
             }
             Divider()
-            Button(WorkspaceMenus.newProfileItem) {
-                newProfileName = ""
-                showNewProfile = true
-            }
+            Button(WorkspaceMenus.newProfileItem) { presenter.showNewProfile = true }
         } label: {
             Image(systemName: "person.crop.circle")
         }
@@ -137,12 +133,5 @@ struct ProfileMenu: View {
         .fixedSize()
         .help("\(WorkspaceMenus.profileMenu): \(model.snapshot.profile.name)")
         .accessibilityLabel("\(WorkspaceMenus.profileMenu), \(model.snapshot.profile.name)")
-        .alert(WorkspaceMenus.newProfilePrompt, isPresented: $showNewProfile) {
-            TextField(WorkspaceMenus.profileName, text: $newProfileName)
-            Button(WorkspaceEditorRules.cancelButton, role: .cancel) {}
-            Button("Create") {
-                if let name = WorkspaceMenus.profileName(typed: newProfileName) { model.createProfile(name: name) }
-            }
-        }
     }
 }

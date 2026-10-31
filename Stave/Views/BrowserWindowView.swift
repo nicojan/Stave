@@ -24,16 +24,21 @@ struct BrowserWindowView: View {
             TabPlaceholderView(model: model)
         }
         .overlay { commandBarLayer }
-        .animation(reduceMotion ? nil : .easeInOut(duration: Self.fadeDuration), value: presenter.commandBar != nil)
         .onChange(of: revision.value) { model.reload() }
+        // The bar acts on the window it opened in; a workspace or profile change (a menu shortcut, a swipe) closes it.
+        .onChange(of: model.snapshot.workspace.id) { presenter.closeCommandBar() }
+        .onChange(of: model.snapshot.profile.id) { presenter.closeCommandBar() }
     }
 
-    @ViewBuilder
+    /// The bar's layer. The fade animates this layer only, never the window's content.
     private var commandBarLayer: some View {
-        if let bar = presenter.commandBar {
-            CommandBarView(bar: bar, activate: { presenter.activate(in: model) }, close: { presenter.closeCommandBar() })
-                .transition(.opacity)
+        ZStack {
+            if let bar = presenter.commandBar {
+                CommandBarView(bar: bar, activate: { presenter.activate(in: model) }, close: { presenter.closeCommandBar() })
+                    .transition(.opacity)
+            }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: Self.fadeDuration), value: presenter.commandBar != nil)
     }
 
     /// A 1 pt line with a wider invisible handle. Drag it, or focus it and use the arrow keys, or use it as a slider with VoiceOver.

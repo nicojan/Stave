@@ -49,15 +49,31 @@ struct CommandBarView: View {
             .onKeyPress(.escape) { close(); return .handled }
     }
 
+    @ViewBuilder
     private var results: some View {
         let rows = bar.rows
-        return ScrollViewReader { proxy in
+        if rows.isEmpty {
+            Text(CommandBarText.noResults)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 60)
+        } else {
+            resultList(rows)
+        }
+    }
+
+    private func resultList(_ rows: [CommandRow]) -> some View {
+        ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(rows.indices, id: \.self) { index in
-                        resultRow(rows[index], isSelected: index == bar.selectedIndex)
-                            .id(index)
-                            .onTapGesture { bar.select(index: index); activate() }
+                        Button { bar.select(index: index); activate() } label: {
+                            resultRow(rows[index])
+                        }
+                        .buttonStyle(.plain)
+                        .background(index == bar.selectedIndex ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                        .accessibilityLabel(rows[index].accessibilityLabel)
+                        .accessibilityAddTraits(index == bar.selectedIndex ? .isSelected : [])
+                        .id(index)
                     }
                 }
                 .padding(6)
@@ -69,7 +85,7 @@ struct CommandBarView: View {
         .accessibilityLabel(CommandBarText.resultsLabel)
     }
 
-    private func resultRow(_ row: CommandRow, isSelected: Bool) -> some View {
+    private func resultRow(_ row: CommandRow) -> some View {
         HStack(spacing: 10) {
             icon(row.icon).frame(width: 20).foregroundStyle(.secondary).accessibilityHidden(true)
             Text(row.title).lineLimit(1).truncationMode(.tail)
@@ -79,11 +95,7 @@ struct CommandBarView: View {
             }
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(row.accessibilityLabel)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     @ViewBuilder
@@ -101,17 +113,18 @@ struct CommandBarView: View {
             Text(CommandBarText.enginePickerHint).font(.callout).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 6)
             ForEach(Array(bar.engineChoices.enumerated()), id: \.offset) { index, engine in
                 let isSelected = index == bar.engineIndex
-                HStack {
-                    Text(engine.displayName)
-                    Spacer(minLength: 0)
+                Button { bar.selectEngine(at: index); activate() } label: {
+                    HStack {
+                        Text(engine.displayName)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 10).padding(.vertical, 6)
+                .buttonStyle(.plain)
                 .background(isSelected ? Color.accentColor.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-                .onTapGesture { bar.selectEngine(at: index); activate() }
-                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(CommandBarText.engineRowLabel(engine))
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(6)
