@@ -101,4 +101,28 @@ struct KeyboardMenuTests {
         #expect(!MenuCommandGate.allowedWhileSheetUp(.workspaceAction))
         #expect(!MenuCommandGate.allowedWhileSheetUp(.sidebarAction))
     }
+
+    @Test func archiveIsAPopoverOnlyForAMouseClick() {
+        #expect(ArchivePresentation.presentation(for: .pointer) == .popover)
+        for trigger in [ArchiveTrigger.keyboard, .command, .menu] { #expect(ArchivePresentation.presentation(for: trigger) == .sheet) }
+        #expect(ArchivePresentation.trigger(eventIsPointer: true) == .pointer)
+        #expect(ArchivePresentation.trigger(eventIsPointer: false) == .keyboard)
+    }
+
+    @Test func menuItemsAreDisabledOnlyWhileBusyAndNotAllowed() {
+        for command in MenuCommand.allCases {
+            #expect(MenuCommandGate.isEnabled(command, busy: false))
+            #expect(MenuCommandGate.isEnabled(command, busy: true) == (command == .toggleCompactMode))
+        }
+        #expect(!MenuCommandGate.allowedWhileSheetUp(.showArchive))
+    }
+
+    @Test func promptTitlesDropTheEllipsisAndOneCasingForBackToPinnedPage() {
+        #expect(SidebarAction.renameFolder.promptTitle == "Rename Folder")
+        #expect(SidebarAction.newFolder.promptTitle == "New Folder")
+        #expect(SidebarAction.newFolderInside.promptTitle == "New Folder Inside")
+        #expect(SidebarAction.deleteFolder.promptTitle == "Delete Folder")
+        #expect(SidebarAction.backToPinnedPage.title == "Back to Pinned Page")
+        #expect(SidebarAction.backToPinnedPage.menuTitle == SidebarAction.backToPinnedPage.title)
+    }
 }

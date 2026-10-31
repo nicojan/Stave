@@ -80,7 +80,7 @@ struct SidebarView: View {
         .ignoresSafeArea()
         .sheet(item: $prompt) { prompt in
             NamePromptSheet(
-                title: prompt.action.title, fieldLabel: SidebarText.folderName,
+                title: prompt.action.promptTitle, fieldLabel: SidebarText.folderName,
                 prefill: SidebarMenus.promptPrefill(action: prompt.action, currentTitle: prompt.currentTitle),
                 confirmTitle: SidebarText.promptConfirm(for: prompt.action),
                 confirm: { typed in
@@ -160,7 +160,11 @@ struct SidebarView: View {
 
     private var bottomBar: some View {
         HStack {
-            Button { presenter.showArchive.toggle() } label: { Image(systemName: "archivebox") }
+            Button {
+                // A mouse event behind the press means a click (popover); a key event or an accessibility press means the sheet.
+                let pointer = NSApp.currentEvent.map { [.leftMouseDown, .leftMouseUp].contains($0.type) } ?? false
+                presenter.openArchive(ArchivePresentation.trigger(eventIsPointer: pointer))
+            } label: { Image(systemName: "archivebox") }
                 .buttonStyle(.borderless)
                 .help(SidebarText.archiveButton)
                 .accessibilityLabel(SidebarText.archiveButton)
@@ -176,6 +180,12 @@ struct SidebarView: View {
             WorkspaceSwitcher(model: model, presenter: presenter, drag: drag)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+        .sheet(isPresented: Binding(get: { presenter.showArchiveSheet }, set: { presenter.showArchiveSheet = $0 })) {
+            ArchiveSheet(load: { model.archivedTabs() }, restore: { id in
+                presenter.showArchiveSheet = false
+                model.restoreArchived(id)
+            }, close: { presenter.showArchiveSheet = false })
+        }
         .sheet(isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {
             NamePromptSheet(
                 title: WorkspaceMenus.newProfilePrompt, fieldLabel: WorkspaceMenus.profileName, confirmTitle: WorkspaceMenus.createProfileButton,

@@ -39,6 +39,9 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
         }
     }
 
+    /// The title of the sheet that asks for a name: the menu title without its ellipsis ("Rename Folder", "New Folder").
+    public var promptTitle: String { menuTitle.hasSuffix("…") ? String(menuTitle.dropLast()) : menuTitle }
+
     /// These need a name from the user, so the view asks for it and then calls `createFolder` or `renameFolder`.
     public var needsTitle: Bool { self == .renameFolder || self == .newFolderInside || self == .newFolder }
 

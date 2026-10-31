@@ -66,7 +66,7 @@ public enum SidebarText {
     public static func disclosureLabel(isOpen: Bool, title: String) -> String { (isOpen ? "Close folder " : "Open folder ") + title }
 
     /// The drifted pinned tab's "back" button label, naming its tab for the same reason.
-    public static func driftedLabel(title: String) -> String { "Back to pinned page, \(title)" }
+    public static func driftedLabel(title: String) -> String { "\(SidebarAction.backToPinnedPage.title), \(title)" }
 
     /// The confirm button of the folder-name prompt.
     public static func promptConfirm(for action: SidebarAction) -> String { action == .renameFolder ? "Rename" : "Create" }

@@ -119,6 +119,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.sidebarPresenter.requestSidebarAction(action, on: controller.model.sidebarHighlight)
     }
 
+    /// View ▸ Show Archive: the archive sheet on the key browser window.
+    func showArchive() {
+        guard let controller = keyController, allowed(.showArchive, on: controller) else { return }
+        controller.sidebarPresenter.openArchive(.menu)
+    }
+
     /// File ▸ Import from Arc…: on the key browser window (else the front one). One import at a time; an open one is brought forward.
     func importFromArc() {
         guard launchCompleted, let controller = frontController else { return }
@@ -190,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hasAttachedSheet: controller.window.attachedSheet != nil,
             isPicking: importCoordinator?.isPicking ?? false,
             hasPendingSheet: presenter.sheet != nil || presenter.workspaceEditor != nil || presenter.showNewProfile || presenter.pendingWorkspaceDelete != nil
+                || presenter.showArchiveSheet
         )
     }
 
@@ -210,14 +217,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let model = controller.model
             let workspaces = model.workspaces
-            let index = workspaces.firstIndex { $0.id == model.snapshot.workspace.id } ?? 0
+            let index = workspaces.firstIndex { $0.id == model.snapshot.workspace.id }
             return MenuSnapshot(
                 items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
                 compact: model.isCompact,
-                workspaceActions: WorkspaceMenus.menuItems(index: index, count: workspaces.count),
+                workspaceActions: index.map { WorkspaceMenus.menuItems(index: $0, count: workspaces.count) } ?? [],
                 tabActions: SidebarMenus.menuActions(highlight: model.sidebarHighlight, rows: model.rows, snapshot: model.snapshot),
                 canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
-                canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot)
+                canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot),
+                busy: isBusy(controller)
             )
         } onChange: { [weak self] in
             Task { @MainActor in
@@ -231,6 +239,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if menuState.tabActions != menu.tabActions { menuState.tabActions = menu.tabActions }
         if menuState.canMoveUp != menu.canMoveUp { menuState.canMoveUp = menu.canMoveUp }
         if menuState.canMoveDown != menu.canMoveDown { menuState.canMoveDown = menu.canMoveDown }
+        if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
     }
 
     /// Everything the menus show for the key window, read in one observation pass.
@@ -241,11 +250,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var tabActions: [SidebarAction] = []
         var canMoveUp = false
         var canMoveDown = false
+        var busy = false
     }
 
     private func observeKeyWindow() {
         let center = NotificationCenter.default
-        keyObservers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+        keyObservers = [
+            NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+            NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification,
+        ].map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 // Deferred: during a resign, `NSApp.keyWindow` still names the old window.
                 Task { @MainActor in self?.refreshWorkspaceMenu() }

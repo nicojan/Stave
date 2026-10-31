@@ -58,8 +58,8 @@ struct TabPlaceholderView: View {
             Text("Pages load here once Stave's web engine is connected.")
                 .font(.callout).foregroundStyle(.tertiary).multilineTextAlignment(.center)
             if tab.isDrifted {
-                Button("Back to Pinned Page") { model.resetPinned(tab.id) }
-                    .accessibilityLabel("Back to Pinned Page")
+                Button(SidebarAction.backToPinnedPage.title) { model.resetPinned(tab.id) }
+                    .accessibilityLabel(SidebarAction.backToPinnedPage.title)
             }
         }
         .frame(maxWidth: 420)

@@ -14,7 +14,10 @@ struct SidebarActionRequest: Equatable {
 @MainActor @Observable
 final class SidebarPresenter {
     var workspaceEditor: WorkspaceEditorMode?
+    /// The archive as a popover (a mouse click on its button) ...
     var showArchive = false
+    /// ... or as a sheet (anything else: keyboard, command bar, menu), which takes the keyboard where a popover does not.
+    var showArchiveSheet = false
     var showNewProfile = false
     /// The first-run or Arc import sheet on this window, if any.
     var sheet: WindowSheet?
@@ -51,6 +54,16 @@ final class SidebarPresenter {
         returnsFocusToList = true
     }
 
+    /// Shows the archive the way `ArchivePresentation` says for what asked: a mouse click toggles the popover, anything else opens the sheet.
+    func openArchive(_ trigger: ArchiveTrigger) {
+        switch ArchivePresentation.presentation(for: trigger) {
+        case .popover: showArchive.toggle()
+        case .sheet:
+            showArchive = false
+            showArchiveSheet = true
+        }
+    }
+
     func closeCommandBar() {
         returnsFocusToList = true
         commandBar = nil
@@ -79,7 +92,7 @@ final class SidebarPresenter {
         switch outcome {
         case .done, .chooseSearchEngine: break // the bar keeps itself open for an engine choice and never reports it as a close
         case .showArcImport: importFromArc()
-        case .showArchive: showArchive = true
+        case .showArchive: openArchive(.command)
         case .newWindow: newWindow()
         case .newWorkspace: workspaceEditor = .create
         case .newProfile: showNewProfile = true

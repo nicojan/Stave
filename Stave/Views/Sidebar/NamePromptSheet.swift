@@ -3,6 +3,7 @@ import StaveCore
 
 /// A small sheet that asks for one name (a folder, a profile). It replaces SwiftUI's `.alert` with a text field because an alert does not put
 /// the keyboard in its field when Full Keyboard Access is on; here the field takes the focus itself, as in the workspace editor.
+/// Return is the default button's job only (no `.onSubmit`), so a Return confirms exactly once.
 /// What the typed text means (trimming, the "New Folder" fallback, a cancelled blank) stays in StaveCore; this only collects it.
 struct NamePromptSheet: View {
     let title: String
@@ -25,7 +26,6 @@ struct NamePromptSheet: View {
             TextField(fieldLabel, text: $text)
                 .focused($fieldFocused)
                 .accessibilityLabel(fieldLabel)
-                .onSubmit { confirm(text) }
             HStack {
                 Spacer()
                 Button(WorkspaceEditorRules.cancelButton, role: .cancel, action: cancel)

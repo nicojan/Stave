@@ -21,4 +21,7 @@ final class AppMenuState {
     /// Whether ⌥⌘↑ and ⌥⌘↓ have somewhere to move the highlighted item.
     var canMoveUp = false
     var canMoveDown = false
+    /// The key browser window has a sheet up (or about to be), so every command `MenuCommandGate` does not allow then is disabled.
+    var isBusy = false
+    func isEnabled(_ command: MenuCommand) -> Bool { MenuCommandGate.isEnabled(command, busy: isBusy) }
 }
