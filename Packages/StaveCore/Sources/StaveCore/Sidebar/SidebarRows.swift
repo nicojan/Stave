@@ -41,7 +41,7 @@ public enum SidebarRows {
         items.flatMap { item -> [SidebarRow] in
             switch item {
             case .tab(let tab):
-                let drifted = tab.pinnedURL != nil && tab.url != tab.pinnedURL
+                let drifted = tab.isDrifted
                 let title = DisplayText.title(for: tab)
                 return [SidebarRow(
                     id: .tab(tab.id), kind: .pinnedTab(drifted: drifted), depth: depth, parentFolderID: parent, title: title,

@@ -19,10 +19,13 @@ struct SidebarRowsTests {
     @Test func rowsInVisualOrder() throws {
         let (_, snapshot, containers) = try home()
         let rows = SidebarRows.build(snapshot, containers: containers)
+        try #require(rows.count == 12)
+        let longTitle = rows[9].title
+        #expect(longTitle.hasPrefix("Long title ") && longTitle.count == 200)
         #expect(rows.map(\.title) == [
             "Reading", "Later", "Saved essay", "日本の天気予報", "Morning headlines", "Post 42",
             "Reference docs", "Project board",
-            "Weeknight recipes", rows[9].title, "Shopping cart", "Shared files",
+            "Weeknight recipes", longTitle, "Shopping cart", "Shared files",
         ])
         #expect(rows.map(\.depth) == [0, 1, 2, 2, 1, 1, 0, 0, 0, 0, 0, 0])
         let reading = rows[0], later = rows[1]
@@ -49,11 +52,11 @@ struct SidebarRowsTests {
         try store.setFolderOpen(reading.id, false)
         let closed = try store.sidebarSnapshot(workspaceID: snapshot.workspace.id)
         let rows = SidebarRows.build(closed, containers: containers)
+        try #require(rows.count == 7)
         #expect(!rows.map(\.title).contains("Later"))
         #expect(!rows.map(\.title).contains("Morning headlines"))
         #expect(rows[0].kind == .folder(isOpen: false, childCount: 3))
         #expect(rows[0].accessibilityLabel == "Reading, folder, closed, 3 items")
-        #expect(rows.count == 1 + 2 + 4)
     }
 
     @Test func labelsAreExact() {
@@ -67,6 +70,15 @@ struct SidebarRowsTests {
         #expect(SidebarLabels.regularTab(title: "Cart", containerName: "Work") == "Cart, tab, in Work")
         #expect(SidebarLabels.workspace(name: "Home", position: 1, count: 2, isCurrent: false) == "Home, workspace 1 of 2")
         #expect(SidebarLabels.workspace(name: "Work", position: 2, count: 2, isCurrent: true) == "Work, workspace 2 of 2, current")
+    }
+
+    @Test func driftRule() {
+        var pinned = tab(url: "https://example.com/a")
+        #expect(!pinned.isDrifted)
+        pinned.pinnedURL = "https://example.com/a"
+        #expect(!pinned.isDrifted)
+        pinned.url = "https://example.com/b"
+        #expect(pinned.isDrifted)
     }
 
     @Test func addressText() {

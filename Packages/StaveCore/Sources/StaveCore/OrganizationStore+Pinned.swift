@@ -73,7 +73,7 @@ extension OrganizationStore {
     }
 
     public func isDrifted(_ tab: Tab) -> Bool {
-        tab.pinnedURL != nil && tab.url != tab.pinnedURL
+        tab.isDrifted
     }
 
     // MARK: - Essentials
