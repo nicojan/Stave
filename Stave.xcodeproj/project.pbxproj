@@ -7,20 +7,30 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */; };
+		0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */; };
 		2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3BA1703865C93D34246435 /* StaveApp.swift */; };
+		32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */; };
 		49C5205452A55B2C1DC15B18 /* StaveCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3A214511A6FDDB04ECC1D28 /* StaveCore */; };
+		9120B1829D328055C745B599 /* TabPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */; };
 		91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */; };
-		B14649C6EB9E3DDB43A540F3 /* FoundationSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB4FD430513613E0D8787DB /* FoundationSidebarView.swift */; };
+		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
+		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabPlaceholderView.swift; sourceTree = "<group>"; };
+		1942EB2B034830D345E030ED /* BrowserWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowController.swift; sourceTree = "<group>"; };
+		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
-		7EB4FD430513613E0D8787DB /* FoundationSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoundationSidebarView.swift; sourceTree = "<group>"; };
 		7ED2F2159BFD4065D57C6AFE /* Stave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Stave.entitlements; sourceTree = "<group>"; };
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
 		DB1ED1C2442C79A2AE0927F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DF4BAC5AFA0C792A5B1E4A20 /* StaveCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StaveCore; path = Packages/StaveCore; sourceTree = SOURCE_ROOT; };
+		E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunchOptions.swift; sourceTree = "<group>"; };
+		E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -35,10 +45,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		21A24A833C93DF9ED96A4030 /* Content */ = {
+			isa = PBXGroup;
+			children = (
+				0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */,
+			);
+			path = Content;
+			sourceTree = "<group>";
+		};
 		3B685D946852CE5994D9CEE8 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */,
 				65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */,
+				1942EB2B034830D345E030ED /* BrowserWindowController.swift */,
+				E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */,
 				BD3BA1703865C93D34246435 /* StaveApp.swift */,
 			);
 			path = App;
@@ -47,7 +68,9 @@
 		4F00580C9F6DAB4D6B661354 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				7EB4FD430513613E0D8787DB /* FoundationSidebarView.swift */,
+				58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */,
+				21A24A833C93DF9ED96A4030 /* Content */,
+				C2073894525C070D00943647 /* Sidebar */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -67,6 +90,14 @@
 				DF4BAC5AFA0C792A5B1E4A20 /* StaveCore */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		C2073894525C070D00943647 /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+				ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */,
+			);
+			path = Sidebar;
 			sourceTree = "<group>";
 		};
 		D434BF83EE4EE218540E9DF9 /* Products */ = {
@@ -148,9 +179,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */,
 				91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */,
-				B14649C6EB9E3DDB43A540F3 /* FoundationSidebarView.swift in Sources */,
+				AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */,
+				07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */,
+				32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */,
+				D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */,
 				2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */,
+				9120B1829D328055C745B599 /* TabPlaceholderView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

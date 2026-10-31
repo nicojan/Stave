@@ -1,34 +1,52 @@
 import Foundation
 import StaveCore
 
-/// Owns the opened store for the lifetime of the process. The data folder comes only from the bundle id and the
-/// Application Support URL (via `StavePaths`), never from a framework default.
+/// Owns the opened store and the objects every window shares, for the lifetime of the process. The data folder comes from the Debug
+/// launch option or from the bundle id and the Application Support URL (via `StavePaths`), never from a framework default.
 @MainActor
-final class AppEnvironment: ObservableObject {
+final class AppEnvironment {
     let store: OrganizationStore
     let dataDirectory: URL
+    let revision: StoreRevision
+    let livePages: LivePageRegistry
+    let session: WindowSession
+    /// The folder Arc's files are looked for under: the Debug override, or the real home.
+    let arcHome: URL
 
-    /// Bumped after every write the UI should show; views re-read their snapshot when it changes.
-    @Published private(set) var refreshToken = 0
-
-    /// Opens (creating if needed) the database and makes sure a profile exists. Throws `StoreError.newerSchema`
-    /// without touching the file when the data was written by a newer Stave.
-    init(bundleIdentifier: String, applicationSupport: URL) throws {
-        let directory = StavePaths.dataDirectory(bundleIdentifier: bundleIdentifier, applicationSupport: applicationSupport)
-        let database = try StaveDatabase.open(at: StavePaths.databaseFile(in: directory))
+    /// Opens (creating if needed) the database and makes sure a profile exists, then runs the launch maintenance and, when asked, seeds
+    /// the sample. Throws `StoreError.newerSchema` without touching the file when the data was written by a newer Stave.
+    init(dataDirectory: URL, arcHome: URL, seedSample: Bool) throws {
+        try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        let database = try StaveDatabase.open(at: StavePaths.databaseFile(in: dataDirectory))
         let store = OrganizationStore(database: database)
         _ = try store.ensureDefaultProfile()
+        try store.launchMaintenance()
+        #if DEBUG
+        if seedSample { try SampleOrganization.seed(into: store) }
+        #endif
         self.store = store
-        self.dataDirectory = directory
+        self.dataDirectory = dataDirectory
+        self.arcHome = arcHome
+        self.revision = StoreRevision()
+        self.livePages = LivePageRegistry()
+        self.session = WindowSession(store: store)
     }
 
-    /// Launches with the real bundle id and Application Support folder.
-    static func live() throws -> AppEnvironment {
-        let support = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+    /// Launches with the Debug options when given, else the real bundle id and Application Support folder.
+    static func live(options: DebugLaunchOptions = .current) throws -> AppEnvironment {
+        let directory: URL
+        if let override = options.dataDirectory {
+            directory = override
+        } else {
+            let support = try FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+            )
+            directory = StavePaths.dataDirectory(bundleIdentifier: Bundle.main.bundleIdentifier!, applicationSupport: support)
+        }
+        return try AppEnvironment(
+            dataDirectory: directory,
+            arcHome: options.arcHome ?? FileManager.default.homeDirectoryForCurrentUser,
+            seedSample: options.seedSample
         )
-        return try AppEnvironment(bundleIdentifier: Bundle.main.bundleIdentifier!, applicationSupport: support)
     }
-
-    func noteStoreChanged() { refreshToken += 1 }
 }
