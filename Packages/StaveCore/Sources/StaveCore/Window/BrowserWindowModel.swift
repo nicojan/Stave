@@ -285,6 +285,8 @@ public final class BrowserWindowModel {
         case (.closeTab, .tab(let id)): close(id)
         case (.removeFromPinned, .tab(let id)): remove(id) { removePinned($0) }
         case (.removeFromEssentials, .tab(let id)): remove(id) { removeEssential($0) }
+        case (.moveUp, _): move(item, by: -1)
+        case (.moveDown, _): move(item, by: 1)
         case (.deleteFolder, .folder(let id)): deleteFolder(id)
         default: return false
         }
@@ -327,6 +329,61 @@ public final class BrowserWindowModel {
     public func removeEssential(_ tabID: UUID) { perform { try store.removeEssential(tabID) } }
     public func removePinned(_ tabID: UUID) { perform { try store.removePinnedTab(tabID) } }
     public func resetPinned(_ tabID: UUID) { perform { try store.resetPinnedTab(tabID) } }
+
+    // MARK: - Moving
+
+    /// Writes a planned move. The tab or folder keeps its identity, so selection and highlight survive; one that leaves this workspace
+    /// is gone from the snapshot after the re-read, and `reload()` clears the selection as for any vanished tab.
+    public func apply(_ move: SidebarMove) {
+        perform {
+            switch move {
+            case .tab(let id, let workspaceID, let section, let folderID, let after):
+                try store.moveTab(id, toWorkspace: workspaceID, section: section, folderID: folderID, after: after)
+            case .folder(let id, let parentID, let after):
+                try store.moveFolder(id, toParent: parentID, after: after)
+            }
+        }
+    }
+
+    /// What dropping `item` on `target` would do in this window, nil for a refused drop. The views draw an indicator only for a non-nil answer.
+    public func plannedMove(dragging item: SidebarItemID, onto target: SidebarDropTarget) -> SidebarMove? {
+        SidebarDropPlanner.move(dragging: item, onto: target, snapshot: snapshot, pinnedTail: { [store] id in
+            (try? store.sidebarSnapshot(workspaceID: id)).flatMap { SidebarDropPlanner.pinnedRootTail(of: $0) }
+        })
+    }
+
+    /// Drops `item` on `target`. Returns false (and writes nothing) for a refused drop.
+    @discardableResult
+    public func drop(_ item: SidebarItemID, onto target: SidebarDropTarget) -> Bool {
+        guard let move = plannedMove(dragging: item, onto: target) else { return false }
+        apply(move)
+        return true
+    }
+
+    /// One step up (-1) or down (+1) in the item's own list; nothing at either end.
+    public func move(_ item: SidebarItemID, by delta: Int) {
+        guard let move = SidebarDropPlanner.keyboardMove(item, by: delta, snapshot: snapshot) else { return }
+        apply(move)
+    }
+
+    /// ⌥⌘↑ / ⌥⌘↓: moves the highlighted row. With nothing highlighted it does nothing (the selection is not a fallback).
+    public func moveHighlighted(by delta: Int) {
+        guard let item = sidebarHighlight else { return }
+        move(item, by: delta)
+    }
+
+    /// Whether a workspace button dragged onto `target`'s `side` would move, for the switcher's insertion line.
+    public func plannedWorkspaceMove(dragging id: UUID, onto target: UUID, side: DropPosition) -> (id: UUID, after: UUID?)? {
+        SidebarDropPlanner.workspaceMove(dragging: id, onto: target, side: side, workspaces: workspaces)
+    }
+
+    /// Drops a dragged workspace button between buttons. Returns false (and writes nothing) for a refused drop.
+    @discardableResult
+    public func dropWorkspace(_ id: UUID, onto target: UUID, side: DropPosition) -> Bool {
+        guard let move = plannedWorkspaceMove(dragging: id, onto: target, side: side) else { return false }
+        moveWorkspace(move.id, after: move.after)
+        return true
+    }
 
     // MARK: - Folders
 

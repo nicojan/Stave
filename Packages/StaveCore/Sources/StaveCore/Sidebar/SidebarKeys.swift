@@ -56,6 +56,8 @@ public enum SidebarText {
     public static let searchArchive = "Search archive"
     public static let archivedTabs = "Archived tabs"
     public static let essentials = "Essentials"
+    /// Shown in the empty Essentials area while a tab is dragged.
+    public static let essentialsDropHint = "Drop here to add to Essentials"
     public static let folderName = "Folder name"
     public static let tabs = "Tabs"
     public static let dismissMessage = "Dismiss message"

@@ -377,6 +377,86 @@ struct BrowserWindowModelTests {
         #expect(two.placement == .here)
     }
 
+    // MARK: - Moves
+
+    @Test func applyMovesAndBumps() throws {
+        let world = try makeWorld()
+        let a = try world.tab("a"), b = try world.tab("b"), c = try world.tab("c")
+        let model = try world.window()
+        let before = world.revision.value
+        model.apply(.tab(c.id, workspaceID: world.home.id, section: .regular, folderID: nil, after: nil))
+        #expect(world.revision.value == before + 1)
+        #expect(model.snapshot.regular.map(\.id) == [c.id, a.id, b.id])
+        model.apply(.tab(a.id, workspaceID: world.home.id, section: .pinned, folderID: nil, after: nil))
+        #expect(model.snapshot.regular.map(\.id) == [c.id, b.id])
+        #expect(model.rows.map(\.id) == [.tab(a.id), .tab(c.id), .tab(b.id)])
+        let folder = try world.store.createFolder(workspaceID: world.home.id, parentFolderID: nil, title: "F")
+        model.reload()
+        model.apply(.folder(folder.id, parentID: nil, after: nil))
+        #expect(model.rows.first?.id == .folder(folder.id))
+        #expect(model.lastError == nil)
+    }
+
+    @Test func aRefusedMoveShowsAMessageAndWritesNothing() throws {
+        let world = try makeWorld()
+        let a = try world.tab("a")
+        let model = try world.window()
+        model.apply(.tab(a.id, workspaceID: world.home.id, section: .regular, folderID: nil, after: .tab(UUID())))
+        #expect(model.lastError == StoreErrorText.message(for: StoreError.notFound))
+        #expect(model.snapshot.regular.map(\.id) == [a.id])
+    }
+
+    @Test func dropMovesATabToAnotherWorkspaceAndRefusesWhatThePlannerRefuses() throws {
+        let world = try makeWorld()
+        let work = try world.store.createWorkspace(profileID: world.profile.id, name: "Work", icon: "", colorHex: "#FFFFFF")
+        let pinnedAlready = try world.tab("p")
+        try world.store.pinTab(pinnedAlready.id, folderID: nil)
+        let tail = try world.tab("t", in: work)
+        try world.store.pinTab(tail.id, folderID: nil)
+        let regular = try world.tab("r")
+        let model = try world.window()
+        #expect(model.drop(.tab(pinnedAlready.id), onto: .workspace(work.id)))
+        #expect(model.snapshot.pinned.isEmpty)
+        let inWork = try world.store.sidebarSnapshot(workspaceID: work.id)
+        let pinnedIDs = inWork.pinned.compactMap { item -> UUID? in
+            if case .tab(let t) = item { t.id } else { nil }
+        }
+        #expect(pinnedIDs == [tail.id, pinnedAlready.id])
+        let revision = world.revision.value
+        #expect(!model.drop(.tab(regular.id), onto: .row(.tab(regular.id), .before)))
+        #expect(world.revision.value == revision)
+    }
+
+    @Test func moveHighlightedActsOnTheHighlightOnly() throws {
+        let world = try makeWorld()
+        let a = try world.tab("a"), b = try world.tab("b"), c = try world.tab("c")
+        let model = try world.window(selected: c.id)
+        model.moveHighlighted(by: -1) // nothing highlighted: the selection is not a fallback
+        #expect(model.snapshot.regular.map(\.id) == [a.id, b.id, c.id])
+        model.sidebarHighlight = .tab(c.id)
+        model.moveHighlighted(by: -1)
+        model.moveHighlighted(by: -1)
+        #expect(model.snapshot.regular.map(\.id) == [c.id, a.id, b.id])
+        let revision = world.revision.value
+        model.moveHighlighted(by: -1) // at the top: nothing
+        #expect(world.revision.value == revision)
+        model.run(.moveDown, on: .tab(c.id))
+        #expect(model.snapshot.regular.map(\.id) == [a.id, c.id, b.id])
+        #expect(model.selectedTabID == c.id)
+    }
+
+    @Test func dropWorkspaceReordersAndKeepsTheOrder() throws {
+        let world = try makeWorld()
+        let two = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let three = try world.store.createWorkspace(profileID: world.profile.id, name: "Three", icon: "", colorHex: "#FFFFFF")
+        let model = try world.window()
+        #expect(model.dropWorkspace(three.id, onto: world.home.id, side: .before))
+        #expect(model.workspaces.map(\.id) == [three.id, world.home.id, two.id])
+        #expect(try world.store.workspaces(profileID: world.profile.id).map(\.id) == [three.id, world.home.id, two.id])
+        #expect(!model.dropWorkspace(three.id, onto: three.id, side: .after))
+        #expect(!model.dropWorkspace(three.id, onto: world.home.id, side: .before))
+    }
+
     // MARK: - Support types
 
     @Test func errorTextCoversEveryCase() {

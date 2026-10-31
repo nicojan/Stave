@@ -25,6 +25,12 @@ struct StaveApp: App {
                     Button("Close Window") { delegate.closeWindow() }
                         .keyboardShortcut("w", modifiers: [.command, .shift])
                 }
+                CommandMenu("Tab") {
+                    Button(SidebarAction.moveUp.title) { delegate.moveHighlightedRow(by: -1) }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                    Button(SidebarAction.moveDown.title) { delegate.moveHighlightedRow(by: 1) }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                }
                 CommandMenu(WorkspaceMenus.workspacesMenu) {
                     ForEach(delegate.menuState.workspaceItems, id: \.workspaceID) { item in
                         workspaceItem(item)

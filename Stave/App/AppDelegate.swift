@@ -93,6 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⌥⌘↑ / ⌥⌘↓: moves the key browser window's highlighted sidebar row one place up (-1) or down (+1). Nothing highlighted does nothing.
+    func moveHighlightedRow(by delta: Int) { keyController?.model.moveHighlighted(by: delta) }
+
     // MARK: - Workspaces menu
 
     /// ⌃1–9 and the Workspaces menu items: the key browser window switches. With no browser window key (Settings, say) nothing happens.

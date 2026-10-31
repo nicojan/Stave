@@ -27,13 +27,17 @@
 		BA73175DC44727176C4A6AAA /* WorkspaceEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */; };
 		BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9003316572911593E1DFEE /* ArchivePopover.swift */; };
 		C1ADFBA6FC7E8101D32464F9 /* AppMenuState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995508A5262708F8EE5364E3 /* AppMenuState.swift */; };
+		C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F806ED539F7D1586C99B13 /* SidebarDragState.swift */; };
+		C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */; };
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabPlaceholderView.swift; sourceTree = "<group>"; };
+		18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarRowDrop.swift; sourceTree = "<group>"; };
 		1942EB2B034830D345E030ED /* BrowserWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowController.swift; sourceTree = "<group>"; };
 		35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceEditor.swift; sourceTree = "<group>"; };
+		37F806ED539F7D1586C99B13 /* SidebarDragState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarDragState.swift; sourceTree = "<group>"; };
 		381B620D30A72B457FDC56E5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4301C5F96EF73A0EDEC6288D /* AddressField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressField.swift; sourceTree = "<group>"; };
 		4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSwitcher.swift; sourceTree = "<group>"; };
@@ -142,7 +146,9 @@
 				FF9003316572911593E1DFEE /* ArchivePopover.swift */,
 				DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */,
 				DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */,
+				37F806ED539F7D1586C99B13 /* SidebarDragState.swift */,
 				8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */,
+				18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */,
 				DD86DD835E09A6113A128904 /* SidebarRowView.swift */,
 				ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */,
 				FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */,
@@ -243,7 +249,9 @@
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,
 				A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */,
+				C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */,
 				616C13F8718E2365EC357D6A /* SidebarPresenter.swift in Sources */,
+				C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */,
 				019C68D69E15CA6023935959 /* SidebarRowView.swift in Sources */,
 				D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */,
 				2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */,

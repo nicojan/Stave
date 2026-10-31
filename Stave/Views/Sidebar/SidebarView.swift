@@ -15,6 +15,7 @@ struct SidebarView: View {
     @State private var prompt: FolderPrompt?
     @State private var promptText = ""
     @State private var slide: CGFloat = 0
+    @State private var drag = SidebarDragState()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How far the new workspace's list starts from its resting place, and how far it travels in 0.2 s (decision 18).
@@ -31,20 +32,27 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AddressField(tab: model.selectedTab) { openCommandBar(.currentTab) }
-                .padding(.horizontal, 10).padding(.bottom, 8)
-            if !model.snapshot.essentials.isEmpty {
-                EssentialsGrid(
-                    essentials: model.snapshot.essentials, selectedID: model.selectedTabID,
-                    select: { model.select($0) }, perform: { request($0, on: .tab($1)) }
-                )
-                .padding(.horizontal, 10).padding(.bottom, 8)
+            // The swipe catcher covers everything above the bottom bar, so a swipe that starts on the workspace strip only scrolls the strip.
+            VStack(spacing: 0) {
+                AddressField(tab: model.selectedTab) { openCommandBar(.currentTab) }
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                if !model.snapshot.essentials.isEmpty {
+                    EssentialsGrid(
+                        model: model, drag: drag,
+                        select: { model.select($0) }, perform: { request($0, on: .tab($1)) }
+                    )
+                    .padding(.horizontal, 10).padding(.bottom, 8)
+                } else if drag.isDraggingTab {
+                    EssentialsEmptyDrop(model: model, drag: drag)
+                        .padding(.horizontal, 10).padding(.bottom, 8)
+                }
+                list
+                    .offset(x: slide)
+                    .opacity(1 - 0.6 * Double(abs(slide) / Self.slideDistance))
+                    .clipped()
+                errorBanner
             }
-            list
-                .offset(x: slide)
-                .opacity(1 - 0.6 * Double(abs(slide) / Self.slideDistance))
-                .clipped()
-            errorBanner
+            .background { SwipeCatcher { model.switchWorkspace(offset: $0) } }
             bottomBar
         }
         .defaultFocus($listFocused, true)
@@ -58,7 +66,6 @@ struct SidebarView: View {
         }
         .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
-        .background { SwipeCatcher { model.switchWorkspace(offset: $0) } }
         .ignoresSafeArea()
         .alert(prompt?.action.title ?? "", isPresented: Binding(get: { prompt != nil }, set: { if !$0 { prompt = nil } })) {
             TextField(SidebarText.folderName, text: $promptText)
@@ -73,6 +80,7 @@ struct SidebarView: View {
         List(selection: $model.sidebarHighlight) {
             Section {
                 ForEach(model.rows.filter { !$0.isRegular }) { rowView($0) }
+                if drag.payload != nil { pinnedEndZone }
             } header: {
                 Text(SidebarText.pinnedHeader)
                     .sidebarActions(SidebarMenus.pinnedHeaderActions) { request($0, on: nil) }
@@ -100,8 +108,23 @@ struct SidebarView: View {
     }
 
     private func rowView(_ row: SidebarRow) -> some View {
-        SidebarRowView(row: row, setFolderOpen: { model.setFolderOpen($0, $1) }, perform: { request($0, on: $1) })
-            .tag(row.id)
+        SidebarRowView(
+            row: row, actions: SidebarMenus.actions(for: row, in: model.snapshot),
+            setFolderOpen: { model.setFolderOpen($0, $1) }, perform: { request($0, on: $1) }
+        )
+        .tag(row.id)
+        .sidebarRowDrop(model: model, drag: drag, row: row)
+    }
+
+    /// A gap after the last pinned row, present only while something is dragged so the resting list has no extra space: the place to drop to put something at the end of the pinned root, also when it is empty.
+    private var pinnedEndZone: some View {
+        Color.clear
+            .frame(height: 12)
+            .overlay { if drag.target == .pinnedEnd { InsertionLine() } }
+            .listRowSeparator(.hidden)
+            .selectionDisabled()
+            .onDrop(of: SidebarDragState.acceptedTypes, delegate: FixedDropDelegate(model: model, drag: drag, target: .pinnedEnd))
+            .accessibilityHidden(true)
     }
 
     private var newTabRow: some View {
@@ -115,6 +138,8 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(SidebarText.newTabRow)
+        .overlay { if drag.target == .regularTop { InsertionLine().frame(maxHeight: .infinity, alignment: .bottom) } }
+        .onDrop(of: SidebarDragState.acceptedTypes, delegate: FixedDropDelegate(model: model, drag: drag, target: .regularTop))
     }
 
     private var bottomBar: some View {
@@ -132,7 +157,7 @@ struct SidebarView: View {
             if WorkspaceMenus.showsProfileMenu(profileCount: model.profiles.count) {
                 ProfileMenu(model: model, presenter: presenter)
             }
-            WorkspaceSwitcher(model: model, presenter: presenter)
+            WorkspaceSwitcher(model: model, presenter: presenter, drag: drag)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .alert(WorkspaceMenus.newProfilePrompt, isPresented: Binding(get: { presenter.showNewProfile }, set: { presenter.showNewProfile = $0 })) {

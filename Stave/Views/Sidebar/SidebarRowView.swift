@@ -4,6 +4,8 @@ import StaveCore
 /// One row of the pinned tree or the regular tabs. Layout only: the label text, the actions and the enablement come from StaveCore.
 struct SidebarRowView: View {
     let row: SidebarRow
+    /// From `SidebarMenus`, including Move Up and Move Down where they apply.
+    let actions: [SidebarAction]
     let setFolderOpen: (UUID, Bool) -> Void
     let perform: (SidebarAction, SidebarItemID) -> Void
 
@@ -35,8 +37,6 @@ struct SidebarRowView: View {
         .contentShape(Rectangle())
         .sidebarContextMenu(actions) { perform($0, row.id) }
     }
-
-    private var actions: [SidebarAction] { SidebarMenus.actions(for: row) }
 
     @ViewBuilder
     private var disclosure: some View {
