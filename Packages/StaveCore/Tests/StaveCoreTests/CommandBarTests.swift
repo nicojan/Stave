@@ -162,6 +162,32 @@ struct CommandBarTests {
         #expect(CommandBarModel(mode: .currentTab, candidates: found, currentURL: nil).query == "")
     }
 
+    @Test func prefillIsOnlyForWebAddresses() {
+        for url in ["file:///etc/hosts", "about:blank", "javascript:alert(1)", "data:text/html,x", ""] {
+            #expect(CommandBarModel(mode: .currentTab, candidates: candidates(), currentURL: url).query == "", "\(url)")
+        }
+        #expect(CommandBarModel(mode: .currentTab, candidates: candidates(), currentURL: "HTTPS://example.com/a").query == "HTTPS://example.com/a")
+    }
+
+    @Test func untitledArchivedTabDoesNotTitleMatchItsScheme() {
+        let found = candidates(tabs: ["Zzz https"], archived: [""]) // archived url is https://example.org/y, host example.org
+        let results = CommandBarSearch.results(query: "https", candidates: found)
+        #expect(results.dropFirst().map { r -> String in
+            if case .tab = r { "tab" } else if case .archived = r { "archived" } else { "other" }
+        } == ["tab", "archived"])
+    }
+
+    @Test func candidatesAreMostRecentlyActiveFirst() throws {
+        let world = try makeWorld()
+        let a = try world.tab("a")
+        let b = try world.tab("b")
+        let c = try world.tab("c")
+        #expect(try world.store.commandCandidates(profileID: world.profile.id).tabs.map(\.tab.id) == [c.id, b.id, a.id])
+        world.clock.advance(by: 10)
+        try world.store.markActive(tabID: a.id)
+        #expect(try world.store.commandCandidates(profileID: world.profile.id).tabs.map(\.tab.id) == [a.id, c.id, b.id])
+    }
+
     // MARK: - Perform
 
     @Test func performOpenNewTab() throws {
@@ -205,8 +231,7 @@ struct CommandBarTests {
         try world.store.setSetting(SettingKeys.searchEngine, .kagi)
         let model = try world.window()
         #expect(model.perform(.search(query: "cats & dogs"), mode: .newTab) == .done)
-        #expect(model.selectedTab?.url == SearchEngine.kagi.searchURL(for: "cats & dogs"))
-        #expect(model.selectedTab?.url.hasPrefix("https://kagi.com/search?q=") == true)
+        #expect(model.selectedTab?.url == "https://kagi.com/search?q=cats%20%26%20dogs")
     }
 
     @Test func performTabInOtherWorkspace() throws {
@@ -291,6 +316,7 @@ struct CommandBarTests {
         let model = try world.window()
         #expect(model.perform(.action(.newTabInContainer(id: container.id, name: "Shop")), mode: .newTab) == .done)
         #expect(model.selectedTab?.containerID == container.id)
+        #expect(model.selectedTab?.url == "")
         #expect(model.perform(.action(.switchProfile(id: other.id, name: "Other")), mode: .newTab) == .done)
         #expect(model.snapshot.profile.id == other.id)
     }

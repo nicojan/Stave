@@ -28,7 +28,7 @@ public enum CommandBarSearch {
         candidates.tabs.map { Entry(kind: 0, title: DisplayText.title(for: $0.tab), url: $0.tab.url, result: .tab($0)) }
             + candidates.workspaces.map { Entry(kind: 1, title: $0.name, url: nil, result: .workspace($0)) }
             + candidates.actions.map { Entry(kind: 2, title: $0.title, url: nil, result: .action($0)) }
-            + candidates.archived.map { Entry(kind: 3, title: $0.title.isEmpty ? $0.url : $0.title, url: $0.url, result: .archived($0)) }
+            + candidates.archived.map { Entry(kind: 3, title: DisplayText.title(title: $0.title, url: $0.url), url: $0.url, result: .archived($0)) }
     }
 
     /// 0 title prefix, 1 word prefix, 2 substring of the title or URL; nil for no match.

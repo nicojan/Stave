@@ -3,10 +3,13 @@ import Foundation
 /// The text the sidebar and content placeholder show for a tab or address. Pure rules; the views only place the result.
 public enum DisplayText {
     /// The title, or the URL's host when the title is empty, or the URL itself.
-    public static func title(for tab: Tab) -> String {
-        guard tab.title.isEmpty else { return tab.title }
-        if let host = URL(string: tab.url)?.host, !host.isEmpty { return host }
-        return tab.url
+    public static func title(for tab: Tab) -> String { title(title: tab.title, url: tab.url) }
+
+    /// The one rule for any record with a title and a URL (open or archived tab).
+    public static func title(title: String, url: String) -> String {
+        guard title.isEmpty else { return title }
+        if let host = URL(string: url)?.host, !host.isEmpty { return host }
+        return url
     }
 
     /// The URL's host without a leading `www.`; the whole string when there is no host.

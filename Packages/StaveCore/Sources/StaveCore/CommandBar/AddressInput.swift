@@ -48,7 +48,7 @@ public enum AddressInput: Equatable, Sendable {
     private static func isIPv4(_ host: String) -> Bool {
         let octets = host.split(separator: ".", omittingEmptySubsequences: false)
         return octets.count == 4 && octets.allSatisfy { octet in
-            (1...3).contains(octet.count) && octet.allSatisfy { $0.isASCII && $0.isNumber } && Int(octet).map { $0 <= 255 } == true
+            (1...3).contains(octet.count) && !(octet.count > 1 && octet.hasPrefix("0")) && octet.allSatisfy { $0.isASCII && $0.isNumber } && Int(octet).map { $0 <= 255 } == true
         }
     }
 

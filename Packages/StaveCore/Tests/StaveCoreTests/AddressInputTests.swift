@@ -36,8 +36,21 @@ struct AddressInputTests {
 
     @Test func nonWebSchemesBecomeSearches() {
         for text in ["javascript:alert(1)", "JavaScript:void(0)", "file:///etc/hosts", "data:text/html,x", "about:blank", "ftp://example.com", "javascript.example.com:1/x y"] {
-            let result = AddressInput.classify(text)
-            if case .url = result { Issue.record("\(text) became \(result)") }
+            #expect(AddressInput.classify(text) == .search(text), "\(text)")
         }
+    }
+
+    @Test func trickyShapesBecomeSearches() {
+        let shapes = [
+            "example.com\tx", "example.com\nx", "exa\u{200B}mple.com", "http:javascript:alert(1)", "https:example.com",
+            "//example.com", "example.com:80@evil.example", "example\u{3002}com", "example\u{FF0E}com",
+        ]
+        for text in shapes { #expect(AddressInput.classify(text) == .search(text), "\(text.debugDescription)") }
+        #expect(AddressInput.classify("  example.com\tx\n") == .search("example.com\tx"))
+    }
+
+    @Test func ipv4WithLeadingZerosIsASearch() {
+        #expect(AddressInput.classify("192.168.001.010") == .search("192.168.001.010"))
+        #expect(AddressInput.classify("10.0.0.1") == .url("http://10.0.0.1"))
     }
 }

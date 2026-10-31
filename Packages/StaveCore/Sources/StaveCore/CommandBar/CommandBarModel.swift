@@ -20,9 +20,16 @@ public final class CommandBarModel {
     public init(mode: CommandBarMode, candidates: CommandCandidates, currentURL: String?) {
         self.mode = mode
         self.candidates = candidates
-        let start = mode == .currentTab ? (currentURL ?? "") : ""
+        let start = mode == .currentTab ? Self.prefill(for: currentURL) : ""
         query = start
         results = CommandBarSearch.results(query: start, candidates: candidates)
+    }
+
+    /// Only a web address is worth editing; a stored `file:`, `about:` or other URL must never land in the query and go to a search engine.
+    private static func prefill(for url: String?) -> String {
+        guard let url else { return "" }
+        let lower = url.lowercased()
+        return lower.hasPrefix("http://") || lower.hasPrefix("https://") ? url : ""
     }
 
     public func moveSelection(by delta: Int) {

@@ -327,7 +327,7 @@ public final class BrowserWindowModel {
             select(found.tab.id)
         case .archived(let archived): restoreArchived(archived.id)
         case .workspace(let workspace): switchWorkspace(to: workspace.id)
-        case .action(let action): return perform(action)
+        case .action(let action): return run(action)
         }
         return .done
     }
@@ -347,7 +347,7 @@ public final class BrowserWindowModel {
         return .done
     }
 
-    private func perform(_ action: CommandAction) -> CommandOutcome {
+    private func run(_ action: CommandAction) -> CommandOutcome {
         switch action {
         case .newWorkspace: return .newWorkspace
         case .newProfile: return .newProfile
@@ -361,13 +361,10 @@ public final class BrowserWindowModel {
         case .resetPinnedTab: if let id = selectedTabID { resetPinned(id) }
         case .copyAddress: if let tab = selectedTab { return .copy(tab.url) }
         case .switchProfile(let id, _): switchProfile(to: id)
-        case .newTabInContainer(let id, _): openTab(url: Self.blankPage, containerID: id)
+        case .newTabInContainer(let id, _): openTab(url: "", containerID: id)
         }
         return .done
     }
-
-    /// What a new tab in a container holds until the web layer exists.
-    static let blankPage = "about:blank"
 
     public func windowWillClose() { livePages.windowClosed(windowID) }
 }
