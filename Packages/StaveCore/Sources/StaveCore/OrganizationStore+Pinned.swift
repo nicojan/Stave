@@ -40,6 +40,7 @@ extension OrganizationStore {
             guard slot.section == .pinned, let workspaceID = slot.workspaceID,
                   let workspace = try Workspace.fetchOne(db, key: workspaceID) else { throw StoreError.notPinned }
             let stamp = now()
+            try archivePinnedPageIfDrifted(slot: slot, tab: tab, closedAt: stamp, in: db)
             slot.section = .regular
             slot.folderID = nil
             slot.sortIndex = try regularIndex(workspaceID: workspace.id, origin: .commandBar, edge: .top, in: db)

@@ -21,6 +21,9 @@ extension OrganizationStore {
                 section: section, folderID: folderID, after: anchor, in: db
             )
             let stamp = now()
+            if section == .regular, slot.section != .regular {
+                try archivePinnedPageIfDrifted(slot: slot, tab: tab, closedAt: stamp, in: db)
+            }
             let pinnedPage = section == .regular
                 ? (url: String?.none, title: String?.none, favicon: String?.none)
                 : (url: tab.pinnedURL ?? tab.url, title: tab.pinnedTitle ?? tab.title,

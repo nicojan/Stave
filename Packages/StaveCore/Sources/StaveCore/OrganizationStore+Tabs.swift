@@ -148,6 +148,17 @@ extension OrganizationStore {
         )
     }
 
+    /// A pinned tab or Essential that has drifted is about to become regular, which clears its pinned page. Archives that page first (its pinned URL
+    /// and title) in the caller's transaction, so moving or unpinning never loses it. A tab on its pinned page loses nothing and archives nothing.
+    func archivePinnedPageIfDrifted(slot: Slot, tab: Tab, closedAt: Date, in db: Database) throws {
+        guard let pinnedURL = tab.pinnedURL, pinnedURL != tab.url else { return }
+        try ArchivedTab(
+            profileID: slot.profileID, workspaceID: slot.workspaceID,
+            url: pinnedURL, title: tab.pinnedTitle ?? "", faviconURL: tab.pinnedFaviconURL,
+            containerID: tab.containerID, closedAt: closedAt, modifiedAt: closedAt
+        ).insert(db)
+    }
+
     /// The sort index for a new regular slot in the workspace by `origin` and `edge`, renumbering first if crowded (R10).
     func regularIndex(workspaceID: UUID, origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
         try uncrowdedIndex(

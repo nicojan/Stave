@@ -101,6 +101,17 @@ public enum SidebarDropPlanner {
         }
     }
 
+    /// Whether what a drop carries is what the sidebar put on the pasteboard for the remembered item: a link equals the tab's address, a label
+    /// the title (or workspace name). A foreign drag that slipped past the session check still fails here, and then nothing is applied.
+    public static func payloadMatches(expected: SidebarDragPayload?, droppedURL: String?, droppedText: String?) -> Bool {
+        switch expected {
+        case nil: false
+        case .link(let link)?:
+            droppedURL == (URL(string: link)?.absoluteString ?? link) || (droppedURL == nil && droppedText == link)
+        case .label(let label)?: droppedURL == nil && droppedText == label
+        }
+    }
+
     // MARK: - Workspace buttons
 
     /// Reorders a workspace button: `.before`/`.after` the target. Onto itself, a position it already holds, another profile's workspace

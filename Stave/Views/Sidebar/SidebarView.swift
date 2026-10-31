@@ -80,7 +80,7 @@ struct SidebarView: View {
         List(selection: $model.sidebarHighlight) {
             Section {
                 ForEach(model.rows.filter { !$0.isRegular }) { rowView($0) }
-                if drag.payload != nil { pinnedEndZone }
+                if drag.isDraggingItem { pinnedEndZone }
             } header: {
                 Text(SidebarText.pinnedHeader)
                     .sidebarActions(SidebarMenus.pinnedHeaderActions) { request($0, on: nil) }

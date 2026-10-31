@@ -4,7 +4,7 @@ import Foundation
 public enum SidebarAction: Hashable, Sendable, CaseIterable {
     case pin, unpin, addToEssentials, backToPinnedPage, closeTab, removeFromPinned, removeFromEssentials
     case renameFolder, newFolderInside, deleteFolder, newFolder
-    case moveUp, moveDown
+    case moveUp, moveDown, moveLeft, moveRight
 
     /// The menu item and VoiceOver action name.
     public var title: String {
@@ -22,6 +22,8 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
         case .newFolder: "New Folder"
         case .moveUp: "Move Up"
         case .moveDown: "Move Down"
+        case .moveLeft: "Move Left"
+        case .moveRight: "Move Right"
         }
     }
 
@@ -41,6 +43,8 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
         case .newFolderInside, .newFolder: "folder.badge.plus"
         case .moveUp: "arrow.up"
         case .moveDown: "arrow.down"
+        case .moveLeft: "arrow.left"
+        case .moveRight: "arrow.right"
         }
     }
 }
@@ -69,10 +73,14 @@ public enum SidebarMenus {
         actions(forEssential: tab) + moveActions(for: .tab(tab.id), in: snapshot)
     }
 
-    /// Move Up and Move Down, each only when `SidebarDropPlanner.keyboardMove` has somewhere to go.
+    /// Move Up and Move Down (Move Left and Move Right for an Essential, which sits in a grid), each only when
+    /// `SidebarDropPlanner.keyboardMove` has somewhere to go.
     public static func moveActions(for item: SidebarItemID, in snapshot: SidebarSnapshot) -> [SidebarAction] {
-        (SidebarDropPlanner.keyboardMove(item, by: -1, snapshot: snapshot) == nil ? [] : [.moveUp])
-            + (SidebarDropPlanner.keyboardMove(item, by: 1, snapshot: snapshot) == nil ? [] : [.moveDown])
+        let isEssential: Bool
+        if case .tab(let id) = item { isEssential = snapshot.essentials.contains { $0.id == id } } else { isEssential = false }
+        let (back, forward): (SidebarAction, SidebarAction) = isEssential ? (.moveLeft, .moveRight) : (.moveUp, .moveDown)
+        return (SidebarDropPlanner.keyboardMove(item, by: -1, snapshot: snapshot) == nil ? [] : [back])
+            + (SidebarDropPlanner.keyboardMove(item, by: 1, snapshot: snapshot) == nil ? [] : [forward])
     }
 
     /// The actions for an Essentials tile.

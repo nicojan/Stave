@@ -133,11 +133,11 @@ private struct WorkspaceDropDelegate: DropDelegate {
     let workspace: Workspace
     let width: CGFloat
 
-    func validateDrop(info: DropInfo) -> Bool { drag.payload != nil }
+    func validateDrop(info: DropInfo) -> Bool { drag.livePayload != nil }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         let owner = AnyHashable(workspace.id)
-        switch drag.payload {
+        switch drag.livePayload {
         case .workspace(let dragged)?:
             let side: DropPosition = info.location.x < width / 2 ? .before : .after
             let planned = model.plannedWorkspaceMove(dragging: dragged, onto: workspace.id, side: side) != nil
@@ -155,13 +155,20 @@ private struct WorkspaceDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(workspace.id)) }
 
     func performDrop(info: DropInfo) -> Bool {
-        defer { drag.end() }
-        switch drag.payload {
+        switch drag.livePayload {
         case .workspace(let dragged)?:
-            return model.dropWorkspace(dragged, onto: workspace.id, side: info.location.x < width / 2 ? .before : .after)
+            let side: DropPosition = info.location.x < width / 2 ? .before : .after
+            let expected = model.workspaces.first { $0.id == dragged }.map { SidebarDragPayload.label($0.name) }
+            let target = workspace.id
+            drag.end()
+            return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.dropWorkspace(dragged, onto: target, side: side) }
         case .item(let item)?:
-            return model.drop(item, onto: .workspace(workspace.id))
+            let expected = SidebarDropPlanner.dragPayload(for: item, snapshot: model.snapshot)
+            let target = workspace.id
+            drag.end()
+            return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.drop(item, onto: .workspace(target)) }
         case nil:
+            drag.end()
             return false
         }
     }

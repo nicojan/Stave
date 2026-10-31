@@ -83,13 +83,13 @@ private struct EssentialDropDelegate: DropDelegate {
     let width: CGFloat
 
     private func accepted(_ info: DropInfo) -> (item: SidebarItemID, target: SidebarDropTarget)? {
-        guard case .item(let item)? = drag.payload else { return nil }
+        guard case .item(let item)? = drag.livePayload else { return nil }
         let target = SidebarDropTarget.essentials(index: info.location.x < width / 2 ? index : index + 1)
         return model.plannedMove(dragging: item, onto: target) == nil ? nil : (item, target)
     }
 
     func validateDrop(info: DropInfo) -> Bool {
-        if case .item? = drag.payload { true } else { false }
+        if case .item? = drag.livePayload { true } else { false }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -101,9 +101,10 @@ private struct EssentialDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(tabID)) }
 
     func performDrop(info: DropInfo) -> Bool {
-        defer { drag.end() }
-        guard let found = accepted(info) else { return false }
-        return model.drop(found.item, onto: found.target)
+        guard let found = accepted(info) else { drag.end(); return false }
+        let expected = SidebarDropPlanner.dragPayload(for: found.item, snapshot: model.snapshot)
+        drag.end()
+        return DropVerifier.verifiedApply(info: info, expected: expected) { [model] in model.drop(found.item, onto: found.target) }
     }
 }
 

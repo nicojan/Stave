@@ -285,8 +285,8 @@ public final class BrowserWindowModel {
         case (.closeTab, .tab(let id)): close(id)
         case (.removeFromPinned, .tab(let id)): remove(id) { removePinned($0) }
         case (.removeFromEssentials, .tab(let id)): remove(id) { removeEssential($0) }
-        case (.moveUp, _): move(item, by: -1)
-        case (.moveDown, _): move(item, by: 1)
+        case (.moveUp, _), (.moveLeft, _): move(item, by: -1)
+        case (.moveDown, _), (.moveRight, _): move(item, by: 1)
         case (.deleteFolder, .folder(let id)): deleteFolder(id)
         default: return false
         }

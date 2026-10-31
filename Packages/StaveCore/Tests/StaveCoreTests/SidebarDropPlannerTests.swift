@@ -78,6 +78,35 @@ struct SidebarDropPlannerTests {
         #expect(move(.folder(f.later.id), .row(.tab(f.pr1.id), .before)) == .folder(f.later.id, parentID: nil, after: .folder(f.reading.id)))
     }
 
+    /// A top-level folder holding one tab and no sub-folders passes every other folder rule, so only the self-parent guard refuses these.
+    @Test func folderCantBeDroppedBesideItsOwnChild() {
+        let parent = Folder(workspaceID: f.workspace.id, title: "Solo", sortIndex: 0)
+        var snapshot = f.snapshot
+        snapshot.pinned = [.folder(parent, children: [.tab(f.p1)]), .tab(f.pr1)]
+        func plan(_ position: DropPosition) -> SidebarMove? {
+            SidebarDropPlanner.move(dragging: .folder(parent.id), onto: .row(.tab(f.p1.id), position), snapshot: snapshot)
+        }
+        #expect(plan(.before) == nil)
+        #expect(plan(.after) == nil)
+    }
+
+    @Test func dragSessionIsBoundToThePasteboardCount() {
+        #expect(DragSessionRule.verdict(recorded: nil, current: 7) == .record)
+        #expect(DragSessionRule.verdict(recorded: 7, current: 7) == .live)
+        #expect(DragSessionRule.verdict(recorded: 7, current: 8) == .foreign)
+    }
+
+    @Test func aDropMustCarryWhatWasPutOnThePasteboard() {
+        #expect(SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: "https://example.com/a", droppedText: nil))
+        #expect(SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: nil, droppedText: "https://example.com/a"))
+        #expect(!SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: "https://example.org/other", droppedText: nil))
+        #expect(!SidebarDropPlanner.payloadMatches(expected: .link("https://example.com/a"), droppedURL: nil, droppedText: nil))
+        #expect(SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: nil, droppedText: "Reading"))
+        #expect(!SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: "https://example.com/a", droppedText: "Reading"))
+        #expect(!SidebarDropPlanner.payloadMatches(expected: .label("Reading"), droppedURL: nil, droppedText: "Other"))
+        #expect(!SidebarDropPlanner.payloadMatches(expected: nil, droppedURL: "https://example.com/a", droppedText: nil))
+    }
+
     @Test func ontoItselfIsNil() {
         #expect(move(.tab(f.r1.id), .row(.tab(f.r1.id), .before)) == nil)
         #expect(move(.folder(f.reading.id), .row(.folder(f.reading.id), .into)) == nil)
@@ -170,7 +199,9 @@ struct SidebarDropPlannerTests {
         #expect(SidebarMenus.moveActions(for: .tab(f.r3.id), in: snapshot) == [.moveUp])
         #expect(SidebarMenus.moveActions(for: .folder(f.later.id), in: snapshot) == [.moveUp, .moveDown]) // between p1 and p2
         #expect(SidebarMenus.moveActions(for: .tab(f.l1.id), in: snapshot).isEmpty) // alone in its folder
-        #expect(SidebarMenus.moveActions(for: .tab(f.e2.id), in: snapshot) == [.moveUp])
+        #expect(SidebarMenus.moveActions(for: .tab(f.e2.id), in: snapshot) == [.moveLeft])
+        #expect(SidebarMenus.moveActions(for: .tab(f.e1.id), in: snapshot) == [.moveRight])
+        #expect(SidebarAction.moveLeft.title == "Move Left" && SidebarAction.moveRight.title == "Move Right")
     }
 
     @Test func pointerFractionPicksTheTarget() {

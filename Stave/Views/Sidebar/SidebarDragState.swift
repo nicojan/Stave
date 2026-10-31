@@ -32,14 +32,65 @@ final class SidebarDragState {
         if case .item(.tab)? = payload { true } else { false }
     }
 
+    /// The drag pasteboard's change count at the first look after the drag began (the drag has written it by then). Nil until then.
+    @ObservationIgnored private var recordedCount: Int?
+    @ObservationIgnored private var watcher: Task<Void, Never>?
+
+    /// How often, and after how many consecutive polls with the button up, an abandoned drag is forgotten.
+    private static let pollInterval: Duration = .milliseconds(200)
+    private static let releasedPolls = 3
+
+    /// A new drag starting anywhere in the sidebar replaces whatever was remembered.
     func begin(_ payload: Payload) {
+        end()
         self.payload = payload
-        clearIndicator()
+        watchForAbandonment()
     }
 
     func end() {
+        watcher?.cancel()
+        watcher = nil
         payload = nil
+        recordedCount = nil
         clearIndicator()
+    }
+
+    /// The remembered drag, only while it is still the drag on the pasteboard. A different change count means another drag (another app, another
+    /// window) started since: the memory is dropped and nothing is returned, so a foreign drop can never be read as a move of a sidebar item.
+    var livePayload: Payload? {
+        guard payload != nil else { return nil }
+        let current = NSPasteboard(name: .drag).changeCount
+        switch DragSessionRule.verdict(recorded: recordedCount, current: current) {
+        case .record:
+            recordedCount = current
+            return payload
+        case .live:
+            return payload
+        case .foreign:
+            end()
+            return nil
+        }
+    }
+
+    /// A drag that ends without a Stave drop (Escape, dropped on itself, dropped in another app) gives no callback. The mouse button being up
+    /// for a few polls in a row means the drag session is over, so the memory goes and the drag-only drop areas disappear.
+    private func watchForAbandonment() {
+        watcher = Task { @MainActor [weak self] in
+            var released = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.pollInterval)
+                released = NSEvent.pressedMouseButtons & 1 == 0 ? released + 1 : 0
+                if released >= Self.releasedPolls {
+                    self?.end()
+                    return
+                }
+            }
+        }
+    }
+
+    /// True while any sidebar item (tab or folder, not a workspace button) is being dragged.
+    var isDraggingItem: Bool {
+        if case .item? = payload { true } else { false }
     }
 
     func hover(_ target: SidebarDropTarget?, owner: AnyHashable) {
@@ -111,6 +162,39 @@ struct SizeReader: View {
     }
 }
 
+/// Checks that what a drop carries is what the sidebar put on the pasteboard for the remembered item, then applies the drop. The providers load
+/// asynchronously, so the answer to the system is "accepted" once a provider is there; nothing is applied when the content differs.
+@MainActor
+enum DropVerifier {
+    static func verifiedApply(info: DropInfo, expected: SidebarDragPayload?, apply: @escaping @MainActor () -> Void) -> Bool {
+        guard let expected, let provider = info.itemProviders(for: SidebarDragState.acceptedTypes).first else { return false }
+        let box = ProviderBox(provider: provider)
+        Task { @MainActor in
+            let url = await loadURL(box)
+            let text = await loadText(box)
+            if SidebarDropPlanner.payloadMatches(expected: expected, droppedURL: url, droppedText: text) { apply() }
+        }
+        return true
+    }
+
+    /// The provider is only read, by the system's own loading calls.
+    private struct ProviderBox: @unchecked Sendable { let provider: NSItemProvider }
+
+    private static func loadURL(_ box: ProviderBox) async -> String? {
+        guard box.provider.canLoadObject(ofClass: URL.self) else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = box.provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url?.absoluteString) }
+        }
+    }
+
+    private static func loadText(_ box: ProviderBox) async -> String? {
+        guard box.provider.canLoadObject(ofClass: NSString.self) else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = box.provider.loadObject(ofClass: NSString.self) { text, _ in continuation.resume(returning: (text as? NSString).map { $0 as String }) }
+        }
+    }
+}
+
 /// A drop on a fixed place (the pinned end, the top of the regular tabs, the empty Essentials area).
 @MainActor
 struct FixedDropDelegate: DropDelegate {
@@ -119,7 +203,7 @@ struct FixedDropDelegate: DropDelegate {
     let target: SidebarDropTarget
 
     private func item() -> SidebarItemID? {
-        guard case .item(let item)? = drag.payload, model.plannedMove(dragging: item, onto: target) != nil else { return nil }
+        guard case .item(let item)? = drag.livePayload, model.plannedMove(dragging: item, onto: target) != nil else { return nil }
         return item
     }
 
@@ -134,8 +218,9 @@ struct FixedDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(String(describing: target))) }
 
     func performDrop(info: DropInfo) -> Bool {
-        defer { drag.end() }
-        guard let item = item() else { return false }
-        return model.drop(item, onto: target)
+        guard let item = item() else { drag.end(); return false }
+        let expected = SidebarDropPlanner.dragPayload(for: item, snapshot: model.snapshot)
+        drag.end()
+        return DropVerifier.verifiedApply(info: info, expected: expected) { [model, target] in model.drop(item, onto: target) }
     }
 }
