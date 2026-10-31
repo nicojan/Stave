@@ -14,8 +14,6 @@ public final class BrowserWindowModel {
     public private(set) var profiles: [Profile]
     public private(set) var containers: [Container]
     public private(set) var selectedTabID: UUID?
-    /// Where the selected tab's live page is shown; nil with no selection. Set from the registry's `show` result, never inferred.
-    public private(set) var placement: LivePlacement?
     public private(set) var lastError: String?
     /// -1, 0 or +1: the direction of the last workspace switch, for the slide animation.
     public private(set) var lastSwitchDirection = 0
@@ -27,6 +25,9 @@ public final class BrowserWindowModel {
     @ObservationIgnored private let base: WindowState
     @ObservationIgnored private var profileID: UUID
     @ObservationIgnored private var workspaceID: UUID
+
+    /// Where the selected tab's live page is shown; nil with no selection. Read from the registry, which owns the answer.
+    public var placement: LivePlacement? { selectedTabID.map { livePages.placement(of: $0, in: windowID) } }
 
     public var selectedTab: Tab? { selectedTabID.flatMap { id in Self.allTabs(in: snapshot).first { $0.id == id } } }
 
@@ -47,7 +48,7 @@ public final class BrowserWindowModel {
         profiles = loaded.profiles; containers = loaded.containers
         profileID = loaded.snapshot.profile.id; workspaceID = loaded.snapshot.workspace.id
         selectedTabID = Self.allTabs(in: loaded.snapshot).contains { $0.id == state.selectedTabID } ? state.selectedTabID : nil
-        syncPlacement()
+        if let selectedTabID { livePages.show(selectedTabID, in: windowID) }
     }
 
     /// Re-reads the store. A missing workspace falls back to the profile's first, a missing profile to the first profile.
@@ -63,7 +64,6 @@ public final class BrowserWindowModel {
             return
         }
         if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { clearSelection() }
-        syncPlacement()
     }
 
     private struct Loaded {
@@ -111,8 +111,9 @@ public final class BrowserWindowModel {
             reload()
             return result
         } catch {
-            lastError = StoreErrorText.message(for: error)
+            let message = StoreErrorText.message(for: error)
             reload()
+            lastError = message // a failed re-read must not hide the write's message
             return nil
         }
     }
@@ -126,9 +127,9 @@ public final class BrowserWindowModel {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
         }
-        if tabID == selectedTabID, placement == .here { return }
+        if tabID == selectedTabID { return }
         selectedTabID = tabID
-        placement = livePages.show(tabID, in: windowID)
+        livePages.show(tabID, in: windowID)
         perform { try store.markActive(tabID: tabID) }
     }
 
@@ -136,30 +137,18 @@ public final class BrowserWindowModel {
     public func bringSelectedHere() {
         guard let id = selectedTabID else { return }
         livePages.bringHere(id, to: windowID)
-        placement = .here
     }
 
     private func clearSelection() {
-        guard selectedTabID != nil || placement != nil else { return }
+        guard selectedTabID != nil else { return }
         selectedTabID = nil
-        placement = nil
-        livePages.windowClosed(windowID) // releases this window's claim without showing anything
-    }
-
-    /// Brings `placement` in line with the registry after other windows moved or released the page. Claims only when needed.
-    private func syncPlacement() {
-        guard let id = selectedTabID else { placement = nil; return }
-        let current = livePages.placement(of: id, in: windowID)
-        switch (placement, current) {
-        case (nil, _), (.elsewhere?, .here): placement = livePages.show(id, in: windowID)
-        case (_, .elsewhere): placement = current
-        case (.here?, .here): break
-        }
+        livePages.release(windowID: windowID)
     }
 
     // MARK: - Workspaces and profiles
 
     public func switchWorkspace(to id: UUID) {
+        if id == snapshot.workspace.id { return }
         guard let target = workspaces.firstIndex(where: { $0.id == id }) else {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
@@ -185,6 +174,7 @@ public final class BrowserWindowModel {
     }
 
     public func switchProfile(to id: UUID) {
+        if id == snapshot.profile.id { return }
         guard profiles.contains(where: { $0.id == id }) else {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
@@ -247,7 +237,7 @@ public final class BrowserWindowModel {
         perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
     }
 
-    /// Closing the selected tab selects the tab row below it, else the one above, else nothing.
+    /// Closing the selected tab selects the tab row below it, else the one above, else nothing. An Essential follows grid order instead.
     public func close(_ tabID: UUID) {
         let wasSelected = tabID == selectedTabID
         let next = wasSelected ? neighbour(of: tabID) : nil
@@ -257,7 +247,8 @@ public final class BrowserWindowModel {
     }
 
     private func neighbour(of tabID: UUID) -> UUID? {
-        let ids = rows.compactMap { row -> UUID? in
+        let essentialIDs = snapshot.essentials.map(\.id)
+        let ids = essentialIDs.contains(tabID) ? essentialIDs : rows.compactMap { row -> UUID? in
             if case .tab(let id) = row.id { id } else { nil }
         }
         guard let index = ids.firstIndex(of: tabID) else { return nil }

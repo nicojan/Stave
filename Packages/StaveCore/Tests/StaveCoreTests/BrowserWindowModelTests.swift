@@ -238,7 +238,8 @@ struct BrowserWindowModelTests {
         let world = try makeWorld()
         let model = try world.window()
         model.createFolder(title: "1", parentID: nil)
-        guard case .folder(let first) = try #require(model.rows.first).id else { return }
+        let firstRow = try #require(model.rows.first)
+        guard case .folder(let first) = firstRow.id else { Issue.record("not a folder"); return }
         model.createFolder(title: "2", parentID: first)
         let second = try #require(model.rows.first { $0.depth == 1 })
         guard case .folder(let secondID) = second.id else { Issue.record("not a folder"); return }
@@ -305,8 +306,65 @@ struct BrowserWindowModelTests {
         #expect(two.placement == .elsewhere(windowID: one.windowID))
         two.bringSelectedHere()
         #expect(two.placement == .here)
-        one.reload()
-        #expect(one.placement == .elsewhere(windowID: two.windowID))
+        #expect(one.placement == .elsewhere(windowID: two.windowID)) // no reload: the registry answers
+    }
+
+    @Test func ownerSwitchingWorkspaceHandsThePageToTheWaiter() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let one = try world.window(), two = try world.window()
+        one.select(tab.id)
+        two.select(tab.id)
+        #expect(two.placement == .elsewhere(windowID: one.windowID))
+        one.switchWorkspace(to: other.id)
+        #expect(two.placement == .here)
+    }
+
+    @Test func closingTheOwnerWindowHandsThePageToTheWaiter() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let one = try world.window(), two = try world.window()
+        one.select(tab.id)
+        two.select(tab.id)
+        one.windowWillClose()
+        #expect(two.placement == .here)
+    }
+
+    @Test func closingASelectedEssentialSelectsTheNextEssential() throws {
+        let world = try makeWorld()
+        let a = try world.tab("a"), b = try world.tab("b"), c = try world.tab("c")
+        let model = try world.window()
+        for tab in [a, b, c] { model.makeEssential(tab.id) }
+        model.select(b.id)
+        model.close(b.id)
+        #expect(model.selectedTabID == c.id)
+        model.close(c.id) // last in the grid: the previous Essential (closing only unloads, so all three remain)
+        #expect(model.selectedTabID == b.id)
+        #expect(model.snapshot.essentials.count == 3)
+    }
+
+    @Test func closingTheOnlyEssentialSelectsNothing() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let model = try world.window()
+        model.makeEssential(tab.id)
+        model.select(tab.id)
+        model.close(tab.id)
+        #expect(model.selectedTabID == nil)
+    }
+
+    @Test func switchingToTheCurrentWorkspaceOrProfileKeepsTheSelection() throws {
+        let world = try makeWorld()
+        _ = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let model = try world.window()
+        model.select(tab.id)
+        model.switchWorkspace(number: 1)
+        model.switchWorkspace(to: world.home.id)
+        model.switchProfile(to: world.profile.id)
+        #expect(model.selectedTabID == tab.id)
+        #expect(model.lastSwitchDirection == 0)
     }
 
     @Test func windowWillCloseReleasesItsPage() throws {

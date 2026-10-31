@@ -73,4 +73,44 @@ struct LivePageRegistryTests {
         #expect(registry.show(tabU, in: a) == .here)
         #expect(registry.show(tabT, in: b) == .here)
     }
+
+    @Test func waiterReceivesThePageWhenTheOwnerSwitchesAway() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabU, in: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: a) == .elsewhere(windowID: b))
+    }
+
+    @Test func earliestWaiterWins() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: c) == .elsewhere(windowID: b))
+    }
+
+    @Test func waiterReceivesThePageWhenTheOwnerWindowCloses() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        registry.windowClosed(a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.show(tabT, in: a) == .elsewhere(windowID: b))
+    }
+
+    @Test func bringHereLeavesTheDisplacedWindowWaiting() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        registry.bringHere(tabT, to: b)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: a) == .elsewhere(windowID: b))
+        registry.release(windowID: b)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+    }
 }
