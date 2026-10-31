@@ -37,7 +37,7 @@ public final class OrganizationStore: Sendable {
 
     public func profiles() throws -> [Profile] {
         try writer.read { db in
-            try Profile.order(Column("sortIndex"), Column("name")).fetchAll(db)
+            try Profile.order(Column("sortIndex"), Column("name"), Column("rowid")).fetchAll(db)
         }
     }
 
@@ -48,7 +48,7 @@ public final class OrganizationStore: Sendable {
     }
 
     func ensureDefaultProfile(in db: Database) throws -> Profile {
-        if let existing = try Profile.order(Column("sortIndex")).fetchOne(db) { return existing }
+        if let existing = try Profile.order(Column("sortIndex"), Column("name"), Column("rowid")).fetchOne(db) { return existing }
         return try insertProfile(name: Self.defaultProfileName, in: db)
     }
 
@@ -79,7 +79,7 @@ public final class OrganizationStore: Sendable {
     func workspaces(profileID: UUID, in db: Database) throws -> [Workspace] {
         try Workspace
             .filter(Column("profileID") == profileID)
-            .order(Column("sortIndex"), Column("name"))
+            .order(Column("sortIndex"), Column("name"), Column("rowid"))
             .fetchAll(db)
     }
 
@@ -94,9 +94,9 @@ public final class OrganizationStore: Sendable {
             let stamp = now()
             let slots = try Slot.filter(Column("workspaceID") == id).fetchAll(db)
             let slotsByID = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
-            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt")).fetchAll(db)
+            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt"), Column("rowid")).fetchAll(db)
             for tab in tabs {
-                guard let slot = slotsByID[tab.slotID] else { continue }
+                guard let slot = slotsByID[tab.slotID] else { throw StoreError.notFound }
                 try makeArchivedTab(slot: slot, tab: tab, closedAt: stamp).insert(db)
             }
             _ = try workspace.delete(db)

@@ -143,13 +143,11 @@ extension OrganizationStore {
 
     /// The sort index for a new regular slot in the workspace by `origin` and `edge`, renumbering first if crowded (R10).
     func regularIndex(workspaceID: UUID, origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
-        var slots = try regularSlots(workspaceID: workspaceID, in: db)
-        var index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        if isCrowded(index, among: slots.map(\.sortIndex)) {
-            slots = try renumber(slots, in: db)
-            index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        }
-        return index
+        try uncrowdedIndex(
+            siblings: { try regularSlots(workspaceID: workspaceID, in: db).map(Child.slot) },
+            propose: { try placementIndex(slots: $0.compactMap(\.slot), origin: origin, edge: edge, in: db) },
+            in: db
+        )
     }
 
     func regularSlots(workspaceID: UUID, in db: Database) throws -> [Slot] {
@@ -179,10 +177,9 @@ extension OrganizationStore {
     }
 
     private func placementIndex(slots: [Slot], origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
-        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
         let indexBySlot = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0.sortIndex) })
-        let indices = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab in
-            indexBySlot[tab.slotID].map { (tab.id, $0) }
+        let indices = Dictionary(uniqueKeysWithValues: try tabsBySlot(slots, in: db).compactMap { slotID, tab in
+            indexBySlot[slotID].map { (tab.id, $0) }
         })
         return TabPlacement.sortIndex(origin: origin, regularIndices: indices, edge: edge)
     }
@@ -195,17 +192,5 @@ extension OrganizationStore {
         if let below, index - below < Self.minimumIndexGap { return true }
         if let above, above - index < Self.minimumIndexGap { return true }
         return !index.isFinite
-    }
-
-    /// Rewrites the slots' indices to 0, 1, 2… in their current order.
-    private func renumber(_ slots: [Slot], in db: Database) throws -> [Slot] {
-        let stamp = now()
-        return try slots.enumerated().map { position, slot in
-            var renumbered = slot
-            renumbered.sortIndex = Double(position)
-            renumbered.modifiedAt = stamp
-            try renumbered.update(db)
-            return renumbered
-        }
     }
 }

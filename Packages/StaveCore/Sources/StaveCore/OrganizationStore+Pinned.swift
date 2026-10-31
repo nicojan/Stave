@@ -17,8 +17,7 @@ extension OrganizationStore {
             var (tab, slot) = try fetchPair(id, in: db)
             guard slot.section != .essential, let workspaceID = slot.workspaceID else { throw StoreError.notFound }
             if let folderID {
-                guard let folder = try Folder.fetchOne(db, key: folderID),
-                      folder.workspaceID == workspaceID else { throw StoreError.notFound }
+                _ = try requireFolder(folderID, inWorkspace: workspaceID, in: db)
             }
             let stamp = now()
             slot.section = .pinned
@@ -84,9 +83,7 @@ extension OrganizationStore {
         try database.writer.write { db in
             var (tab, slot) = try fetchPair(id, in: db)
             guard slot.section != .essential else { return }
-            let siblings = try Slot
-                .filter(Column("profileID") == slot.profileID && Column("section") == SlotSection.essential.rawValue)
-                .fetchAll(db)
+            let siblings = try essentialSlots(profileID: slot.profileID, in: db)
             let stamp = now()
             slot.section = .essential
             slot.workspaceID = nil
@@ -112,10 +109,7 @@ extension OrganizationStore {
     }
 
     func essentials(profileID: UUID, in db: Database) throws -> [Tab] {
-        let slots = try Slot
-            .filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
-            .order(Column("sortIndex"), Column("rowid"))
-            .fetchAll(db)
+        let slots = try essentialSlots(profileID: profileID, in: db)
         let bySlot = try tabsBySlot(slots, in: db)
         return slots.compactMap { bySlot[$0.id] }
     }
@@ -128,8 +122,7 @@ extension OrganizationStore {
         try database.writer.write { db in
             guard try Workspace.fetchOne(db, key: workspaceID) != nil else { throw StoreError.notFound }
             if let parentFolderID {
-                guard let parent = try Folder.fetchOne(db, key: parentFolderID),
-                      parent.workspaceID == workspaceID else { throw StoreError.notFound }
+                let parent = try requireFolder(parentFolderID, inWorkspace: workspaceID, in: db)
                 guard parent.parentFolderID == nil else { throw StoreError.folderTooDeep }
             }
             let folder = Folder(
@@ -181,16 +174,6 @@ extension OrganizationStore {
     }
 
     // MARK: - Helpers
-
-    enum Child {
-        case folder(Folder), slot(Slot)
-        var sortIndex: Double {
-            switch self {
-            case .folder(let folder): folder.sortIndex
-            case .slot(let slot): slot.sortIndex
-            }
-        }
-    }
 
     func fetchPair(_ id: UUID, in db: Database) throws -> (Tab, Slot) {
         guard let tab = try Tab.fetchOne(db, key: id),
