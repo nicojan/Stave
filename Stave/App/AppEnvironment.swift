@@ -25,6 +25,9 @@ final class AppEnvironment {
     /// the sample. Throws `StoreError.newerSchema` without touching the file when the data was written by a newer Stave.
     init(dataDirectory: URL, arcHome: URL, seedSample: Bool) throws {
         try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        if arcHome.lastPathComponent == LaunchArguments.isolatedArcHomeName, arcHome.deletingLastPathComponent().standardizedFileURL == dataDirectory.standardizedFileURL {
+            try FileManager.default.createDirectory(at: arcHome, withIntermediateDirectories: true)
+        }
         let database = try StaveDatabase.open(at: StavePaths.databaseFile(in: dataDirectory))
         let store = OrganizationStore(database: database)
         _ = try store.ensureDefaultProfile()

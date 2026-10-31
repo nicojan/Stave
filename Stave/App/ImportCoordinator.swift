@@ -7,7 +7,7 @@ import StaveCore
 final class ImportCoordinator {
     private let environment: AppEnvironment
     private let controllers: () -> [BrowserWindowController]
-    private var isPicking = false
+    private(set) var isPicking = false
 
     init(environment: AppEnvironment, controllers: @escaping () -> [BrowserWindowController]) {
         self.environment = environment
@@ -19,11 +19,11 @@ final class ImportCoordinator {
     }
 
     /// File ▸ Import from Arc…, the command bar row, and the first-run sheet's offer.
-    func open(on controller: BrowserWindowController) {
+    /// `windowIsBusy`: another sheet is up or coming on that window (the caller knows every sheet kind), so nothing is opened over it.
+    func open(on controller: BrowserWindowController, windowIsBusy: Bool) {
         if let active = activeController { bringForward(active); return }
         guard !isPicking else { bringForward(controller); return }
-        // Another sheet (the first-run screen) is up on this window: it must finish first.
-        guard controller.sidebarPresenter.sheet == nil else { bringForward(controller); return }
+        guard !windowIsBusy else { bringForward(controller); return }
         let home = environment.arcHome
         if ArcImporter.isAvailable(home: home) {
             present(.arcOnThisMac(home: home), on: controller)

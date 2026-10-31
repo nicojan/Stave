@@ -28,9 +28,6 @@ public enum FirstRun {
     public static func opensImportAfterContinue(offersArcImport: Bool, importChosen: Bool) -> Bool {
         offersArcImport && importChosen
     }
-
-    /// The Arc button's accessibility value, so VoiceOver hears whether it is on.
-    public static func arcButtonValue(chosen: Bool) -> String { chosen ? "Chosen" : "Not chosen" }
 }
 
 /// The Search engine setting for Settings: reads the store under the revision, so it follows a choice made in the command bar or first run.

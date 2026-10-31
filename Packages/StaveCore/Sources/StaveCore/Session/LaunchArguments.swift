@@ -26,6 +26,17 @@ public struct LaunchArguments: Equatable, Sendable {
         )
     }
 
+    /// Name of the empty Arc home made inside an overridden data folder.
+    public static let isolatedArcHomeName = "arc-home-isolated"
+
+    /// The folder Arc's files are looked for under. With a data override and no Arc home, an empty folder inside the data folder, so a check
+    /// that forgot `-StaveArcHome` can never reach the real Arc data. Both given: the given one. Neither: nil (the caller uses the real home).
+    public var effectiveArcHome: String? {
+        if let arcHome { return arcHome }
+        guard let dataDirectory else { return nil }
+        return (dataDirectory as NSString).appendingPathComponent(Self.isolatedArcHomeName)
+    }
+
     private static func path(after flag: String, in arguments: [String]) throws -> String? {
         guard let index = arguments.firstIndex(of: flag) else { return nil }
         guard arguments.indices.contains(index + 1) else { throw Failure.unusable(flag: flag) }

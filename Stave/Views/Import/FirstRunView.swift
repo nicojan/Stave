@@ -8,6 +8,8 @@ struct FirstRunView: View {
     let shortcuts: WorkspaceShortcutsSetting?
     let onContinue: (SearchEngine, _ importFromArc: Bool) -> Void
 
+    private static let rowHeight: CGFloat = 26
+
     @State private var engine: SearchEngine?
     @State private var importChosen = false
 
@@ -39,7 +41,7 @@ struct FirstRunView: View {
             Text(FirstRun.enginePrompt).font(.headline)
             // A list, not radio buttons: a list takes the Tab key and the arrow keys without "Full Keyboard Access".
             List(SearchEngine.allCases, id: \.self, selection: $engine) { Text($0.displayName) }
-                .frame(height: 5 * 26 + 8)
+                .frame(height: CGFloat(SearchEngine.allCases.count) * Self.rowHeight + 8)
                 .scrollDisabled(true)
                 .accessibilityLabel(FirstRun.enginePrompt)
         }
@@ -59,9 +61,9 @@ struct FirstRunView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(FirstRun.arcOfferText).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button(FirstRun.arcButtonTitle) { importChosen.toggle() }
+                Toggle(FirstRun.arcButtonTitle, isOn: $importChosen)
+                    .toggleStyle(.checkbox)
                     .accessibilityLabel(FirstRun.arcButtonTitle)
-                    .accessibilityValue(FirstRun.arcButtonValue(chosen: importChosen))
                 if importChosen {
                     Label(FirstRun.arcChosenText, systemImage: "checkmark.circle.fill")
                         .font(.callout).foregroundStyle(.secondary)

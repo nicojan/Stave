@@ -20,7 +20,7 @@ struct DebugLaunchOptions: Equatable {
             let parsed = try LaunchArguments.parse(ProcessInfo.processInfo.arguments)
             return DebugLaunchOptions(
                 dataDirectory: parsed.dataDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) },
-                arcHome: parsed.arcHome.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                arcHome: parsed.effectiveArcHome.map { URL(fileURLWithPath: $0, isDirectory: true) },
                 seedSample: parsed.seedSample
             )
             #else

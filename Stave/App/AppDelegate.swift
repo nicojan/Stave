@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// last state the session knows, else from the saved windows.
     func newWindow() {
         guard let environment, launchCompleted else { return }
+        if let key = keyController, !allowed(.newWindow, on: key) { return }
         let front = frontController
         let base = front?.model.windowState ?? environment.session.states.last ?? (try? environment.store.restoredWindows().first) ?? nil
         guard let base else { return }
@@ -78,20 +79,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// ⌘T: the command bar on the key browser window, for a new tab.
-    func newTab() { keyController?.openCommandBar(.newTab) }
+    func newTab() { guard let controller = keyController, allowed(.newTab, on: controller) else { return }; controller.openCommandBar(.newTab) }
 
     /// ⌘L: the command bar on the key browser window, prefilled with the selected tab's address.
-    func openLocation() { keyController?.openCommandBar(.currentTab) }
+    func openLocation() { guard let controller = keyController, allowed(.openLocation, on: controller) else { return }; controller.openCommandBar(.currentTab) }
 
     /// ⌘W: closes the selected tab when the key window is a browser window (or a sheet on one); otherwise closes the key window, as in any app.
     func closeSelectedTab() {
         guard let controller = keyController else { NSApp.keyWindow?.performClose(nil); return }
+        guard allowed(.closeTab, on: controller) else { return }
         controller.model.closeSelectedTab()
     }
 
     /// ⇧⌘W: closes the browser window the key window belongs to; otherwise the key window itself.
     func closeWindow() {
         if let controller = keyController {
+            guard allowed(.closeWindow, on: controller) else { return }
             controller.window.performClose(nil)
         } else {
             NSApp.keyWindow?.performClose(nil)
@@ -99,12 +102,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// ⌥⌘↑ / ⌥⌘↓: moves the key browser window's highlighted sidebar row one place up (-1) or down (+1). Nothing highlighted does nothing.
-    func moveHighlightedRow(by delta: Int) { keyController?.model.moveHighlighted(by: delta) }
+    func moveHighlightedRow(by delta: Int) {
+        guard let controller = keyController, allowed(.moveRow, on: controller) else { return }
+        controller.model.moveHighlighted(by: delta)
+    }
 
     /// File ▸ Import from Arc…: on the key browser window (else the front one). One import at a time; an open one is brought forward.
     func importFromArc() {
         guard launchCompleted, let controller = frontController else { return }
-        importCoordinator?.open(on: controller)
+        importCoordinator?.open(on: controller, windowIsBusy: isBusy(controller) && !MenuCommandGate.allowedWhileSheetUp(.importFromArc))
     }
 
     // MARK: - First run
@@ -138,12 +144,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.messageText = "Stave couldn't save your choice."
             alert.informativeText = StoreErrorText.message(for: error)
             alert.addButton(withTitle: "OK")
-            alert.beginSheetModal(for: controller.window)
+            // The first-run sheet is still attached and cannot be dismissed, so the alert goes on top of it.
+            alert.beginSheetModal(for: controller.window.attachedSheet ?? controller.window)
             return
         }
         environment.revision.bump()
         controller.sidebarPresenter.sheet = nil
-        if importFromArc { importCoordinator?.open(on: controller) }
+        // The first-run sheet is still leaving, so the window is not "busy" for this hand-over.
+        if importFromArc { importCoordinator?.open(on: controller, windowIsBusy: false) }
     }
 
     /// View ▸ Compact Mode (⌃⌘S): flips the setting through the store, so every window follows. Works with Settings key too.
@@ -153,12 +161,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// ⌃1–9 and the Workspaces menu items: the key browser window switches. With no browser window key (Settings, say) nothing happens.
     func switchWorkspace(to id: UUID) {
-        keyController?.model.switchWorkspace(to: id)
+        guard let controller = keyController, allowed(.switchWorkspace, on: controller) else { return }
+        controller.model.switchWorkspace(to: id)
     }
 
     /// Workspaces ▸ New Workspace…: opens the editor sheet on the key browser window.
     func newWorkspace() {
-        keyController?.sidebarPresenter.workspaceEditor = .create
+        guard let controller = keyController, allowed(.newWorkspace, on: controller) else { return }
+        controller.sidebarPresenter.workspaceEditor = .create
+    }
+
+    /// True while a sheet is attached to the window, a file picker is open, or a sheet (first run, import, workspace editor, new profile) is about to show.
+    private func isBusy(_ controller: BrowserWindowController) -> Bool {
+        let presenter = controller.sidebarPresenter
+        return MenuCommandGate.isBusy(
+            hasAttachedSheet: controller.window.attachedSheet != nil,
+            isPicking: importCoordinator?.isPicking ?? false,
+            hasPendingSheet: presenter.sheet != nil || presenter.workspaceEditor != nil || presenter.showNewProfile
+        )
+    }
+
+    /// A window-acting menu command runs unless a sheet is up and the gate says it must wait.
+    private func allowed(_ command: MenuCommand, on controller: BrowserWindowController) -> Bool {
+        !isBusy(controller) || MenuCommandGate.allowedWhileSheetUp(command)
     }
 
     /// Rebuilds the menu's items from the key window's workspaces and the setting, and re-arms itself for the next change to either.
