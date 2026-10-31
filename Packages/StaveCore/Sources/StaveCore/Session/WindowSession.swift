@@ -7,7 +7,32 @@ public final class WindowSession {
     private let store: OrganizationStore
     public private(set) var states: [WindowState] = []
 
-    public init(store: OrganizationStore) { self.store = store }
+    private var saveTask: Task<Void, Never>?
+    private let saveDelay: Duration
+    /// Called when a debounced save fails.
+    public var onSaveError: (@MainActor (Error) -> Void)?
+
+    public init(store: OrganizationStore, saveDelay: Duration = .milliseconds(500)) {
+        self.store = store
+        self.saveDelay = saveDelay
+    }
+
+    /// One save for all windows, `saveDelay` after the last call. Every call restarts the delay.
+    public func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self, saveDelay] in
+            try? await Task.sleep(for: saveDelay)
+            guard !Task.isCancelled, let self else { return }
+            do { try self.save() } catch { self.onSaveError?(error) }
+        }
+    }
+
+    /// Saves now and drops any pending delayed save.
+    public func saveNow() throws {
+        saveTask?.cancel()
+        saveTask = nil
+        try save()
+    }
 
     /// Replaces the window's state in place, or appends it when the window is new.
     public func update(_ state: WindowState) {

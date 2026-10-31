@@ -1,7 +1,9 @@
 import Foundation
+import StaveCore
 
 /// Launch arguments for by-hand checks on throwaway synthetic data. They exist only in Debug builds: in Release `current` has every
 /// field nil/false, so a stray argument can never redirect a shipped app's data folder or seed anything.
+/// The parsing is `LaunchArguments` in StaveCore. A flag that is present but unusable makes `current` throw (the app then refuses to start).
 struct DebugLaunchOptions: Equatable {
     /// `-StaveDataDirectory <path>`: the data folder to open instead of the Application Support one.
     var dataDirectory: URL?
@@ -13,26 +15,17 @@ struct DebugLaunchOptions: Equatable {
     static let none = DebugLaunchOptions(dataDirectory: nil, arcHome: nil, seedSample: false)
 
     static var current: DebugLaunchOptions {
-        #if DEBUG
-        parse(ProcessInfo.processInfo.arguments)
-        #else
-        none
-        #endif
+        get throws {
+            #if DEBUG
+            let parsed = try LaunchArguments.parse(ProcessInfo.processInfo.arguments)
+            return DebugLaunchOptions(
+                dataDirectory: parsed.dataDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                arcHome: parsed.arcHome.map { URL(fileURLWithPath: $0, isDirectory: true) },
+                seedSample: parsed.seedSample
+            )
+            #else
+            return none
+            #endif
+        }
     }
-
-    #if DEBUG
-    static func parse(_ arguments: [String]) -> DebugLaunchOptions {
-        DebugLaunchOptions(
-            dataDirectory: value(after: "-StaveDataDirectory", in: arguments).map { URL(fileURLWithPath: $0, isDirectory: true) },
-            arcHome: value(after: "-StaveArcHome", in: arguments).map { URL(fileURLWithPath: $0, isDirectory: true) },
-            seedSample: arguments.contains("-StaveSeedSample")
-        )
-    }
-
-    private static func value(after flag: String, in arguments: [String]) -> String? {
-        guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
-        let value = arguments[index + 1]
-        return value.isEmpty || value.hasPrefix("-") ? nil : value
-    }
-    #endif
 }

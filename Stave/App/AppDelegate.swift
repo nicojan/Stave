@@ -1,19 +1,25 @@
 import AppKit
 import StaveCore
 
-/// Opens the store, restores one window per saved `WindowState`, and saves the set on quit. Menu commands call into it.
+/// Opens the store, restores one window per saved `WindowState`, and saves the set as it changes and on quit. Menu commands call into it.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var environment: AppEnvironment?
     private var controllers: [BrowserWindowController] = []
     private var isTerminating = false
+    /// True once every saved window is open. A launch that fails part-way must not save its partial set over the user's windows.
+    private var launchCompleted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            let environment = try AppEnvironment.live()
+            let environment = try AppEnvironment.live(options: try DebugLaunchOptions.current)
             let windows = try environment.store.restoredWindows()
             self.environment = environment
             for state in windows { try open(state, environment: environment) }
+            launchCompleted = true
+        } catch let failure as LaunchArguments.Failure {
+            presentLaunchArgumentFailure(failure)
+            return
         } catch {
             presentOpenFailure(error)
             return
@@ -27,10 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
-        guard let environment else { return }
+        guard launchCompleted, let environment else { return }
         for controller in controllers { controller.reportNow() }
+        environment.sidebarWidth.saveIfChanged()
         do {
-            try environment.session.save()
+            try environment.session.saveNow()
         } catch {
             NSLog("Stave: could not save window state: \(error)")
         }
@@ -38,37 +45,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu commands
 
-    /// ⌘N: a window on the front window's profile and workspace, with no tab selected.
+    /// ⌘N: a window on the front browser window's profile and workspace, with no tab selected. With no browser window open it starts from the
+    /// last state the session knows, else from the saved windows.
     func newWindow() {
-        guard let environment, let front = frontController else { return }
-        let base = front.model.windowState
+        guard let environment, launchCompleted else { return }
+        let front = frontController
+        let base = front?.model.windowState ?? environment.session.states.last ?? (try? environment.store.restoredWindows().first) ?? nil
+        guard let base else { return }
         let state = WindowState(
             profileID: base.profileID, workspaceID: base.workspaceID, selectedTabID: nil,
-            frame: front.cascadedFrame, sortIndex: 0
+            frame: front?.cascadedFrame ?? "", sortIndex: 0
         )
         do {
             try open(state, environment: environment)
-            controllers.last?.show()
         } catch {
             NSLog("Stave: could not open a window: \(error)")
         }
     }
 
-    /// ⌘W.
+    /// ⌘W: closes the selected tab when the key window is a browser window (or a sheet on one); otherwise closes the key window, as in any app.
     func closeSelectedTab() {
-        guard let model = frontController?.model, let id = model.selectedTabID else { return }
-        model.close(id)
+        guard let controller = keyController else { NSApp.keyWindow?.performClose(nil); return }
+        guard let id = controller.model.selectedTabID else { return }
+        controller.model.close(id)
     }
 
-    /// ⇧⌘W.
+    /// ⇧⌘W: closes the browser window the key window belongs to; otherwise the key window itself.
     func closeWindow() {
-        frontController?.window.performClose(nil)
+        if let controller = keyController {
+            controller.window.performClose(nil)
+        } else {
+            NSApp.keyWindow?.performClose(nil)
+        }
     }
 
     // MARK: - Windows
 
+    /// The browser window that is key, or the one a key sheet is attached to. Nil when the key window is something else (Settings).
+    private var keyController: BrowserWindowController? {
+        guard let key = NSApp.keyWindow else { return nil }
+        return controllers.first { $0.window === key || $0.window === key.sheetParent }
+    }
+
     private var frontController: BrowserWindowController? {
-        controllers.first { $0.window === NSApp.keyWindow }
+        keyController
             ?? controllers.first { $0.window === NSApp.mainWindow }
             ?? controllers.first
     }
@@ -84,12 +104,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func windowClosed(_ closed: BrowserWindowController) {
         // A window closing because the app is quitting stays in the saved set.
         if !isTerminating, let environment {
-            environment.session.windowClosed(closed.model.windowID, isLast: controllers.count == 1)
+            let isLast = controllers.count == 1
+            environment.session.windowClosed(closed.model.windowID, isLast: isLast)
+            if !isLast {
+                do { try environment.session.saveNow() } catch { NSLog("Stave: could not save window state: \(error)") }
+            }
         }
         controllers = controllers.filter { $0 !== closed }
     }
 
     // MARK: - Failure
+
+    private func presentLaunchArgumentFailure(_ failure: LaunchArguments.Failure) {
+        guard case .unusable(let flag) = failure else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Stave did not start: \(flag) needs an absolute path."
+        alert.informativeText = "The flag was given with no value, a value starting with \"-\", or a relative path. Fix it or remove it; Stave will not fall back to your real folders."
+        alert.addButton(withTitle: "Quit")
+        alert.runModal()
+        NSApp.terminate(nil)
+    }
 
     private func presentOpenFailure(_ error: Error) {
         let alert = NSAlert()

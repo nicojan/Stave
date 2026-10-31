@@ -10,6 +10,8 @@ final class AppEnvironment {
     let revision: StoreRevision
     let livePages: LivePageRegistry
     let session: WindowSession
+    /// The one sidebar width of the app, shared by every window.
+    let sidebarWidth: SidebarWidthModel
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
 
@@ -29,11 +31,16 @@ final class AppEnvironment {
         self.arcHome = arcHome
         self.revision = StoreRevision()
         self.livePages = LivePageRegistry()
-        self.session = WindowSession(store: store)
+        let session = WindowSession(store: store)
+        session.onSaveError = { NSLog("Stave: could not save window state: \($0)") }
+        self.session = session
+        let sidebarWidth = SidebarWidthModel(store: store)
+        sidebarWidth.onSaveError = { NSLog("Stave: could not save the sidebar width: \($0)") }
+        self.sidebarWidth = sidebarWidth
     }
 
     /// Launches with the Debug options when given, else the real bundle id and Application Support folder.
-    static func live(options: DebugLaunchOptions = .current) throws -> AppEnvironment {
+    static func live(options: DebugLaunchOptions) throws -> AppEnvironment {
         let directory: URL
         if let override = options.dataDirectory {
             directory = override
