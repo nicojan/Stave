@@ -72,7 +72,7 @@ public struct ArcSidebar: Equatable, Sendable {
     public var favorites: [ArcProfileKey: [ArcNode]]
     /// Items reached twice (ruling 11).
     public var duplicateItems: Int
-    /// `topApps` containers with a missing or unrecognized profile marker; their tabs are merged into `favorites[.default]`.
+    /// `topApps` containers that hold at least one item and have a missing or unrecognized profile marker; their tabs are merged into `favorites[.default]`.
     public var unrecognizedFavoritesContainers: Int
 
     public init(

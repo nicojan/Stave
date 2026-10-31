@@ -156,7 +156,7 @@ public enum ArcSidebarParser {
 
     /// Listed containers come first, in order; any other root `topApps` item follows, sorted by id.
     /// Lists for the same profile are concatenated in that order. A container whose marker is missing or
-    /// unrecognized is walked too: its nodes follow the default profile's own, and it is counted.
+    /// unrecognized is walked too: its nodes follow the default profile's own, and it is counted when it has at least one child item.
     private static func parseFavorites(
         listed: [String],
         walk: inout Walk
@@ -176,7 +176,7 @@ public enum ArcSidebarParser {
             case .some(let key) where key != .unrecognized:
                 result[key, default: []] += found
             default:
-                unrecognized += 1
+                if !found.isEmpty { unrecognized += 1 }
                 strays += found
             }
         }

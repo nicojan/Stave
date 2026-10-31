@@ -55,7 +55,7 @@ struct ArcImportPlannerTests {
         let plan = try plan("edge-cases")
         #expect(plan.skipped.contains(.unpinnedTabs(space: "Acme", count: 3)))
         // Unpinned split must not be reported when unpinned import is off: only the pinned split is.
-        let splits = plan.flattened.filter { $0 == .splitView(space: "Acme", tabCount: 2) }
+        let splits = plan.flattened.filter { $0 == .splitView(place: .space("Acme"), tabCount: 2) }
         #expect(splits.count == 1)
     }
 
@@ -67,7 +67,7 @@ struct ArcImportPlannerTests {
             tab("https://unpinned-b.example.com/", "Unpinned B"),
             tab("https://unpinned.example.net/", "Unpinned"),
         ])
-        let splits = plan.flattened.filter { $0 == .splitView(space: "Acme", tabCount: 2) }
+        let splits = plan.flattened.filter { $0 == .splitView(place: .space("Acme"), tabCount: 2) }
         #expect(splits.count == 2)
     }
 
@@ -87,7 +87,7 @@ struct ArcImportPlannerTests {
         let b = PlannedPinned.tab(tab("https://split-b.example.org/", "Split B"))
         let index = try #require(acme.pinned.firstIndex(of: a))
         #expect(acme.pinned[index + 1] == b)
-        #expect(plan.flattened.contains(.splitView(space: "Acme", tabCount: 2)))
+        #expect(plan.flattened.contains(.splitView(place: .space("Acme"), tabCount: 2)))
     }
 
     @Test func nonWebURLsAreSkipped() throws {
@@ -160,8 +160,8 @@ struct ArcImportPlannerTests {
 
     @Test func unsupportedAndDuplicatesReported() throws {
         let plan = try plan("edge-cases")
-        #expect(plan.skipped.contains(.unsupportedItem(space: "Acme", kind: "easel", title: "Sketch")))
-        #expect(plan.skipped.contains(.unsupportedItem(space: "Acme", kind: "welcomeToArc", title: nil)))
+        #expect(plan.skipped.contains(.unsupportedItem(place: .space("Acme"), kind: "easel", title: "Sketch")))
+        #expect(plan.skipped.contains(.unsupportedItem(place: .space("Acme"), kind: "welcomeToArc", title: nil)))
         #expect(plan.skipped.contains(.duplicateItem(count: 2)))
         #expect(plan.skipped.last == .duplicateItem(count: 2))
     }
@@ -176,9 +176,9 @@ struct ArcImportPlannerTests {
             ]],
             duplicateItems: 0)
         let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
-        #expect(plan.skipped.contains(.nonWebURL(space: nil, title: "F", scheme: "file")))
-        #expect(plan.skipped.contains(.unsupportedItem(space: nil, kind: "easel", title: "E")))
-        #expect(plan.flattened.contains(.splitView(space: nil, tabCount: 2)))
+        #expect(plan.skipped.contains(.nonWebURL(place: .favorites(profile: nil), title: "F", scheme: "file")))
+        #expect(plan.skipped.contains(.unsupportedItem(place: .favorites(profile: nil), kind: "easel", title: "E")))
+        #expect(plan.flattened.contains(.splitView(place: .favorites(profile: nil), tabCount: 2)))
         #expect(plan.profiles[0].essentials.count == 2)
     }
 
@@ -209,7 +209,7 @@ struct ArcImportPlannerTests {
         let on = planOf(space("W", unpinned: unpinned), includeUnpinned: true)
         #expect(on.profiles[0].workspaces[0].regular == [tab("https://a.example.com/", "a")])
         #expect(on.flattened == [.unpinnedFolder(space: "W", folder: "Outer"), .unpinnedFolder(space: "W", folder: "Inner")])
-        #expect(on.skipped == [.nonWebURL(space: "W", title: "Bad", scheme: "file")])
+        #expect(on.skipped == [.nonWebURL(place: .space("W"), title: "Bad", scheme: "file")])
     }
 
     @Test func pinnedChainDropsLevelsThreeAndFour() {
@@ -229,7 +229,7 @@ struct ArcImportPlannerTests {
         #expect(plan.flattened == [
             .folderTooDeep(space: "W", folder: "L3"),
             .folderTooDeep(space: "W", folder: "L4"),
-            .splitView(space: "W", tabCount: 2),
+            .splitView(place: .space("W"), tabCount: 2),
         ])
     }
 
@@ -237,8 +237,8 @@ struct ArcImportPlannerTests {
         let split: ArcNode = .split([at("a"), ArcTab(url: "javascript:1", title: "J"), at("b")])
         let plan = planOf(space(nil, unpinned: [split]), includeUnpinned: true)
         #expect(plan.profiles[0].workspaces[0].regular == [tab("https://a.example.com/", "a"), tab("https://b.example.com/", "b")])
-        #expect(plan.flattened == [.splitView(space: "Space 1", tabCount: 3)])
-        #expect(plan.skipped == [.nonWebURL(space: "Space 1", title: "J", scheme: "javascript")])
+        #expect(plan.flattened == [.splitView(place: .space("Space 1"), tabCount: 3)])
+        #expect(plan.skipped == [.nonWebURL(place: .space("Space 1"), title: "J", scheme: "javascript")])
     }
 
     @Test func paddedTitleAndMixedCaseURLAreVerbatim() {
@@ -262,7 +262,7 @@ struct ArcImportPlannerTests {
             let plan = planOf(space("W", pinned: [.tab(ArcTab(url: url, title: "T"))]))
             if let scheme = expected {
                 #expect(plan.profiles[0].workspaces[0].pinned.isEmpty, "\(url)")
-                #expect(plan.skipped == [.nonWebURL(space: "W", title: "T", scheme: scheme)], "\(url)")
+                #expect(plan.skipped == [.nonWebURL(place: .space("W"), title: "T", scheme: scheme)], "\(url)")
             } else {
                 #expect(plan.profiles[0].workspaces[0].pinned == [.tab(tab(url, "T"))], "\(url)")
                 #expect(plan.skipped.isEmpty, "\(url)")
@@ -315,7 +315,7 @@ struct ArcImportPlannerTests {
         #expect(plan.profiles[0].workspaces[0].pinned == ["a", "b", "c", "d"].map {
             PlannedPinned.tab(tab("https://\($0).example.com/", ""))
         })
-        #expect(plan.skipped == [.unsupportedItem(space: "S", kind: "mystery", title: nil)])
+        #expect(plan.skipped == [.unsupportedItem(place: .space("S"), kind: "mystery", title: nil)])
     }
 
     @Test func unsupportedChildrenCountAsUnpinnedAndSpliceIntoRegular() {
@@ -324,7 +324,7 @@ struct ArcImportPlannerTests {
         #expect(off.skipped == [.unpinnedTabs(space: "W", count: 1)])
         let on = planOf(space("W", unpinned: [mystery]), includeUnpinned: true)
         #expect(on.profiles[0].workspaces[0].regular == [tab("https://x.example.com/", "x")])
-        #expect(on.skipped == [.unsupportedItem(space: "W", kind: "mystery", title: nil)])
+        #expect(on.skipped == [.unsupportedItem(place: .space("W"), kind: "mystery", title: nil)])
     }
 
     @Test func missingProfileKeyIsDefaultWithoutReport() throws {
@@ -343,5 +343,68 @@ struct ArcImportPlannerTests {
         let workspace = try plan(items: items, spaces: [space]).profiles[0].workspaces[0]
         #expect(workspace.name == "Space 1")
         #expect(workspace.icon == ArcImportPlanner.defaultIcon)
+    }
+
+    // MARK: - Unambiguous report places
+
+    private func twoSpaces(_ first: String, _ second: String) -> ArcImportPlan {
+        let bad = ArcTab(url: "file:///x", title: "Bad")
+        let sidebar = ArcSidebar(
+            spaces: [space(first, pinned: [.tab(bad)]), space(second, pinned: [.tab(bad)])],
+            favorites: [:], duplicateItems: 0)
+        return ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+    }
+
+    @Test func duplicateSpaceNamesAreNumbered() {
+        let plan = twoSpaces("Work", "Work")
+        #expect(plan.skipped == [
+            .nonWebURL(place: .space("Work (1)"), title: "Bad", scheme: "file"),
+            .nonWebURL(place: .space("Work (2)"), title: "Bad", scheme: "file"),
+        ])
+        #expect(plan.profiles[0].workspaces.map(\.name) == ["Work", "Work"])
+    }
+
+    @Test func uniqueNamesStayPlain() {
+        let plan = twoSpaces("Work", "Home")
+        #expect(plan.skipped == [
+            .nonWebURL(place: .space("Work"), title: "Bad", scheme: "file"),
+            .nonWebURL(place: .space("Home"), title: "Bad", scheme: "file"),
+        ])
+    }
+
+    @Test func duplicateLabelsApplyToEveryCaseThatNamesASpace() {
+        let sidebar = ArcSidebar(
+            spaces: [
+                space("Work", unpinned: [.tab(at("a"))]),
+                ArcSpace(title: "Work", profile: .unrecognized, emoji: nil, colorHex: nil, pinned: [], unpinned: [], contentsMissing: true),
+            ],
+            favorites: [:], duplicateItems: 0)
+        let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+        #expect(plan.skipped.contains(.unpinnedTabs(space: "Work (1)", count: 1)))
+        #expect(plan.skipped.contains(.unrecognizedProfile(space: "Work (2)")))
+        #expect(plan.skipped.contains(.spaceContentsMissing(space: "Work (2)")))
+    }
+
+    @Test func favoritesEntriesNameTheirProfile() throws {
+        let items = [
+            arcFavoritesJSON("FAV-D", children: ["TD"], marker: #"{"default":true}"#),
+            arcTabJSON("TD", parent: "FAV-D", url: "file:///d", title: "D"),
+            arcFavoritesJSON("FAV-S", children: ["TS"], marker: #"{"custom":{"_0":{"directoryBasename":"Profile 1"}}}"#),
+            arcTabJSON("TS", parent: "FAV-S", url: "file:///s", title: "S"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: []))
+        let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: ["Profile 1": "Side"])
+        #expect(plan.skipped.contains(.nonWebURL(place: .favorites(profile: "Side"), title: "S", scheme: "file")))
+        #expect(plan.skipped.contains(.nonWebURL(place: .favorites(profile: nil), title: "D", scheme: "file")))
+    }
+
+    @Test func emptyUnrecognizedFavoritesNotReported() throws {
+        let empty = [arcFavoritesJSON("FAV", children: [], marker: #"{"something":{}}"#)]
+        #expect(try plan(items: empty, spaces: []).skipped.isEmpty)
+        let filled = [
+            arcFavoritesJSON("FAV", children: ["T"], marker: #"{"something":{}}"#),
+            arcTabJSON("T", parent: "FAV", url: "https://fav.example.com/"),
+        ]
+        #expect(try plan(items: filled, spaces: []).skipped == [.unrecognizedFavoritesProfile])
     }
 }
