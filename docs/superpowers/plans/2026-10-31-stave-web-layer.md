@@ -618,7 +618,6 @@ Nico checks (not seen by the build sessions):
 - [ ] Click a `mailto:` link: the sheet reads "Allow ‹site› to open this link in Mail?" and shows only on that site's window; switching tabs closes it and clicking again asks again.
 - [ ] A page that downloads twice by script: the first saves, the second asks "wants to download several files".
 - [ ] An OAuth-style pop-up: the title reads "‹host› — ‹title›" and follows redirects to other hosts.
-- [ ] A slow download with `xattr` run before it finishes shows the quarantine.
 - [ ] A live VoiceOver pass over the downloads popover and every prompt sheet (external app, JS panels, camera and microphone, several downloads).
 - [ ] Pointer-driven steps from Tasks 9–11 that were driven by keyboard only: right-click and menu items on pages, ⌘-click and ⇧⌘-click links, the downloads button and popover, the cookie and consent style overlays on real sites.
 
@@ -629,18 +628,17 @@ Nico checks (not seen by the build sessions):
   - `failed` doesn't claim an unclaimed file, so a narrow KVO-hop window can leave an unmarked partial.
   - Same-name concurrent downloads can collide (unique name is check-then-use); a name can start with a combining mark; a multi-dot extension such as `a.tar (2).gz` is renamed oddly; `isControl` misses a few invisible code points (U+061C, U+2028, U+2029, U+200B–U+200D, U+2060, U+FEFF); progress NaN is unguarded.
   - Address-bar-started downloads count toward the several-downloads gate; a question that can't be asked refuses further downloads until the page navigates (accepted).
-  - A script `a.click()` on `<a download>` can still start silent downloads before the second asks.
   - The partial-delete KVO-to-claim path is untested; the `claimDownloadFile` test seam is in production code; main-thread `fileExists` in `~/Downloads`.
 - **Prompts and dialogs:**
   - R15: background-tab dialogs resolve at once; queue them until the tab is shown.
   - The external-app heading names the top page, not the frame that clicked (`NavigationRequest` has no source frame); dialog headings show the host only, no scheme or port.
-  - Pop-up titles after "Pop-up — " are not capped and an opaque-origin pop-up shows the page's own title; stale dialog-gate entries remain until forgotten; the gate counts unseen dialogs.
+  - Stale dialog-gate entries remain until forgotten; the gate counts unseen dialogs.
   - Hibernation unload doesn't forget prompts in either window kind; `hibernateIdle` snapshots `hasOpenPopups` before awaiting the media checks (narrow race).
 - **Pages, hibernation and snapshots:**
   - R10: pop-ups share the opener's content controller, so per-site blocking on a pop-up also changes its opener's lists; adopted pages' `isContentBlockingOn` and request store can disagree.
   - Snapshot LRU can evict a snapshot of an owned tab that is shown elsewhere (needs 24 newer snapshots); elsewhere snapshots are polled on timers.
-  - Title-only writes are uncoalesced (a title-flipping page reloads the sidebar often); `flush` and `record` ignore `holdsWrites` in a few paths; `tabDeselected` flushes everything on every deselect; the menu snapshot is recomputed on every progress tick.
-  - After a refused-restore hold, the first allowed navigation doesn't call `updateNavigationState`; unload never tears down if `takeSnapshot` hangs; the hibernation loop exits up to 60 s after the last page closes; a window-close archive comment says `window.close` archives any tab.
+  - Title-only writes are uncoalesced (a title-flipping page reloads the sidebar often); `tabDeselected` flushes everything on every deselect; the menu snapshot is recomputed on every progress tick.
+  - After a refused-restore hold, the first allowed navigation doesn't call `updateNavigationState`; the hibernation loop exits up to 60 s after the last page closes.
   - Same-address cross-window reset has code but no by-hand run or test; `tabClosed` or `tabUnloaded` from another window's view reconcile path is unconfirmed.
 - **Windows and routing:**
   - A linked tab from a container tab gets the opener's store; the opener's container is assumed to be in the workspace's profile; an adopted `dataStoreID` throw leaves a stored row with no page; the router doc promises a frontmost-window fallback that returns nil.
