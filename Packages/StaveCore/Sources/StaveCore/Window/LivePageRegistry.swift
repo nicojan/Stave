@@ -77,6 +77,9 @@ public final class LivePageRegistry {
         state = next
     }
 
+    /// The window that owns the tab's live page, nil when no window does.
+    public func owner(of tabID: UUID) -> UUID? { state.owners[tabID] }
+
     /// `.here` for a tab no window owns, or one this window owns; `.elsewhere` when another window owns it.
     public func placement(of tabID: UUID, in windowID: UUID) -> LivePlacement {
         guard let owner = state.owners[tabID], owner != windowID else { return .here }

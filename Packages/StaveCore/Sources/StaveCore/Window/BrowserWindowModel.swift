@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+/// Told when a tab's live page should be dropped or paused. The app's page host adopts it; StaveCore never sees WebKit.
+@MainActor
+public protocol PageLifecycle: AnyObject {
+    /// The tab was archived or removed: its page is gone for good.
+    func tabClosed(_ id: UUID)
+    /// The tab still exists but no window shows it any more: its page can be unloaded.
+    func tabUnloaded(_ id: UUID)
+    /// This window stopped showing the tab (selection moved on or cleared).
+    func tabDeselected(_ id: UUID)
+}
+
 /// What one browser window shows and does. Views read it and call it; every write goes through `perform(_:)`,
 /// so no method throws after `init` and a failure becomes `lastError` text.
 @MainActor @Observable
@@ -26,6 +37,9 @@ public final class BrowserWindowModel {
     public var frame: String
     /// The compact-mode setting as last read; every window re-reads it with the rest of the store when the revision changes.
     public private(set) var isCompact = false
+
+    /// The page host, told about closed, unloaded and deselected tabs. Weak: the app owns both.
+    @ObservationIgnored public weak var pages: PageLifecycle?
 
     @ObservationIgnored private let store: OrganizationStore
     @ObservationIgnored private let revision: StoreRevision
@@ -73,7 +87,7 @@ public final class BrowserWindowModel {
             lastError = StoreErrorText.message(for: error)
             return
         }
-        if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { clearSelection() }
+        if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { clearSelection(reportDeselect: false) }
         dropStaleHighlight()
     }
 
@@ -153,8 +167,10 @@ public final class BrowserWindowModel {
             return
         }
         if tabID == selectedTabID { return }
+        let previous = selectedTabID
         selectedTabID = tabID
         livePages.show(tabID, in: windowID)
+        if let previous { pages?.tabDeselected(previous) }
         perform { try store.markActive(tabID: tabID) }
     }
 
@@ -164,10 +180,12 @@ public final class BrowserWindowModel {
         livePages.bringHere(id, to: windowID)
     }
 
-    private func clearSelection() {
-        guard selectedTabID != nil else { return }
+    /// A tab that is gone from the snapshot is not reported as deselected; its close was (or will be) reported instead.
+    private func clearSelection(reportDeselect: Bool = true) {
+        guard let previous = selectedTabID else { return }
         selectedTabID = nil
         livePages.release(windowID: windowID)
+        if reportDeselect { pages?.tabDeselected(previous) }
     }
 
     // MARK: - Workspaces and profiles
@@ -231,7 +249,9 @@ public final class BrowserWindowModel {
             let neighbour = workspaces.indices.contains(index + 1) ? workspaces[index + 1] : (index > 0 ? workspaces[index - 1] : nil)
             if let neighbour { switchWorkspace(to: neighbour.id) }
         }
-        perform { try store.deleteWorkspace(id) }
+        let archivedIDs = (try? store.sidebarSnapshot(workspaceID: id)).map { Self.pinnedTabs($0.pinned) + $0.regular }?.map(\.id) ?? []
+        guard perform({ try store.deleteWorkspace(id) }) != nil else { return }
+        archivedIDs.forEach(tabGone)
     }
 
     public func moveWorkspace(_ id: UUID, after previousID: UUID?) {
@@ -247,13 +267,26 @@ public final class BrowserWindowModel {
 
     /// Opens a tab at the edge the `newTabEdge` setting names, in this workspace, and selects it.
     public func openTab(url: String, origin: NewTabOrigin = .commandBar, containerID: UUID? = nil) {
-        let created = perform {
+        if let created = createTab(url: url, origin: origin, containerID: containerID) { select(created.id) }
+    }
+
+    /// A link that opens a new tab (target=_blank, window.open, middle-click). It lands by the opener's placement rule and is selected only
+    /// when `select` is true. Nil when the opener is gone.
+    @discardableResult
+    public func openLinkedTab(url: String, opener: UUID, select shouldSelect: Bool) -> UUID? {
+        guard Self.allTabs(in: snapshot).contains(where: { $0.id == opener }),
+              let created = createTab(url: url, origin: .link(openerTabID: opener), containerID: nil) else { return nil }
+        if shouldSelect { select(created.id) }
+        return created.id
+    }
+
+    private func createTab(url: String, origin: NewTabOrigin, containerID: UUID?) -> Tab? {
+        perform {
             try store.openTab(
                 url: url, title: "", workspaceID: snapshot.workspace.id, origin: origin,
                 containerID: containerID, edge: try store.setting(SettingKeys.newTabEdge)
             )
         }
-        if let created { select(created.id) }
     }
 
     /// No web layer yet: stores the URL and clears the title so the sidebar shows the host.
@@ -267,8 +300,9 @@ public final class BrowserWindowModel {
         let wasSelected = tabID == selectedTabID
         let next = wasSelected ? neighbour(of: tabID) : nil
         guard let result = perform({ try store.closeTab(tabID) }) else { return }
-        if case .archived = result { livePages.tabRemoved(tabID) }
+        if case .archived = result { tabGone(tabID) }
         if wasSelected { select(next) }
+        if case .unloaded = result, livePages.owner(of: tabID) == nil { pages?.tabUnloaded(tabID) }
     }
 
     /// ⌘W: closes what the highlighted row names. With a folder highlighted it does nothing.
@@ -335,8 +369,18 @@ public final class BrowserWindowModel {
     public func pin(_ tabID: UUID, folderID: UUID?) { perform { try store.pinTab(tabID, folderID: folderID) } }
     public func unpin(_ tabID: UUID) { perform { try store.unpinTab(tabID) } }
     public func makeEssential(_ tabID: UUID) { perform { try store.makeEssential(tabID) } }
-    public func removeEssential(_ tabID: UUID) { perform { try store.removeEssential(tabID) } }
-    public func removePinned(_ tabID: UUID) { perform { try store.removePinnedTab(tabID) } }
+    public func removeEssential(_ tabID: UUID) {
+        if perform({ try store.removeEssential(tabID) }) != nil { tabGone(tabID) }
+    }
+    public func removePinned(_ tabID: UUID) {
+        if perform({ try store.removePinnedTab(tabID) }) != nil { tabGone(tabID) }
+    }
+
+    /// The tab was archived or removed: drop its claims and tell the page host.
+    private func tabGone(_ id: UUID) {
+        livePages.tabRemoved(id)
+        pages?.tabClosed(id)
+    }
     public func resetPinned(_ tabID: UUID) { perform { try store.resetPinnedTab(tabID) } }
 
     // MARK: - Moving

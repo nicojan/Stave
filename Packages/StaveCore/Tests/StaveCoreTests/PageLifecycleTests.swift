@@ -1,0 +1,156 @@
+import Foundation
+import Testing
+@testable import StaveCore
+
+@MainActor
+private final class FakePages: PageLifecycle {
+    var closed: [UUID] = []
+    var unloaded: [UUID] = []
+    var deselected: [UUID] = []
+    func tabClosed(_ id: UUID) { closed.append(id) }
+    func tabUnloaded(_ id: UUID) { unloaded.append(id) }
+    func tabDeselected(_ id: UUID) { deselected.append(id) }
+}
+
+@MainActor
+struct PageLifecycleTests {
+    @MainActor private struct World {
+        let store: OrganizationStore
+        let revision = StoreRevision()
+        let livePages = LivePageRegistry()
+        let profile: Profile
+        let home: Workspace
+
+        func window(selected: UUID? = nil) throws -> BrowserWindowModel {
+            try BrowserWindowModel(
+                store: store, revision: revision, livePages: livePages,
+                state: WindowState(profileID: profile.id, workspaceID: home.id, selectedTabID: selected, frame: "", sortIndex: 0)
+            )
+        }
+
+        func tab(_ name: String) throws -> Tab {
+            try store.openTab(url: "https://example.com/\(name)", title: name, workspaceID: home.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        }
+    }
+
+    private func makeWorld() throws -> World {
+        let clock = TestClock()
+        let (store, _, _) = try makeTempStore(now: clock.now)
+        let profile = try store.ensureDefaultProfile()
+        let home = try #require(try store.workspaces(profileID: profile.id).first)
+        return World(store: store, profile: profile, home: home)
+    }
+
+    @Test func closingRegularTabReportsClosed() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let window = try world.window()
+        let pages = FakePages()
+        window.pages = pages
+        window.close(tab.id)
+        #expect(pages.closed == [tab.id])
+        #expect(pages.unloaded.isEmpty)
+    }
+
+    @Test func closingSelectedEssentialHandsPageToWaiter() throws {
+        let world = try makeWorld()
+        let essential = try world.tab("e")
+        try world.store.makeEssential(essential.id)
+        let w1 = try world.window(selected: essential.id)
+        let w2 = try world.window(selected: essential.id)
+        let pages = FakePages()
+        w1.pages = pages
+        #expect(world.livePages.owner(of: essential.id) == w1.windowID)
+        w1.close(essential.id)
+        #expect(world.livePages.owner(of: essential.id) == w2.windowID)
+        #expect(pages.unloaded.isEmpty)
+        #expect(pages.closed.isEmpty)
+    }
+
+    @Test func closingUnwatchedPinnedUnloads() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("p")
+        try world.store.pinTab(tab.id, folderID: nil)
+        let window = try world.window()
+        let pages = FakePages()
+        window.pages = pages
+        window.close(tab.id)
+        #expect(pages.unloaded == [tab.id])
+        #expect(pages.closed.isEmpty)
+    }
+
+    @Test func removingPinnedAndEssentialReportsClosed() throws {
+        let world = try makeWorld()
+        let pinned = try world.tab("p")
+        let essential = try world.tab("e")
+        try world.store.pinTab(pinned.id, folderID: nil)
+        try world.store.makeEssential(essential.id)
+        let window = try world.window()
+        let pages = FakePages()
+        window.pages = pages
+        window.removePinned(pinned.id)
+        window.removeEssential(essential.id)
+        #expect(pages.closed == [pinned.id, essential.id])
+    }
+
+    @Test func deletingWorkspaceReportsEachArchivedTab() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let a = try world.store.openTab(url: "https://example.com/a", title: "a", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        let b = try world.store.openTab(url: "https://example.org/b", title: "b", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        try world.store.pinTab(b.id, folderID: nil)
+        let window = try world.window()
+        let pages = FakePages()
+        window.pages = pages
+        window.deleteWorkspace(other.id)
+        #expect(Set(pages.closed) == [a.id, b.id])
+        #expect(pages.closed.count == 2)
+    }
+
+    @Test func selectionChangeReportsDeselected() throws {
+        let world = try makeWorld()
+        let first = try world.tab("a")
+        let second = try world.tab("b")
+        let window = try world.window(selected: first.id)
+        let pages = FakePages()
+        window.pages = pages
+        window.select(second.id)
+        #expect(pages.deselected == [first.id])
+        window.select(nil)
+        #expect(pages.deselected == [first.id, second.id])
+    }
+
+    @Test func linkedTabOpensBelowOpenerAndSelects() throws {
+        let world = try makeWorld()
+        let opener = try world.tab("opener")
+        _ = try world.tab("other")
+        let window = try world.window(selected: opener.id)
+        let child = try #require(window.openLinkedTab(url: "https://example.net/child", opener: opener.id, select: true))
+        let ids = window.rows.compactMap { row -> UUID? in if case .tab(let id) = row.id { id } else { nil } }
+        let openerIndex = try #require(ids.firstIndex(of: opener.id))
+        #expect(ids[openerIndex + 1] == child)
+        #expect(window.selectedTabID == child)
+
+        let quiet = try #require(window.openLinkedTab(url: "https://example.net/quiet", opener: opener.id, select: false))
+        #expect(window.selectedTabID == child)
+        #expect(window.rows.contains { $0.id == .tab(quiet) })
+
+        window.close(opener.id)
+        #expect(window.openLinkedTab(url: "https://example.net/x", opener: opener.id, select: true) == nil)
+    }
+
+    @Test func pageMenuState() {
+        let none = PageMenuState.from(status: nil, sheetOpen: false)
+        #expect(none == PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil))
+        let loading = PageMenuState.from(status: PageStatusSummary(isLoading: true, canGoBack: true, canGoForward: false, hasPage: true, blockingOn: true), sheetOpen: false)
+        #expect(loading.canStop)
+        #expect(loading.canGoBack)
+        #expect(loading.blockingOn == true)
+        let sheet = PageMenuState.from(status: PageStatusSummary(isLoading: true, canGoBack: true, canGoForward: true, hasPage: true, blockingOn: false), sheetOpen: true)
+        #expect(sheet == none)
+        let idle = PageMenuState.from(status: PageStatusSummary(hasPage: true), sheetOpen: false)
+        #expect(idle.canReload && !idle.canStop)
+        let empty = PageMenuState.from(status: PageStatusSummary(isLoading: true, canGoBack: true, hasPage: false), sheetOpen: false)
+        #expect(empty == none)
+    }
+}

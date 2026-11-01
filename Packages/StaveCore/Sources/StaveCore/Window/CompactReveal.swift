@@ -67,6 +67,14 @@ public struct CompactReveal: Equatable, Sendable {
     }
 }
 
+extension CompactReveal {
+    /// Tab with a hidden sidebar reveals it and moves focus there, unless focus is inside a page (Tab belongs to the page's own focus
+    /// order) or something else (menu, sheet, command bar) owns the key.
+    public static func shouldInterceptTab(focusInPage: Bool, isRevealed: Bool, menuOpen: Bool, sheetOpen: Bool, commandBarOpen: Bool) -> Bool {
+        !focusInPage && !isRevealed && !menuOpen && !sheetOpen && !commandBarOpen
+    }
+}
+
 /// Everything that keeps the compact sidebar open. The view only gathers the flags.
 public struct CompactHold: Equatable, Sendable {
     public var commandBarOpen: Bool

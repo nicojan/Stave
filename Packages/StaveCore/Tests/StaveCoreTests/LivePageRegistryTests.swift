@@ -113,4 +113,49 @@ struct LivePageRegistryTests {
         registry.release(windowID: b)
         #expect(registry.placement(of: tabT, in: a) == .here)
     }
+
+    // MARK: - Edge cases
+
+    @Test func bringHereUnwantedTab() {
+        let registry = LivePageRegistry()
+        registry.bringHere(tabT, to: a)
+        #expect(registry.owner(of: tabT) == a)
+        #expect(registry.show(tabT, in: b) == .elsewhere(windowID: a))
+    }
+
+    @Test func tabRemovedWithWaiters() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        registry.tabRemoved(tabT)
+        #expect(registry.owner(of: tabT) == nil)
+        // Neither window wants T now: releasing hands nothing on, and a later show makes the shower the owner.
+        registry.release(windowID: a)
+        registry.release(windowID: b)
+        #expect(registry.owner(of: tabT) == nil)
+        #expect(registry.show(tabT, in: b) == .here)
+        #expect(registry.owner(of: tabT) == b)
+    }
+
+    @Test func closedWaiterLosesItsPlace() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.windowClosed(b)
+        registry.release(windowID: a)
+        #expect(registry.owner(of: tabT) == c)
+    }
+
+    @Test func showSameTabTwiceKeepsPlace() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.release(windowID: a)
+        #expect(registry.owner(of: tabT) == b)
+    }
 }

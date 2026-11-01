@@ -161,4 +161,13 @@ struct CompactHoldTests {
         #expect(CompactHold(keyboardFocusInside: true).isHeld)
         #expect(CompactHold(voiceOverRunning: true).isHeld)
     }
+
+    @Test func tabNotInterceptedInPage() {
+        #expect(!CompactReveal.shouldInterceptTab(focusInPage: true, isRevealed: false, menuOpen: false, sheetOpen: false, commandBarOpen: false))
+        #expect(CompactReveal.shouldInterceptTab(focusInPage: false, isRevealed: false, menuOpen: false, sheetOpen: false, commandBarOpen: false))
+        #expect(!CompactReveal.shouldInterceptTab(focusInPage: false, isRevealed: true, menuOpen: false, sheetOpen: false, commandBarOpen: false))
+        #expect(!CompactReveal.shouldInterceptTab(focusInPage: false, isRevealed: false, menuOpen: true, sheetOpen: false, commandBarOpen: false))
+        #expect(!CompactReveal.shouldInterceptTab(focusInPage: false, isRevealed: false, menuOpen: false, sheetOpen: true, commandBarOpen: false))
+        #expect(!CompactReveal.shouldInterceptTab(focusInPage: false, isRevealed: false, menuOpen: false, sheetOpen: false, commandBarOpen: true))
+    }
 }
