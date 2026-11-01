@@ -559,9 +559,9 @@ Each one goes to Chorus as its own change and comes back through a new tag. Then
 
 None is needed for the beta.
 
-## Outcome (2026-11-01)
+## Outcome (2026-10-31)
 
-Built on `feat/web-layer` (`c64fa45..464a795`, 23 commits, stacked on PR #3): all 12 tasks reviewed (spec and quality, with fix rounds), then the final whole-branch review and one fix wave. There are 679 package tests (66 + 613 across the two test runners), and CI is green on macOS 14 (Xcode 16.2, Swift 6.0.3) and macOS 15 on the final head: run 41273837903 on `464a795`. Debug and Release both build with no warnings. Review Focus 1–5 hold end to end (Focus 4 only after the final fix wave). By-hand checks ran on localhost pages and throwaway data only; everything that needs a signed build, a pointer, an account or a live VoiceOver is on the "Nico checks" list below and has not been seen working.
+Built on `feat/web-layer` (`c64fa45..464a795`, 23 commits, stacked on PR #3): Tasks 1–11 reviewed (spec and quality, with fix rounds), then the final whole-branch review and one fix wave; Task 12 is this write-up. There are 679 package tests (66 + 613 across the two test runners), and CI is green on macOS 14 (Xcode 16.2, Swift 6.0.3) and macOS 15 on the last code commit (`464a795`, run 41273837903). Debug and Release both build, with no new warnings. Review Focus 1–5 are addressed in code (Focus 4 only after the final fix wave); by-hand confirmation is on the Nico checks. By-hand checks ran on localhost pages and throwaway data only, except the Task 12 DRM page load, which reached the network; everything that needs a signed build, a pointer, an account or a live VoiceOver is on the "Nico checks" list below and has not been seen working.
 
 What was built, by area:
 
@@ -582,7 +582,7 @@ Rulings made during execution (the controller's calls; Nico can overturn any, wi
 - **R5:** `.committed` comes from `didCommit`, not URL KVO, so a failed load never blanks the stored title. Cost if wrong: none seen.
 - **R6:** content blocking is re-evaluated per main-frame navigation to a new host, before the load. Cost if wrong: a tab that crosses sites keeps the first site's blocking setting.
 - **R7:** `PageDelegate` takes over the restore gate rather than being replaced by it. Cost if wrong: none seen.
-- **R8:** back, forward and reload count as user-initiated page navigations; an external scheme with no installed app shows "No app can open this link" only for a typed address and is silent for page links. Cost if wrong: a page link to an unknown scheme does nothing visible.
+- **R8:** back, forward and reload count as user-initiated page navigations; an external scheme with no installed app shows "No app can open this link" only for a typed address and is silent for page links. The typed path is currently unreachable (see Carried), so there is nothing to check by hand for it. Cost if wrong: a page link to an unknown scheme does nothing visible.
 - **R9:** TLS errors (-1201 to -1206) and secure-connection failures set the insecure state; -999 and WebKit 102 set nothing; a combined camera and microphone request skips asking only when both stored answers are Allow, and any Deny denies. Cost if wrong: an extra prompt or a denied combined request.
 - **R10:** pop-ups adopt the opener's content controller, so they share the opener's rule lists; documented, no copy workaround. Cost if wrong: toggling blocking on a pop-up also changes its opener's lists.
 - **R11:** `<a download href="data:…">` becomes a download even though `data:` main frames are refused. Cost if wrong: a page can push a sanitised, quarantined `data:` file into `~/Downloads`.
@@ -640,6 +640,9 @@ Nico checks (not seen by the build sessions):
   - Title-only writes are uncoalesced (a title-flipping page reloads the sidebar often); `tabDeselected` flushes everything on every deselect; the menu snapshot is recomputed on every progress tick.
   - After a refused-restore hold, the first allowed navigation doesn't call `updateNavigationState`; the hibernation loop exits up to 60 s after the last page closes.
   - Same-address cross-window reset has code but no by-hand run or test; `tabClosed` or `tabUnloaded` from another window's view reconcile path is unconfirmed.
+- **Navigation:**
+  - Decision 5's typed external scheme is unreachable: `AddressInput` turns a typed `mailto:x` into a search, so `.typed` never reaches `askToOpenExternally` or the "No app can open this link" panel. Fix decision 5's text or the path in a later plan.
+  - Content-blocking lists swap at decide time even if the navigation then becomes a download or fails.
 - **Windows and routing:**
   - A linked tab from a container tab gets the opener's store; the opener's container is assumed to be in the workspace's profile; an adopted `dataStoreID` throw leaves a stored row with no page; the router doc promises a frontmost-window fallback that returns nil.
   - Typing for a tab shown elsewhere navigates the other window's page and `focusPage` gives up silently; `PageArea` stays blank if `request(for:)` fails.
