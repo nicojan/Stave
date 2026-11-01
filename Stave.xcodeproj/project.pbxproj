@@ -36,6 +36,7 @@
 		C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F806ED539F7D1586C99B13 /* SidebarDragState.swift */; };
 		C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */; };
 		C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */; };
+		D19182FC2DFF3D88D75AFA34 /* StaveWeb in Frameworks */ = {isa = PBXBuildFile; productRef = B02055879054269311A54DBA /* StaveWeb */; };
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
 /* End PBXBuildFile section */
 
@@ -81,6 +82,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				49C5205452A55B2C1DC15B18 /* StaveCore in Frameworks */,
+				D19182FC2DFF3D88D75AFA34 /* StaveWeb in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -231,6 +233,7 @@
 			name = Stave;
 			packageProductDependencies = (
 				E3A214511A6FDDB04ECC1D28 /* StaveCore */,
+				B02055879054269311A54DBA /* StaveWeb */,
 			);
 			productName = Stave;
 			productReference = 99A3C13E6C531E06EA52627A /* Stave.app */;
@@ -507,6 +510,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		B02055879054269311A54DBA /* StaveWeb */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StaveWeb;
+		};
 		E3A214511A6FDDB04ECC1D28 /* StaveCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = StaveCore;
