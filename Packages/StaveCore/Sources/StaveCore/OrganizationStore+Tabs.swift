@@ -35,6 +35,11 @@ extension OrganizationStore {
     public func updateNavigation(tabID: UUID, url: String, title: String, faviconURL: String?, interactionState: Data?) throws {
         try database.writer.write { db in
             guard var tab = try Tab.fetchOne(db, key: tabID) else { throw StoreError.notFound }
+            // A pinned page saved without an icon adopts the first one that arrives while the tab is still on that page; an existing icon is never replaced.
+            // Drift is judged on the incoming url (the tab's stored url is about to be replaced).
+            if tab.pinnedURL == url, tab.pinnedFaviconURL == nil, let faviconURL {
+                tab.pinnedFaviconURL = faviconURL
+            }
             tab.url = url
             tab.title = title
             tab.faviconURL = faviconURL
