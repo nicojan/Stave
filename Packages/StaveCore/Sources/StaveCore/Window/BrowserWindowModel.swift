@@ -40,6 +40,10 @@ public final class BrowserWindowModel {
 
     /// The page host, told about closed, unloaded and deselected tabs. Weak: the app owns both.
     @ObservationIgnored public weak var pages: PageLifecycle?
+    /// Set by the app: opens an address from the command bar in the tab's live page (judged as typed) and moves focus into it. Returns false
+    /// when the tab has no page to take it, and the address is stored instead. A new tab from the command bar is stored with its address and
+    /// then handed here too, so the page that loads it is a typed navigation.
+    @ObservationIgnored public var loadTyped: ((_ tabID: UUID, _ url: String) -> Bool)?
 
     @ObservationIgnored private let store: OrganizationStore
     @ObservationIgnored private let revision: StoreRevision
@@ -523,9 +527,14 @@ public final class BrowserWindowModel {
     }
 
     private func open(url: String, mode: CommandBarMode, target: UUID?) {
-        guard mode == .currentTab else { return openTab(url: url) }
-        guard let id = target ?? selectedTabID else { return openTab(url: url) }
-        guard (try? store.tabExists(id)) == true else { return openTab(url: url) }
+        guard mode == .currentTab, let id = target ?? selectedTabID, (try? store.tabExists(id)) == true else {
+            guard let created = createTab(url: url, origin: .commandBar, containerID: nil) else { return }
+            select(created.id)
+            _ = loadTyped?(created.id, url)
+            return
+        }
+        // A live page navigates; its commit writes the address (ruling R5), so nothing is stored for a load that fails.
+        if loadTyped?(id, url) == true { return }
         perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
     }
 

@@ -39,6 +39,9 @@ final class SidebarPresenter {
     private(set) var commandBar: CommandBarModel?
     /// False when the bar closed by presenting a sheet, alert or popover, which must keep the focus it takes.
     @ObservationIgnored private(set) var returnsFocusToList = true
+    /// Set while the bar's row is running when the row sent an address into a page: the page takes the focus, not the list (decision 14).
+    @ObservationIgnored private var pageTakesFocus = false
+    func pageWillTakeFocus() { pageTakesFocus = true }
     /// Opens a window like ⌘N. Set by the window controller.
     @ObservationIgnored var newWindow: () -> Void = {}
     /// Opens the Arc import like File ▸ Import from Arc…. Set by the window controller.
@@ -84,10 +87,14 @@ final class SidebarPresenter {
     /// Runs the bar's selected row. The bar closes unless it needs an engine choice; an outcome the window cannot handle is handled here.
     func activate(in model: BrowserWindowModel) {
         guard let bar = commandBar else { return }
-        switch bar.activate(in: model) {
+        pageTakesFocus = false
+        let step = bar.activate(in: model)
+        let toPage = pageTakesFocus
+        pageTakesFocus = false
+        switch step {
         case .stay: return
         case .close(let outcome):
-            returnsFocusToList = !Self.presentsPanel(outcome)
+            returnsFocusToList = !Self.presentsPanel(outcome) && !toPage
             commandBar = nil
             handle(outcome)
         }

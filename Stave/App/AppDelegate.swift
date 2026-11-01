@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuGeneration = 0
     private var keyObservers: [NSObjectProtocol] = []
     private var importCoordinator: ImportCoordinator?
+    /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
+    private var pageEvents: PageEventsRouter?
 
     /// The default quit handler would refuse with a sheet up, and the first-run sheet cannot be dismissed, so ours ends the sheets first.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -31,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Quitting never waits on a sheet: every sheet on every window ends (an open file picker is a sheet, so it is cancelled), then the app
     /// terminates through the usual save path. An import in flight is one transaction, so quitting during it is atomic.
     func quit() {
+        // Pending page history is written while every page is still there, before any window closes.
+        environment?.pageHost.flushAll()
         for controller in controllers { controller.sidebarPresenter.dismissAllSheets() }
         for window in NSApp.windows {
             var chain: [NSWindow] = []
@@ -53,6 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.compactMode = environment.compactMode
             menuState.searchEngine = environment.searchEngine
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
+            let router = PageEventsRouter(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
+            environment.pageHost.events = router
+            pageEvents = router
             observeKeyWindow()
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
@@ -76,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
         guard launchCompleted, let environment else { return }
+        environment.pageHost.flushAll()
         for controller in controllers { controller.reportNow() }
         environment.sidebarWidth.saveIfChanged()
         do {
@@ -157,6 +165,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func importFromArc() {
         guard launchCompleted, let controller = frontController else { return }
         importCoordinator?.open(on: controller, windowIsBusy: isBusy(controller) && !MenuCommandGate.allowedWhileSheetUp(.importFromArc))
+    }
+
+    // MARK: - Page commands
+
+    /// View ▸ Back (⌘[), Forward (⌘]), Reload Page (⌘R) and Stop (⌘.): act on the key browser window's shown page; nothing while a sheet is up.
+    func goBack() { pageCommand { $0.goBack() } }
+    func goForward() { pageCommand { $0.goForward() } }
+    func reloadPage() { pageCommand { $0.reloadPage() } }
+    func stopLoading() { pageCommand { $0.stopLoading() } }
+
+    #if DEBUG
+    /// Debug ▸ Crash Page Process: ends the key window's shown page's web content process through WebKit.
+    func crashPage() { pageCommand { $0.crashPage() } }
+    #endif
+
+    private func pageCommand(_ run: (BrowserWindowController) -> Void) {
+        guard let controller = keyController, !isBusy(controller) else { return }
+        run(controller)
     }
 
     // MARK: - First run
@@ -246,6 +272,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let model = controller.model
             let workspaces = model.workspaces
             let index = workspaces.firstIndex { $0.id == model.snapshot.workspace.id }
+            let busy = isBusy(controller)
+            let page = controller.shownPage
+            let summary = page.map {
+                PageStatusSummary(
+                    isLoading: $0.status.isLoading, canGoBack: $0.status.canGoBack, canGoForward: $0.status.canGoForward,
+                    hasPage: true, blockingOn: $0.isContentBlockingOn
+                )
+            }
+            #if DEBUG
+            let canCrash = !busy && controller.canCrashPage
+            #else
+            let canCrash = false
+            #endif
             return MenuSnapshot(
                 items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
                 compact: model.isCompact,
@@ -253,7 +292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 tabActions: SidebarMenus.menuActions(highlight: model.sidebarHighlight, rows: model.rows, snapshot: model.snapshot),
                 canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
                 canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot),
-                busy: isBusy(controller)
+                busy: busy,
+                pageMenu: PageMenuState.from(status: summary, sheetOpen: busy),
+                canCrashPage: canCrash
             )
         } onChange: { [weak self] in
             Task { @MainActor in
@@ -268,6 +309,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if menuState.canMoveUp != menu.canMoveUp { menuState.canMoveUp = menu.canMoveUp }
         if menuState.canMoveDown != menu.canMoveDown { menuState.canMoveDown = menu.canMoveDown }
         if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
+        if menuState.pageMenu != menu.pageMenu { menuState.pageMenu = menu.pageMenu }
+        if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
     }
 
     /// Everything the menus show for the key window, read in one observation pass.
@@ -279,6 +322,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var canMoveUp = false
         var canMoveDown = false
         var busy = false
+        var pageMenu = PageMenuState.disabled
+        var canCrashPage = false
     }
 
     private func observeKeyWindow() {

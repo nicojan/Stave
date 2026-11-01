@@ -42,4 +42,12 @@ public enum PageText {
     }
 
     public static let elsewhereTitle = "This tab is open in another window"
+    public static let bringHereButton = "Bring It Here"
+    public static let reloadButton = "Reload"
+    public static let backButton = "Back"
+    public static let okButton = "OK"
+    public static let cancelButton = "Cancel"
+    public static let openButton = "Open"
+    /// The heading of a blank tab's content area.
+    public static let newTabTitle = "New Tab"
 }

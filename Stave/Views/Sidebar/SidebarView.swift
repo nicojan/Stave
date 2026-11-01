@@ -8,6 +8,8 @@ struct SidebarView: View {
     @Bindable var model: BrowserWindowModel
     let presenter: SidebarPresenter
     let openCommandBar: (CommandBarMode) -> Void
+    /// The selected tab's live address, when its page is shown here; the address field follows it.
+    let liveURL: (UUID) -> String?
 
     @FocusState private var listFocused: Bool
     @State private var dismissedErrorID: Int?
@@ -33,7 +35,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // The swipe catcher covers everything above the bottom bar, so a swipe that starts on the workspace strip only scrolls the strip.
             VStack(spacing: 0) {
-                AddressField(tab: model.selectedTab) { openCommandBar(.currentTab) }
+                AddressField(tab: addressTab) { openCommandBar(.currentTab) }
                     .padding(.horizontal, 10).padding(.bottom, 8)
                 if !model.snapshot.essentials.isEmpty {
                     EssentialsGrid(
@@ -90,6 +92,15 @@ struct SidebarView: View {
                 cancel: { self.prompt = nil }
             )
         }
+    }
+
+    /// The selected tab as the address field shows it: with the live page's address when there is one.
+    private var addressTab: StaveCore.Tab? {
+        guard let tab = model.selectedTab else { return nil }
+        guard let live = liveURL(tab.id), !live.isEmpty else { return tab }
+        var shown = tab
+        shown.url = live
+        return shown
     }
 
     private var list: some View {

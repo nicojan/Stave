@@ -35,3 +35,14 @@ public struct PageMenuState: Equatable, Sendable {
         )
     }
 }
+
+/// The page commands' menu titles.
+public enum PageMenuText {
+    public static let back = "Back"
+    public static let forward = "Forward"
+    public static let reload = "Reload Page"
+    public static let stop = "Stop"
+    /// Debug builds only.
+    public static let debugMenu = "Debug"
+    public static let crashPageProcess = "Crash Page Process"
+}

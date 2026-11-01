@@ -44,7 +44,26 @@ struct StaveApp: App {
                         .keyboardShortcut("s", modifiers: [.control, .command])
                     Button(ArchivePresentation.menuItem) { delegate.showArchive() }
                         .disabled(!state.isEnabled(.showArchive))
+                    Divider()
+                    Button(PageMenuText.back) { delegate.goBack() }
+                        .keyboardShortcut("[", modifiers: .command)
+                        .disabled(!state.pageMenu.canGoBack)
+                    Button(PageMenuText.forward) { delegate.goForward() }
+                        .keyboardShortcut("]", modifiers: .command)
+                        .disabled(!state.pageMenu.canGoForward)
+                    Button(PageMenuText.reload) { delegate.reloadPage() }
+                        .keyboardShortcut("r", modifiers: .command)
+                        .disabled(!state.pageMenu.canReload)
+                    Button(PageMenuText.stop) { delegate.stopLoading() }
+                        .keyboardShortcut(".", modifiers: .command)
+                        .disabled(!state.pageMenu.canStop)
                 }
+                #if DEBUG
+                CommandMenu(PageMenuText.debugMenu) {
+                    Button(PageMenuText.crashPageProcess) { delegate.crashPage() }
+                        .disabled(!state.canCrashPage)
+                }
+                #endif
                 CommandMenu("Tab") {
                     // The keyboard route to the row and Essentials context menus: the same SidebarMenus lists, on the highlighted item.
                     ForEach(delegate.menuState.tabActions, id: \.self) { action in

@@ -62,6 +62,21 @@ struct WebStoreTests {
         #expect(try store.tabExists(tab.id) == false)
     }
 
+    @Test func pageNavigationKeepsInteractionState() throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let workspace = try #require(try store.workspaces(profileID: profile.id).first)
+        let tab = try store.openTab(url: "https://example.com", title: "T", workspaceID: workspace.id, origin: .commandBar, containerID: nil, edge: .top)
+        try store.updateInteractionState(tabID: tab.id, Data([7]))
+        try store.updatePageNavigation(tabID: tab.id, url: "https://example.com/b", title: "B", faviconURL: nil)
+        let after = try #require(try store.regularTabs(workspaceID: workspace.id).first)
+        #expect(after.url == "https://example.com/b")
+        #expect(after.title == "B")
+        #expect(after.interactionState == Data([7]))
+        _ = try store.closeTab(tab.id)
+        #expect(throws: StoreError.notFound) { try store.updatePageNavigation(tabID: tab.id, url: "https://example.com/c", title: "", faviconURL: nil) }
+    }
+
     @Test func dataStoreFollowsContainer() throws {
         let (store, _, _) = try makeTempStore()
         let profile = try store.createProfile(name: "P")

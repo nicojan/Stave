@@ -1,12 +1,16 @@
 import SwiftUI
 import StaveCore
+import StaveWeb
 
-/// One window's content: the sidebar beside the content area, with a draggable divider; in compact mode the sidebar overlays the content instead. Re-reads the model when any window writes to the store.
+/// One window's content: the sidebar beside the content area, with a draggable divider; in compact mode the sidebar overlays the content instead.
+/// The window controller re-reads the model when any window writes to the store.
 /// The sidebar width is the app-wide `SidebarWidthModel`, so every window shows the same width.
 struct BrowserWindowView: View {
     let model: BrowserWindowModel
     let presenter: SidebarPresenter
-    let revision: StoreRevision
+    let pageHost: PageHost
+    let pageViewState: PageViewState
+    let pageActions: PageAreaActions
     let sidebarWidth: SidebarWidthModel
     let shortcuts: WorkspaceShortcutsSetting
     let completeFirstRun: (SearchEngine, Bool) -> Void
@@ -22,9 +26,9 @@ struct BrowserWindowView: View {
     var body: some View {
         CompactContainer(
             isCompact: model.isCompact, sidebarWidth: sidebarWidth, presenter: presenter,
-            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }) },
+            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }, liveURL: liveURL) },
             divider: { divider },
-            content: { TabPlaceholderView(model: model) }
+            content: { PageArea(model: model, pageHost: pageHost, state: pageViewState, actions: pageActions) }
         )
         .overlay { commandBarLayer }
         .sheet(item: Binding(get: { presenter.sheet }, set: { presenter.sheet = $0 })) { sheet in
@@ -38,10 +42,15 @@ struct BrowserWindowView: View {
                 )
             }
         }
-        .onChange(of: revision.value) { model.reload() }
         // The bar acts on the window it opened in; a workspace or profile change (a menu shortcut, a swipe) closes it.
         .onChange(of: model.snapshot.workspace.id) { presenter.closeCommandBar() }
         .onChange(of: model.snapshot.profile.id) { presenter.closeCommandBar() }
+    }
+
+    /// The address the selected tab's page shows right now, when this window shows the page.
+    private func liveURL(_ tabID: UUID) -> String? {
+        guard model.placement == .here else { return nil }
+        return pageHost.existingPage(tabID)?.status.url
     }
 
     /// The bar's layer. The fade animates this layer only, never the window's content.

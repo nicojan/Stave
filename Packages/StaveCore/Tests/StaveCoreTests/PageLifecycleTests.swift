@@ -167,4 +167,38 @@ struct PageLifecycleTests {
         #expect(pages.unloaded.isEmpty)
         #expect(pages.deselected == [tab.id])
     }
+
+    @Test func typedAddressGoesToLivePageWithoutStoreWrite() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        var loads: [(UUID, String)] = []
+        window.loadTyped = { id, url in loads.append((id, url)); return true }
+        _ = window.perform(.open(url: "https://example.org/typed"), mode: .currentTab, target: tab.id)
+        #expect(loads.map(\.0) == [tab.id])
+        #expect(loads.map(\.1) == ["https://example.org/typed"])
+        // The page's commit writes the address, not the command bar.
+        #expect(window.selectedTab?.url == "https://example.com/a")
+    }
+
+    @Test func typedAddressWithoutLivePageIsStored() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        window.loadTyped = { _, _ in false }
+        _ = window.perform(.open(url: "https://example.org/typed"), mode: .currentTab, target: tab.id)
+        #expect(window.selectedTab?.url == "https://example.org/typed")
+    }
+
+    @Test func typedNewTabIsStoredSelectedAndHandedToPage() throws {
+        let world = try makeWorld()
+        let window = try world.window()
+        var loads: [(UUID, String)] = []
+        window.loadTyped = { id, url in loads.append((id, url)); return true }
+        _ = window.perform(.open(url: "https://example.net/"), mode: .newTab)
+        let selected = try #require(window.selectedTab)
+        #expect(selected.url == "https://example.net/")
+        #expect(loads.map(\.0) == [selected.id])
+        #expect(loads.map(\.1) == ["https://example.net/"])
+    }
 }
