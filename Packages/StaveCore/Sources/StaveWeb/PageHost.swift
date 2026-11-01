@@ -284,6 +284,11 @@ public final class PageHost {
         activeDownloads.begin(download, delegate: delegate, rowID: rowID, list: list, destination: destination, source: source)
     }
 
+    /// Test seam: what WebKit's first progress report does, capturing the destination file's identity as this download's.
+    func claimDownloadFile(_ rowID: UUID) {
+        activeDownloads.claimDestination(forRow: rowID)
+    }
+
     func downloadFinished(_ download: WKDownload) {
         activeDownloads.finished(download)
     }

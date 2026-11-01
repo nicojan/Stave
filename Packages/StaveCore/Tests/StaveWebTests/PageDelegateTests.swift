@@ -740,25 +740,78 @@ struct PageDelegateTests {
         host.close(page.tabID)
     }
 
+    /// Starts an untracked download and drives the delegate by hand, so WebKit never writes; the test writes "WebKit's" bytes itself.
+    private func handDrivenDownload(_ host: PageHost, _ page: LivePage, name: String) async throws -> (row: UUID, destination: URL) {
+        let delegate = try delegate(of: page)
+        let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
+        let destination = try #require(await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: name))
+        let row = try #require(events.downloads.items(for: .profile(page.tabID)).first { $0.filename == destination.lastPathComponent && $0.state == .running(fraction: nil) })
+        return (row.id, destination)
+    }
+
     /// WebKit leaves the bytes it wrote at the destination when a download is cancelled (checked against a slow local server): cancelling a
-    /// row removes that exact file, and nothing else in the folder.
+    /// row removes that exact file once WebKit's first bytes made it ours, and nothing else in the folder.
     @Test func cancellingARowRemovesItsPartialFile() async throws {
         let dir = try tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         events.downloadsDirectory = dir
         let host = makeHost()
         let page = host.page(for: request(), writer: writer)
-        let delegate = try delegate(of: page)
-        let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
-        let destination = try #require(await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: "partial.bin"))
+        let (row, destination) = try await handDrivenDownload(host, page, name: "partial.bin")
         try Data("half".utf8).write(to: destination) // what WebKit had written so far
+        host.claimDownloadFile(row) // as on WebKit's first progress report
         let neighbour = dir.appendingPathComponent("keep.bin")
         try Data("keep".utf8).write(to: neighbour)
-        let row = try #require(events.downloads.items(for: .profile(page.tabID)).first)
-        events.downloads.cancel(row.id)
-        let removed = try await waitUntil(seconds: 10) { !FileManager.default.fileExists(atPath: destination.path) }
-        #expect(removed)
+        events.downloads.cancel(row)
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
         #expect(FileManager.default.fileExists(atPath: neighbour.path))
+        host.close(page.tabID)
+    }
+
+    /// The name a cancel freed can go to the next download of the same file; nothing left over from the cancel ever deletes that one.
+    @Test func aLaterDownloadOfTheSameNameKeepsItsFile() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let first = try await handDrivenDownload(host, page, name: "same.bin")
+        try Data("half".utf8).write(to: first.destination)
+        host.claimDownloadFile(first.row)
+        events.downloads.cancel(first.row)
+        let second = try await handDrivenDownload(host, page, name: "same.bin")
+        #expect(second.destination == first.destination)
+        try Data("second".utf8).write(to: second.destination)
+        try await Task.sleep(for: .seconds(1)) // room for any late cancel completion
+        #expect(try Data(contentsOf: second.destination) == Data("second".utf8))
+        events.downloads.cancel(first.row) // a repeat cancel of the ended row does nothing
+        #expect(FileManager.default.fileExists(atPath: second.destination.path))
+        host.close(page.tabID)
+    }
+
+    /// A file at the destination that was never this download's (no bytes from WebKit seen), or that was swapped for another file after, is
+    /// never deleted by a cancel.
+    @Test func cancelNeverDeletesAForeignFile() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let unclaimed = try await handDrivenDownload(host, page, name: "foreign.bin")
+        try Data("someone else's".utf8).write(to: unclaimed.destination)
+        events.downloads.cancel(unclaimed.row)
+        #expect(FileManager.default.fileExists(atPath: unclaimed.destination.path))
+
+        let swapped = try await handDrivenDownload(host, page, name: "swapped.bin")
+        try Data("half".utf8).write(to: swapped.destination)
+        host.claimDownloadFile(swapped.row)
+        // Another file takes the path (made while the old one still exists, so it is a different file).
+        let other = dir.appendingPathComponent("incoming.tmp")
+        try Data("replacement".utf8).write(to: other)
+        try FileManager.default.removeItem(at: swapped.destination)
+        try FileManager.default.moveItem(at: other, to: swapped.destination)
+        events.downloads.cancel(swapped.row)
+        #expect(try Data(contentsOf: swapped.destination) == Data("replacement".utf8))
         host.close(page.tabID)
     }
 
