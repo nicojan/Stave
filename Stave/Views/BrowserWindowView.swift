@@ -9,6 +9,7 @@ struct BrowserWindowView: View {
     let model: BrowserWindowModel
     let presenter: SidebarPresenter
     let pageHost: PageHost
+    let downloads: DownloadList
     let pageViewState: PageViewState
     let pageActions: PageAreaActions
     let sidebarWidth: SidebarWidthModel
@@ -26,7 +27,7 @@ struct BrowserWindowView: View {
     var body: some View {
         CompactContainer(
             isCompact: model.isCompact, sidebarWidth: sidebarWidth, presenter: presenter,
-            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }, liveURL: liveURL) },
+            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }, liveURL: liveURL, downloads: downloads) },
             divider: { divider },
             content: { PageArea(model: model, pageHost: pageHost, state: pageViewState, actions: pageActions) }
         )

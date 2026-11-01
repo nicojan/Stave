@@ -484,8 +484,9 @@ public final class BrowserWindowModel {
 
     // MARK: - Command bar
 
-    /// The profile's candidates plus the actions that apply now: pin, unpin, reset, close and copy only for what is selected.
-    public func commandCandidates() -> CommandCandidates {
+    /// The profile's candidates plus the actions that apply now: pin, unpin, reset, close and copy only for what is selected, and the content
+    /// blocking switch for `pageSite`, the selected live page's site (the app fills it; nil with no page).
+    public func commandCandidates(pageSite: PageSite? = nil) -> CommandCandidates {
         var found: CommandCandidates
         do {
             found = try store.commandCandidates(profileID: snapshot.profile.id)
@@ -505,7 +506,9 @@ public final class BrowserWindowModel {
         }
         actions += profiles.filter { $0.id != snapshot.profile.id }.map { .switchProfile(id: $0.id, name: $0.name) }
         actions += containers.map { .newTabInContainer(id: $0.id, name: $0.name) }
+        if let pageSite { actions.append(.setContentBlocking(on: !pageSite.blockingOn, host: pageSite.host)) }
         found.actions = actions
+        found.pageSite = pageSite
         return found
     }
 
@@ -573,6 +576,7 @@ public final class BrowserWindowModel {
         case .copyAddress: if let tab = selectedTab, !tab.url.isEmpty { return .copy(tab.url) }
         case .switchProfile(let id, _): switchProfile(to: id)
         case .newTabInContainer(let id, _): openTab(url: "", containerID: id)
+        case .setContentBlocking(let on, _): return .setContentBlocking(on: on)
         }
         return .done
     }

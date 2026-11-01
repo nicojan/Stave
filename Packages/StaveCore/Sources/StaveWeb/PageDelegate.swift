@@ -17,7 +17,8 @@ import WebKit
     func confirm(tabID: UUID, message: String) async -> Bool
     func prompt(tabID: UUID, message: String, defaultText: String?) async -> String?
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]?
-    func downloadOwner(tabID: UUID) -> DownloadOwner
+    /// Whose downloads list the page's download joins. Nil: no owner can be found, and the download is refused.
+    func downloadOwner(tabID: UUID) -> DownloadOwner?
     var downloads: DownloadList { get }
     var downloadsDirectory: URL { get }
 }
@@ -293,10 +294,11 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     // MARK: Downloads
 
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        guard let host, let events else { return nil }
+        // No owner to file it under: refused (WebKit cancels a download given no destination).
+        guard let host, let events, let owner = events.downloadOwner(tabID: tabID) else { return nil }
         let destination = Self.destination(for: suggestedFilename, in: events.downloadsDirectory)
         let source = download.originalRequest?.url ?? response.url
-        let rowID = events.downloads.begin(owner: events.downloadOwner(tabID: tabID), filename: destination.lastPathComponent, sourceHost: source?.host)
+        let rowID = events.downloads.begin(owner: owner, filename: destination.lastPathComponent, sourceHost: source?.host)
         host.beginDownload(download, delegate: self, rowID: rowID, list: events.downloads, destination: destination, source: source)
         return destination
     }

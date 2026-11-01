@@ -73,7 +73,9 @@ final class FakeEvents: PageEvents {
     func confirm(tabID: UUID, message: String) async -> Bool { confirmAnswer }
     func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? { promptAnswer }
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? { chosenFiles }
-    func downloadOwner(tabID: UUID) -> DownloadOwner { .profile(tabID) }
+    /// False: no owner can be found for the page, so its downloads are refused.
+    var hasOwner = true
+    func downloadOwner(tabID: UUID) -> DownloadOwner? { hasOwner ? .profile(tabID) : nil }
 }
 
 /// A new-window action for `createWebViewWith`. (A `WKFrameInfo` subclass crashes outside WebKit, so
@@ -678,6 +680,23 @@ struct PageDelegateTests {
         #expect(try Data(contentsOf: file) == Data("hello".utf8))
         let values = try URL(fileURLWithPath: file.path).resourceValues(forKeys: [.quarantinePropertiesKey])
         #expect(values.quarantineProperties?[kLSQuarantineAgentNameKey as String] as? String == "Stave")
+        host.close(page.tabID)
+    }
+
+    /// With no owner to file it under, the download is refused: no destination, no row.
+    @Test func downloadWithNoOwnerIsRefused() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.hasOwner = false
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
+        let destination = await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: "a.txt")
+        #expect(destination == nil)
+        #expect(events.downloads.items(for: .profile(page.tabID)).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
         host.close(page.tabID)
     }
 

@@ -31,6 +31,10 @@ final class AppEnvironment {
     let pageWriter: StorePageWriter
     /// Downloads in memory, per profile.
     let downloads: DownloadList
+    /// The writer for pop-up pages, which are no store tabs: it drops every write. Retained here for the same reason as `pageWriter`.
+    let popupWriter = DiscardingPageWriter()
+    /// Every open pop-up window, by opener tab.
+    let popups = PopupRegistry()
 
     /// Opens (creating if needed) the database and makes sure a profile exists, then runs the launch maintenance and, when asked, seeds
     /// the sample. Throws `StoreError.newerSchema` without touching the file when the data was written by a newer Stave.

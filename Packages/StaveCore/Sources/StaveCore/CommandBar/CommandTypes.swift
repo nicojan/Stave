@@ -14,14 +14,26 @@ public struct CommandTab: Equatable, Sendable {
     }
 }
 
+/// The selected page's site and whether content blocking is on for it, filled by the app from the live page.
+public struct PageSite: Equatable, Sendable {
+    public var host: String
+    public var blockingOn: Bool
+
+    public init(host: String, blockingOn: Bool) {
+        self.host = host; self.blockingOn = blockingOn
+    }
+}
+
 public struct CommandCandidates: Equatable, Sendable {
     public var tabs: [CommandTab]
     public var archived: [ArchivedTab]
     public var workspaces: [Workspace]
     public var actions: [CommandAction]
+    /// The selected page's site, when the window shows a live web page.
+    public var pageSite: PageSite?
 
-    public init(tabs: [CommandTab] = [], archived: [ArchivedTab] = [], workspaces: [Workspace] = [], actions: [CommandAction] = []) {
-        self.tabs = tabs; self.archived = archived; self.workspaces = workspaces; self.actions = actions
+    public init(tabs: [CommandTab] = [], archived: [ArchivedTab] = [], workspaces: [Workspace] = [], actions: [CommandAction] = [], pageSite: PageSite? = nil) {
+        self.tabs = tabs; self.archived = archived; self.workspaces = workspaces; self.actions = actions; self.pageSite = pageSite
     }
 }
 
@@ -29,6 +41,8 @@ public enum CommandAction: Equatable, Sendable {
     case newWorkspace, newProfile, newWindow, toggleCompactMode, importFromArc, showArchive
     case closeTab, pinTab, unpinTab, resetPinnedTab, copyAddress
     case switchProfile(id: UUID, name: String), newTabInContainer(id: UUID, name: String)
+    /// Turns content blocking on or off for the selected page's site.
+    case setContentBlocking(on: Bool, host: String)
 
     public var title: String {
         switch self {
@@ -45,6 +59,7 @@ public enum CommandAction: Equatable, Sendable {
         case .copyAddress: "Copy Address"
         case .switchProfile(_, let name): "Switch to \(name)"
         case .newTabInContainer(_, let name): "New Tab in \(name)"
+        case .setContentBlocking(let on, let host): "Turn \(on ? "On" : "Off") Content Blocking for \(host)"
         }
     }
 }
@@ -55,4 +70,6 @@ public enum CommandResult: Equatable, Sendable {
 
 public enum CommandOutcome: Equatable, Sendable {
     case done, showArcImport, showArchive, newWindow, newWorkspace, newProfile, chooseSearchEngine, copy(String)
+    /// The app switches content blocking for the selected page's site.
+    case setContentBlocking(on: Bool)
 }

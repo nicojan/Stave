@@ -81,8 +81,8 @@ public final class LivePage {
     @ObservationIgnored var blockingHost: String?
     /// The last URL written as committed; a URL change with nothing loading is a same-document one.
     @ObservationIgnored private var lastCommittedURL: String?
-    /// Test hook: how many main-frame commits this page has seen.
-    @ObservationIgnored private(set) var commitCount = 0
+    /// How many main-frame commits this page has seen: a new value is a new document (the app's dialog gate resets on it).
+    @ObservationIgnored public private(set) var commitCount = 0
     @ObservationIgnored var isShown = false
     @ObservationIgnored var lastShownAt: Date
 

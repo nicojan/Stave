@@ -3,5 +3,10 @@
 <plist version="1.0">
 <dict>
     <!-- Not sandboxed: direct distribution with Hardened Runtime. Capability entitlements are added by the tasks that need them. -->
+    <!-- Hardened Runtime blocks camera and microphone without these; websites still need the user's yes in Stave and in macOS. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
 </dict>
 </plist>

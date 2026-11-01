@@ -42,6 +42,7 @@ public enum PageMenuText {
     public static let forward = "Forward"
     public static let reload = "Reload Page"
     public static let stop = "Stop"
+    public static let contentBlocking = "Content Blocking on This Site"
     /// Debug builds only.
     public static let debugMenu = "Debug"
     public static let crashPageProcess = "Crash Page Process"

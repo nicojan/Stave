@@ -3,15 +3,9 @@ import StaveCore
 import StaveWeb
 import WebKit
 
-/// A page's question shown as a sheet on its window.
-struct PagePanel {
-    let tabID: UUID?
-    let alert: NSAlert
-}
-
 /// What this window's pages ask of it, routed here by `PageEventsRouter`. Every question resolves: answered, or refused, denied or cancelled
 /// when its tab or this window closes while it is up, so a page (and the delegate's single-flight external-app prompt) never waits forever.
-/// The sheets here are plain `NSAlert`s; Task 10 replaces the ones marked with real dialog sheets and the permission, pop-up and file UI.
+/// The sheets are `PagePrompts` on this window; a pop-up has its own (`PopupWindowController`).
 extension BrowserWindowController: PageEvents {
     // MARK: - Tabs and pop-ups
 
@@ -41,8 +35,26 @@ extension BrowserWindowController: PageEvents {
         return id
     }
 
-    /// Task 10: pop-up windows. Until then the web view is left unadopted, which the delegate refuses, so the pop-up is blocked.
-    func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {}
+    /// A sized `window.open`: a pop-up window around the web view WebKit made. The view is adopted (the delegate refuses an unadopted one)
+    /// under a fresh page ID that is no store tab, with the opener's data store and profile; its writer drops every write. It is registered
+    /// under its opener tab, whose page going closes it.
+    func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
+        guard let openerPage = environment.pageHost.existingPage(opener) else { return }
+        let id = UUID()
+        let request = PageRequest(
+            tabID: id, store: openerPage.store, siteSettingsProfileID: openerPage.siteSettingsProfileID,
+            url: "", title: "", faviconURL: nil, interactionState: nil
+        )
+        let page = environment.pageHost.adopt(webView, as: request, writer: environment.popupWriter)
+        environment.pageHost.markShown(id, true)
+        let popups = environment.popups
+        let popup = PopupWindowController(
+            id: id, openerTabID: popups.openerTab(of: opener), page: page, features: features, near: window,
+            pageHost: environment.pageHost, onClose: { closed in popups.remove(closed) }
+        )
+        popups.add(popup)
+        popup.show()
+    }
 
     /// `window.close()` from a page Stave opened closes its tab, as the close shortcut would.
     func closePage(_ tabID: UUID) {
@@ -52,57 +64,32 @@ extension BrowserWindowController: PageEvents {
     // MARK: - Questions
 
     func confirmExternalApp(url: URL, appName: String) async -> Bool {
-        let alert = NSAlert()
-        alert.messageText = PageText.externalAppQuestion(appName: appName)
-        alert.informativeText = url.absoluteString
-        alert.addButton(withTitle: PageText.openButton)
-        alert.addButton(withTitle: PageText.cancelButton)
-        return await present(alert, for: nil) == .alertFirstButtonReturn
+        await prompts.confirmExternalApp(url: url, appName: appName)
     }
 
-    /// Task 10: the camera and microphone sheet. Until then every request is denied and nothing is remembered.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
-        (false, false)
+        await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
     }
 
-    /// Task 10 replaces with its dialog sheet.
     func alert(tabID: UUID, message: String) async {
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.addButton(withTitle: PageText.okButton)
-        _ = await present(alert, for: tabID)
+        await prompts.alert(tabID: tabID, message: message)
     }
 
-    /// Task 10 replaces with its dialog sheet.
     func confirm(tabID: UUID, message: String) async -> Bool {
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.addButton(withTitle: PageText.okButton)
-        alert.addButton(withTitle: PageText.cancelButton)
-        return await present(alert, for: tabID) == .alertFirstButtonReturn
+        await prompts.confirm(tabID: tabID, message: message)
     }
 
-    /// Task 10 replaces with its dialog sheet.
     func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? {
-        let alert = NSAlert()
-        alert.messageText = message
-        let field = NSTextField(string: defaultText ?? "")
-        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        alert.accessoryView = field
-        alert.addButton(withTitle: PageText.okButton)
-        alert.addButton(withTitle: PageText.cancelButton)
-        alert.window.initialFirstResponder = field
-        return await present(alert, for: tabID) == .alertFirstButtonReturn ? field.stringValue : nil
+        await prompts.prompt(tabID: tabID, message: message, defaultText: defaultText)
     }
 
-    /// Task 10: the file picker. Until then every upload is cancelled.
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? {
-        nil
+        await prompts.chooseFiles(tabID: tabID, allowsMultiple: allowsMultiple, allowsDirectories: allowsDirectories)
     }
 
     // MARK: - Downloads
 
-    func downloadOwner(tabID: UUID) -> DownloadOwner { .profile(model.snapshot.profile.id) }
+    func downloadOwner(tabID: UUID) -> DownloadOwner? { .profile(model.snapshot.profile.id) }
 
     var downloads: DownloadList { environment.downloads }
 
@@ -110,25 +97,8 @@ extension BrowserWindowController: PageEvents {
 
     // MARK: - Sheets
 
-    /// Shows the alert as a sheet and waits for its answer. A tab's question is asked only while this window shows that tab and nothing else is
-    /// on the window; otherwise it resolves at once as cancelled (`.abort`), as it does when `endPanels` ends it.
-    private func present(_ alert: NSAlert, for tabID: UUID?) async -> NSApplication.ModalResponse {
-        guard !isClosed, window.attachedSheet == nil else { return .abort }
-        if let tabID, shownPage?.tabID != tabID { return .abort }
-        let id = UUID()
-        panels[id] = PagePanel(tabID: tabID, alert: alert)
-        let response = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
-            alert.beginSheetModal(for: window) { response in continuation.resume(returning: response) }
-        }
-        panels[id] = nil
-        return response
-    }
-
     /// Ends the matching sheets as cancelled; each one's waiting question then resolves.
     func endPanels(where matches: (PagePanel) -> Bool) {
-        for (id, panel) in panels where matches(panel) {
-            panels[id] = nil
-            window.endSheet(panel.alert.window, returnCode: .abort)
-        }
+        prompts.end(where: matches)
     }
 }

@@ -93,6 +93,19 @@ struct WebStoreTests {
         #expect(throws: StoreError.notFound) { try store.dataStoreID(forTab: UUID()) }
     }
 
+    /// A download from a page whose live page is gone is filed under its tab's profile; an unknown tab has none.
+    @Test func profileOfATab() throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let workspace = try #require(try store.workspaces(profileID: profile.id).first)
+        let tab = try store.openTab(url: "https://example.com", title: "a", workspaceID: workspace.id, origin: .commandBar, containerID: nil, edge: .top)
+        let essential = try store.openTab(url: "https://example.net", title: "c", workspaceID: workspace.id, origin: .commandBar, containerID: nil, edge: .top)
+        try store.makeEssential(essential.id)
+        #expect(try store.profileID(forTab: tab.id) == profile.id)
+        #expect(try store.profileID(forTab: essential.id) == profile.id)
+        #expect(throws: StoreError.notFound) { try store.profileID(forTab: UUID()) }
+    }
+
     @Test func latePinnedFaviconAdopted() throws {
         let (store, database, _) = try makeTempStore()
         let profile = try store.createProfile(name: "P")

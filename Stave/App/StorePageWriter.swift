@@ -54,3 +54,10 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
         }
     }
 }
+
+/// The writer of pages that are no store tabs (pop-ups): nothing they do is written, so they leave no rows and are never restored.
+@MainActor
+final class DiscardingPageWriter: PageWriter {
+    func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) {}
+    func writeInteractionState(tabID: UUID, _ state: Data?) {}
+}

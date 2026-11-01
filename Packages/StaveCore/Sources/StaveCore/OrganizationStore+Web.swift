@@ -57,4 +57,12 @@ extension OrganizationStore {
             return profile.dataStoreID
         }
     }
+
+    /// The profile the tab belongs to (through its slot).
+    public func profileID(forTab id: UUID) throws -> UUID {
+        try database.writer.read { db in
+            guard let tab = try Tab.fetchOne(db, key: id), let slot = try Slot.fetchOne(db, key: tab.slotID) else { throw StoreError.notFound }
+            return slot.profileID
+        }
+    }
 }

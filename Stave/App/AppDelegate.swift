@@ -174,6 +174,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func goForward() { pageCommand { $0.goForward() } }
     func reloadPage() { pageCommand { $0.reloadPage() } }
     func stopLoading() { pageCommand { $0.stopLoading() } }
+    /// View ▸ Content Blocking on This Site: switches blocking for the key window's shown page's site, which reloads.
+    func toggleContentBlocking() { pageCommand { $0.toggleContentBlocking() } }
 
     #if DEBUG
     /// Debug ▸ Crash Page Process: ends the key window's shown page's web content process through WebKit.

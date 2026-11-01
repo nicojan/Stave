@@ -114,6 +114,23 @@ extension BrowserWindowController: PageLifecycle {
 
     func stopLoading() { shownPage?.webView.stopLoading() }
 
+    /// The shown page's site and whether blocking is on for it; nil with no page or a page with no web site.
+    var pageSite: PageSite? {
+        guard let page = shownPage, let host = SiteHost.normalized(page.status.url) else { return nil }
+        return PageSite(host: host, blockingOn: page.isContentBlockingOn)
+    }
+
+    /// View ▸ Content Blocking on This Site and the command bar's action: remembered for the site (in the profile) and the page reloads.
+    func setContentBlocking(_ on: Bool) {
+        guard let page = shownPage else { return }
+        pageHost.setContentBlocking(on, for: page.tabID)
+    }
+
+    func toggleContentBlocking() {
+        guard let page = shownPage else { return }
+        setContentBlocking(!page.isContentBlockingOn)
+    }
+
     /// Reloads what the page has. A page that never committed (its first load failed) loads its address again, judged as stored, so a refused
     /// address stays refused.
     func reloadPage() {
@@ -140,12 +157,15 @@ extension BrowserWindowController: PageLifecycle {
 
     // MARK: - PageLifecycle
 
-    /// Ends the tab's pending questions in every window: the sheet may be up in the window that showed the page, not the one that closed it.
+    /// The tab's page is going (closed, unloaded or reset): its pending questions end in every window (the sheet may be up in the window
+    /// that showed the page, not the one that closed it), its dialog count is dropped, and the pop-ups it opened close.
     private func endQuestionsEverywhere(for id: UUID) {
         let all = peers()
         for controller in all.contains(where: { $0 === self }) ? all : all + [self] {
             controller.endPanels { $0.tabID == id }
+            controller.prompts.forget(id)
         }
+        environment.popups.closeAll(openedBy: id)
     }
 
     func tabClosed(_ id: UUID) {

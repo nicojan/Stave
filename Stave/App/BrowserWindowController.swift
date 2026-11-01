@@ -25,8 +25,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     /// Moves focus into the page once its web view is in this window.
     var focusTask: Task<Void, Never>?
     var snapshotTask: Task<Void, Never>?
-    /// Page questions shown as sheets, by question; each resolves when answered, or when its tab or this window closes.
-    var panels: [UUID: PagePanel] = [:]
+    /// Page questions shown as sheets on this window; each resolves when answered, or when its tab or this window closes.
+    let prompts: PagePrompts
     /// Set by the app delegate: the first-run sheet's Continue, and the import sheet's "Choose Another File…".
     var onCompleteFirstRun: (SearchEngine, Bool) -> Void = { _, _ in }
     var onChooseAnotherFile: (ArcImportSession) -> Void = { _ in }
@@ -46,9 +46,16 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
+        let host = environment.pageHost
+        prompts = PagePrompts(window: window, pageHost: host, shows: { [weak model, weak host] tabID in
+            guard let model, let host, model.selectedTabID == tabID, model.placement == .here else { return false }
+            return host.existingPage(tabID) != nil
+        })
         super.init()
         sidebarPresenter.newWindow = onNewWindow
         sidebarPresenter.importFromArc = onImportFromArc
+        sidebarPresenter.pageSite = { [weak self] in self?.pageSite }
+        sidebarPresenter.setContentBlocking = { [weak self] on in self?.setContentBlocking(on) }
         configureWindow()
         place(savedFrame: state.frame)
         window.title = windowTitle
@@ -73,7 +80,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             reload: { [weak self] in self?.reloadPage() },
             back: { [weak self] in self?.goBack() }
         )
-        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, pageHost: environment.pageHost, pageViewState: pageViewState, pageActions: pageActions, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }))
+        let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, pageHost: environment.pageHost, downloads: environment.downloads, pageViewState: pageViewState, pageActions: pageActions, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }))
         hosting.sizingOptions = [] // the window decides its size, not the SwiftUI content
         window.contentView = hosting
     }
@@ -182,7 +189,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         reportNow() // the last window stays in the saved set with its final frame and selection
-        endPanels { _ in true }
+        prompts.close()
         focusTask?.cancel()
         snapshotTask?.cancel()
         let shown = shownPage?.tabID

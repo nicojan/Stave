@@ -10,6 +10,8 @@ struct SidebarView: View {
     let openCommandBar: (CommandBarMode) -> Void
     /// The selected tab's live address, when its page is shown here; the address field follows it.
     let liveURL: (UUID) -> String?
+    /// The app's downloads; the bottom bar shows this profile's.
+    let downloads: DownloadList
 
     @FocusState private var listFocused: Bool
     @State private var dismissedErrorID: Int?
@@ -185,6 +187,7 @@ struct SidebarView: View {
                         model.restoreArchived(id)
                     })
                 }
+            DownloadsButton(downloads: downloads, owner: .profile(model.snapshot.profile.id))
             if WorkspaceMenus.showsProfileMenu(profileCount: model.profiles.count) {
                 ProfileMenu(model: model, presenter: presenter)
             }

@@ -57,6 +57,9 @@ struct StaveApp: App {
                     Button(PageMenuText.stop) { delegate.stopLoading() }
                         .keyboardShortcut(".", modifiers: .command)
                         .disabled(!state.pageMenu.canStop)
+                    Divider()
+                    Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
+                        .disabled(state.pageMenu.blockingOn == nil)
                 }
                 #if DEBUG
                 CommandMenu(PageMenuText.debugMenu) {

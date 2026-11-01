@@ -5,7 +5,8 @@ import WebKit
 
 /// The one `PageEvents` of the app (`PageHost.events`, held weakly there, so the app delegate keeps it). Each event goes to the window that
 /// owns the page's tab (`LivePageRegistry.owner(of:)`); with no owner, to the frontmost window of the same profile. With no window at all,
-/// every question resolves to its safe answer (refuse, deny, cancel) so a page is never left waiting.
+/// every question resolves to its safe answer (refuse, deny, cancel) so a page is never left waiting. A pop-up's page (an ID in
+/// `PopupRegistry`) asks on its own pop-up window; its links and pop-ups go to the window of the sidebar tab that opened it.
 @MainActor
 final class PageEventsRouter: PageEvents {
     private let environment: AppEnvironment
@@ -28,56 +29,80 @@ final class PageEventsRouter: PageEvents {
         return candidates.first
     }
 
+    private var popups: PopupRegistry { environment.popups }
+
+    /// Links from a pop-up land below its opener tab (decision 6).
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID? {
-        controller(for: opener)?.openLinkedTab(opener: opener, url: url, select: select, webView: webView)
+        let tab = popups.openerTab(of: opener)
+        return controller(for: tab)?.openLinkedTab(opener: tab, url: url, select: select, webView: webView)
     }
 
+    /// `opener` may itself be a pop-up; the window of its opener tab makes the new one.
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
-        controller(for: opener)?.openPopup(opener: opener, webView: webView, features: features)
+        controller(for: popups.openerTab(of: opener))?.openPopup(opener: opener, webView: webView, features: features)
     }
 
+    /// `window.close()`: a pop-up closes its window; a tab closes as with the close shortcut.
     func closePage(_ tabID: UUID) {
-        controller(for: tabID)?.closePage(tabID)
+        if let popup = popups.popup(tabID) {
+            popup.close()
+        } else {
+            controller(for: tabID)?.closePage(tabID)
+        }
     }
 
-    /// No tab ID comes with the question; the key browser window asks it.
+    /// The sheets for a page: its pop-up's, else its window's.
+    private func prompts(for tabID: UUID) -> PagePrompts? {
+        popups.popup(tabID)?.prompts ?? controller(for: tabID)?.prompts
+    }
+
+    /// No tab ID comes with the question; the frontmost browser or pop-up window asks it.
     func confirmExternalApp(url: URL, appName: String) async -> Bool {
         let all = controllers()
-        let front = NSApp.orderedWindows.lazy.compactMap { window in all.first { $0.window === window } }.first
+        let popupList = popups.all
+        let front = NSApp.orderedWindows.lazy.compactMap { window -> PagePrompts? in
+            all.first { $0.window === window }?.prompts ?? popupList.first { $0.window === window }?.prompts
+        }.first
         guard let front else { return false }
         return await front.confirmExternalApp(url: url, appName: appName)
     }
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
-        guard let controller = controller(for: tabID) else { return (false, false) }
-        return await controller.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
+        guard let prompts = prompts(for: tabID) else { return (false, false) }
+        return await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
     }
 
     func alert(tabID: UUID, message: String) async {
-        await controller(for: tabID)?.alert(tabID: tabID, message: message)
+        await prompts(for: tabID)?.alert(tabID: tabID, message: message)
     }
 
     func confirm(tabID: UUID, message: String) async -> Bool {
-        guard let controller = controller(for: tabID) else { return false }
-        return await controller.confirm(tabID: tabID, message: message)
+        guard let prompts = prompts(for: tabID) else { return false }
+        return await prompts.confirm(tabID: tabID, message: message)
     }
 
     func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? {
-        guard let controller = controller(for: tabID) else { return nil }
-        return await controller.prompt(tabID: tabID, message: message, defaultText: defaultText)
+        guard let prompts = prompts(for: tabID) else { return nil }
+        return await prompts.prompt(tabID: tabID, message: message, defaultText: defaultText)
     }
 
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? {
-        guard let controller = controller(for: tabID) else { return nil }
-        return await controller.chooseFiles(tabID: tabID, allowsMultiple: allowsMultiple, allowsDirectories: allowsDirectories)
+        guard let prompts = prompts(for: tabID) else { return nil }
+        return await prompts.chooseFiles(tabID: tabID, allowsMultiple: allowsMultiple, allowsDirectories: allowsDirectories)
     }
 
-    /// The page's profile; a page already gone falls back to the owning window's profile, then the first profile.
-    func downloadOwner(tabID: UUID) -> DownloadOwner {
+    /// The page's profile; a page already gone falls back to its tab's profile in the store (a pop-up's: its opener tab's). With
+    /// none of those, nil: the download is refused rather than filed under an owner that doesn't exist.
+    func downloadOwner(tabID: UUID) -> DownloadOwner? {
         if let profileID = environment.pageHost.existingPage(tabID)?.siteSettingsProfileID { return .profile(profileID) }
-        if let controller = controller(for: tabID) { return controller.downloadOwner(tabID: tabID) }
-        let first = (try? environment.store.profiles().first?.id) ?? nil
-        return .profile(first ?? UUID())
+        let tab = popups.openerTab(of: tabID)
+        if let profileID = environment.pageHost.existingPage(tab)?.siteSettingsProfileID { return .profile(profileID) }
+        do {
+            return .profile(try environment.store.profileID(forTab: tab))
+        } catch {
+            NSLog("Stave: refused a download with no owner: \(error)")
+            return nil
+        }
     }
 
     var downloads: DownloadList { environment.downloads }

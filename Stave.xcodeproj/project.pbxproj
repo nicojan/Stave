@@ -14,8 +14,11 @@
 		0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */; };
 		12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */; };
 		2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3BA1703865C93D34246435 /* StaveApp.swift */; };
+		2F9223943913552679A1DF70 /* DownloadsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */; };
 		32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */; };
+		3A45E58A25EFCE4B95B8A42F /* PopupWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */; };
 		3D464C41BCA6A1B79C118877 /* ArcImportSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21580A0E3C81A87C49AE021C /* ArcImportSession.swift */; };
+		4360D4C8CE0C05CB647EEE2D /* PagePrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */; };
 		43B34A91418D69D440399677 /* SwipeCatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */; };
 		44899E6CC9B3AD9E19EA129F /* StorePageWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */; };
 		46130092B92463BE21483B0E /* BrowserWindowController+PageEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */; };
@@ -61,8 +64,11 @@
 		4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+PageEvents.swift"; sourceTree = "<group>"; };
 		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopupWindowController.swift; sourceTree = "<group>"; };
+		72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopover.swift; sourceTree = "<group>"; };
 		7D8BC787394FE59027F03DE4 /* PageFailureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageFailureView.swift; sourceTree = "<group>"; };
 		7ED2F2159BFD4065D57C6AFE /* Stave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Stave.entitlements; sourceTree = "<group>"; };
+		81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagePrompts.swift; sourceTree = "<group>"; };
 		867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBarView.swift; sourceTree = "<group>"; };
 		8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPresenter.swift; sourceTree = "<group>"; };
 		995508A5262708F8EE5364E3 /* AppMenuState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuState.swift; sourceTree = "<group>"; };
@@ -149,6 +155,8 @@
 				E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */,
 				BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */,
 				0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */,
+				81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */,
+				68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */,
 				BD3BA1703865C93D34246435 /* StaveApp.swift */,
 				B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */,
 			);
@@ -200,6 +208,7 @@
 			children = (
 				4301C5F96EF73A0EDEC6288D /* AddressField.swift */,
 				FF9003316572911593E1DFEE /* ArchivePopover.swift */,
+				72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */,
 				DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */,
 				CC23353CB79C824619134179 /* NamePromptSheet.swift */,
 				DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */,
@@ -310,6 +319,7 @@
 				99CB40616081101643172E0F /* CompactContainer.swift in Sources */,
 				12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */,
 				32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */,
+				2F9223943913552679A1DF70 /* DownloadsPopover.swift in Sources */,
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
 				4A6E8FB8ED8CC65D780164AD /* FirstRunView.swift in Sources */,
 				C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */,
@@ -317,6 +327,8 @@
 				0A72401CB50855852A482D81 /* PageContentView.swift in Sources */,
 				B207D8F4B94BD9461B0FAC74 /* PageEventsRouter.swift in Sources */,
 				0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */,
+				4360D4C8CE0C05CB647EEE2D /* PagePrompts.swift in Sources */,
+				3A45E58A25EFCE4B95B8A42F /* PopupWindowController.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,
 				A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */,
 				C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */,

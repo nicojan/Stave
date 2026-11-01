@@ -46,11 +46,15 @@ final class SidebarPresenter {
     @ObservationIgnored var newWindow: () -> Void = {}
     /// Opens the Arc import like File ▸ Import from Arc…. Set by the window controller.
     @ObservationIgnored var importFromArc: () -> Void = {}
+    /// The shown page's site and blocking state, for the command bar's blocking action. Set by the window controller.
+    @ObservationIgnored var pageSite: () -> PageSite? = { nil }
+    /// Turns content blocking on or off for the shown page's site. Set by the window controller.
+    @ObservationIgnored var setContentBlocking: (Bool) -> Void = { _ in }
 
     /// Opens (or reopens in another mode) the command bar from the window's current state.
     func openCommandBar(_ mode: CommandBarMode, for model: BrowserWindowModel) {
         commandBar = CommandBarModel(
-            mode: mode, candidates: model.commandCandidates(), currentURL: model.selectedTab?.url,
+            mode: mode, candidates: model.commandCandidates(pageSite: pageSite()), currentURL: model.selectedTab?.url,
             currentWorkspaceID: model.snapshot.workspace.id, searchEngine: model.searchEngine,
             currentTabID: model.selectedTabID
         )
@@ -115,6 +119,7 @@ final class SidebarPresenter {
         case .newWindow: newWindow()
         case .newWorkspace: workspaceEditor = .create
         case .newProfile: showNewProfile = true
+        case .setContentBlocking(let on): setContentBlocking(on)
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
