@@ -82,10 +82,15 @@ public enum DownloadFilename {
     /// Makes a server- or page-suggested name safe to use as a file name.
     public static func sanitized(_ suggested: String) -> String {
         let noControls = String(String.UnicodeScalarView(suggested.unicodeScalars.filter { !isControl($0) }))
-        let leading: Set<Character> = [".", " ", "/", ":"]
-        var rest = Substring(noControls)
-        while let first = rest.first, leading.contains(first) { rest = rest.dropFirst() }
-        let replaced = String(rest.map { $0 == "/" || $0 == ":" ? Character("-") : $0 })
+        // Scalar level: "/" followed by a combining mark or ZWJ is one Character, not "/".
+        let leading: Set<Unicode.Scalar> = [".", " ", "/", ":"]
+        var scalars = Substring(noControls).unicodeScalars
+        while let first = scalars.first, leading.contains(first) || first.properties.generalCategory == .format {
+            scalars = scalars.dropFirst()
+        }
+        var replacedScalars = String.UnicodeScalarView()
+        for scalar in scalars { replacedScalars.append(scalar == "/" || scalar == ":" ? "-" : scalar) }
+        let replaced = String(replacedScalars)
         let capped = cap(replaced)
         return capped.isEmpty ? "download" : capped
     }

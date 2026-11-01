@@ -12,6 +12,12 @@ import Testing
         #expect(DownloadFilename.sanitized("...") == "download")
         #expect(DownloadFilename.sanitized("x\u{0}\u{7}y.pdf") == "xy.pdf")
         #expect(DownloadFilename.sanitized("rapport été.pdf") == "rapport été.pdf")
+        for hostile in ["a/\u{200D}b", "a/\u{301}b", "a:\u{301}b", "/\u{301}x", ".\u{200D}.zshrc", "/\u{200D}/\u{301}.x"] {
+            let out = DownloadFilename.sanitized(hostile)
+            #expect(!out.unicodeScalars.contains("/") && !out.unicodeScalars.contains(":"))
+            #expect(!out.hasPrefix("."))
+            #expect(out.unicodeScalars.first.map { $0 != "." && $0.properties.generalCategory != .format } ?? false)
+        }
         let long = DownloadFilename.sanitized(String(repeating: "a", count: 300) + ".pdf")
         #expect(long.utf8.count <= 200)
         #expect(long.hasSuffix(".pdf"))
