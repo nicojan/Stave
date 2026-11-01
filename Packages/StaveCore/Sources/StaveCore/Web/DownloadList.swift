@@ -62,6 +62,13 @@ public final class DownloadList {
         rows.removeAll { $0.owner == owner && $0.state.hasEnded }
     }
 
+    /// Cancels every row of the owner that is still running, each through `cancel` (so `onCancel` stops its download). A private window
+    /// does this before `dropOwner` when it closes: finished files stay, half-written ones do not.
+    public func cancelRunning(owner: DownloadOwner) {
+        let running = rows.filter { $0.owner == owner && !$0.state.hasEnded }.map(\.id)
+        for id in running { cancel(id) }
+    }
+
     public func dropOwner(_ owner: DownloadOwner) {
         rows.removeAll { $0.owner == owner }
     }

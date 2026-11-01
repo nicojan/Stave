@@ -70,10 +70,26 @@ final class ActiveDownloads {
         entry.list?.fail(rowID, message: message)
     }
 
+    /// Stops the download and removes what it had written. WebKit leaves the partial file at the destination on cancel (checked against a
+    /// slow local server), so that exact file goes now (the app may be quitting and never see the completion) and again once the cancel
+    /// completes, in case a last write landed. A finished download is no longer here, so its file is never touched.
     func cancel(row rowID: UUID) {
         guard let download = byRow[rowID] else { return }
-        remove(download)
-        download.cancel(nil)
+        let partial = remove(download)?.destination
+        if let partial { Self.removePartial(at: partial) }
+        download.cancel { _ in
+            guard let partial else { return }
+            Task { @MainActor in Self.removePartial(at: partial) }
+        }
+    }
+
+    private static func removePartial(at url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            NSLog("Stave: could not remove a cancelled download's partial file: \(error)")
+        }
     }
 
     private func progress(_ rowID: UUID, fraction: Double?) {

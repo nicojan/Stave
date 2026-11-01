@@ -227,7 +227,11 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
             pageHost.close(tab.id)
         }
         pendingTyped = [:]
+        // `close` also drops each page's snapshot, kept even for a page hibernation unloaded; the window's media answers go here.
+        pageHost.forgetPrivate(windowID: windowID)
         environment.webStores.releasePrivate(windowID)
+        // Running downloads stop and their partial files go; finished files stay in ~/Downloads. Then the rows go.
+        environment.downloads.cancelRunning(owner: .privateWindow(windowID))
         environment.downloads.dropOwner(.privateWindow(windowID))
     }
 

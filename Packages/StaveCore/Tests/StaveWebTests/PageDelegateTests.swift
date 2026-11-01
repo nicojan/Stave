@@ -667,6 +667,24 @@ struct PageDelegateTests {
         host.close(other.tabID)
     }
 
+    /// A closed private window's answers go: a later page on the same store key asks again.
+    @Test func forgettingAPrivateWindowDropsItsMediaAnswers() async throws {
+        let host = makeHost()
+        let windowID = UUID()
+        let make = { PageRequest(tabID: UUID(), store: .privateWindow(windowID), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil) }
+        let page = host.page(for: make(), writer: writer)
+        events.mediaAnswer = (true, true)
+        #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(events.mediaQuestions.count == 1)
+        host.close(page.tabID)
+        host.forgetPrivate(windowID: windowID)
+        let again = host.page(for: make(), writer: writer)
+        #expect(await (try delegate(of: again)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(events.mediaQuestions.count == 2)
+        host.close(again.tabID)
+    }
+
     // MARK: Downloads
 
     @Test func downloadNamesAreSafe() throws {
@@ -719,6 +737,28 @@ struct PageDelegateTests {
         #expect(destination == nil)
         #expect(events.downloads.items(for: .profile(page.tabID)).isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
+        host.close(page.tabID)
+    }
+
+    /// WebKit leaves the bytes it wrote at the destination when a download is cancelled (checked against a slow local server): cancelling a
+    /// row removes that exact file, and nothing else in the folder.
+    @Test func cancellingARowRemovesItsPartialFile() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
+        let destination = try #require(await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: "partial.bin"))
+        try Data("half".utf8).write(to: destination) // what WebKit had written so far
+        let neighbour = dir.appendingPathComponent("keep.bin")
+        try Data("keep".utf8).write(to: neighbour)
+        let row = try #require(events.downloads.items(for: .profile(page.tabID)).first)
+        events.downloads.cancel(row.id)
+        let removed = try await waitUntil(seconds: 10) { !FileManager.default.fileExists(atPath: destination.path) }
+        #expect(removed)
+        #expect(FileManager.default.fileExists(atPath: neighbour.path))
         host.close(page.tabID)
     }
 

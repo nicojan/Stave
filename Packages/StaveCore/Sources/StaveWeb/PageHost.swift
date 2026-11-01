@@ -125,13 +125,20 @@ public final class PageHost {
     }
 
     /// Ends the page without flushing: its tab is gone, so nothing more is written for it.
+    /// The snapshot goes too, also for a page hibernation already unloaded (which `unload` left a snapshot for).
     public func close(_ tabID: UUID) {
+        snapshots[tabID] = nil
+        snapshotTokens[tabID] = nil
         guard let page = pages.removeValue(forKey: tabID) else { return }
         page.close()
         delegates[tabID] = nil
-        snapshots[tabID] = nil
-        snapshotTokens[tabID] = nil
         Self.tearDown(page)
+    }
+
+    /// A private window closed: its camera and microphone answers go (its pages are closed by then, which drops their snapshots).
+    public func forgetPrivate(windowID: UUID) {
+        let store = DataStoreKey.privateWindow(windowID)
+        privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != store }
     }
 
     /// The last snapshot of the tab's page, kept in memory.

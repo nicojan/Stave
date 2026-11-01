@@ -3,6 +3,24 @@ import Testing
 @testable import StaveCore
 
 @Suite struct DownloadListTests {
+    /// A private window closing cancels its running rows only: a finished row and another owner's running row are left alone.
+    @MainActor @Test func cancelRunningCancelsOnlyThatOwnersRunningRows() {
+        let list = DownloadList()
+        var cancelled: [UUID] = []
+        list.onCancel = { cancelled.append($0) }
+        let window = DownloadOwner.privateWindow(UUID())
+        let running = list.begin(owner: window, filename: "a.bin", sourceHost: nil)
+        let done = list.begin(owner: window, filename: "b.bin", sourceHost: nil)
+        list.finish(done, at: URL(fileURLWithPath: "/tmp/b.bin"))
+        let profile = DownloadOwner.profile(UUID())
+        let other = list.begin(owner: profile, filename: "c.bin", sourceHost: nil)
+        list.cancelRunning(owner: window)
+        #expect(cancelled == [running])
+        #expect(list.items(for: window).first { $0.id == running }?.state == .cancelled)
+        #expect(list.items(for: window).first { $0.id == done }?.state == .finished(URL(fileURLWithPath: "/tmp/b.bin")))
+        #expect(list.items(for: profile).first { $0.id == other }?.state == .running(fraction: nil))
+    }
+
     @Test func filenamesAreSanitized() {
         #expect(DownloadFilename.sanitized("../../.zshrc") == "zshrc")
         #expect(DownloadFilename.sanitized(".hidden") == "hidden")

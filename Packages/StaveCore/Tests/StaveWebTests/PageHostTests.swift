@@ -288,6 +288,24 @@ struct PageHostTests {
         #expect(writer.stateWrites == 1)
     }
 
+    /// Closing a tab whose page hibernation unloaded drops the snapshot `unload` kept (a private window's close goes through here).
+    @Test func closeOfAnUnloadedPageDropsItsSnapshot() async throws {
+        let host = makeHost()
+        let page = host.page(for: request(url: ""), writer: writer)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = page.webView
+        defer { window.close() }
+        let loaded = try await loadLocal(page, html: "<body style='background:#3c3'>drawn</body>", base: "https://example.com/")
+        #expect(loaded)
+        try await Task.sleep(for: .milliseconds(200))
+        host.unload(page.tabID)
+        let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
+        #expect(snapped)
+        host.close(page.tabID)
+        #expect(host.snapshot(for: page.tabID) == nil)
+    }
+
     @Test func closeDropsPendingStateAndSnapshot() async throws {
         let host = makeHost()
         let page = host.page(for: request(url: ""), writer: writer)
