@@ -481,6 +481,11 @@ struct PageDelegateTests {
         #expect(delegate.decide(NavigationRequest("blob:https://example.com/x", type: .other, shouldDownload: true)) == .download)
         // The policy still comes first.
         #expect(delegate.decide(NavigationRequest("file:///etc/hosts", shouldDownload: true)) == .cancel)
+        // Ruling R11: a data: link marked as a download downloads; without the flag it stays refused.
+        #expect(delegate.decide(NavigationRequest("data:text/csv,a,b", shouldDownload: true)) == .download)
+        #expect(delegate.decide(NavigationRequest("data:text/csv,a,b", isMainFrame: false, type: .other, shouldDownload: true)) == .download)
+        #expect(delegate.decide(NavigationRequest("data:text/csv,a,b")) == .cancel)
+        #expect(delegate.decide(NavigationRequest("data:text/html,x", type: .other)) == .cancel)
         host.close(page.tabID)
     }
 
@@ -505,6 +510,31 @@ struct PageDelegateTests {
         #expect(try Data(contentsOf: dir.appendingPathComponent("note.txt")) == Data("hello".utf8))
         #expect(page.status.url == "https://example.com/")
         #expect(page.webView.title == "T")
+        host.close(page.tabID)
+    }
+
+    /// Ruling R11: a real `<a download href="data:…">` clicked by script is saved, and the page stays.
+    @Test func dataDownloadLinkLandsInTheDirectory() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        page.webView.loadHTMLString("<title>T</title>", baseURL: URL(string: "https://example.com/"))
+        let loaded = try await waitUntil { page.status.title == "T" && !page.webView.isLoading }
+        #expect(loaded)
+        let script = "const a = document.createElement('a'); a.href = 'data:text/csv,a,b'; a.download = 'table.csv'; document.body.appendChild(a); a.click(); 1"
+        _ = try await page.webView.evaluateJavaScript(script)
+        let finished = try await waitUntil {
+            events.downloads.items(for: .profile(page.tabID)).contains { if case .finished = $0.state { true } else { false } }
+        }
+        #expect(finished)
+        let item = try #require(events.downloads.items(for: .profile(page.tabID)).first)
+        #expect(item.filename == "table.csv")
+        #expect(try Data(contentsOf: dir.appendingPathComponent("table.csv")) == Data("a,b".utf8))
+        #expect(page.status.url == "https://example.com/")
+        #expect(page.webView.title == "T")
+        #expect(page.status.failure == nil)
         host.close(page.tabID)
     }
 

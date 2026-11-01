@@ -162,6 +162,10 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             return decideRestore(url, page: page)
         }
 
+        // Ruling R11: a `data:` link marked as a download is saved, never rendered, so the policy's
+        // refusal of a data: page doesn't apply. Without the flag, data: stays refused.
+        if navigation.shouldDownload, URLScheme.scheme(of: url) == "data" { return .download }
+
         let (decision, disposition) = Self.decision(
             for: url,
             isMainFrame: navigation.isMainFrame,
