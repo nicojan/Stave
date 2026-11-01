@@ -87,7 +87,11 @@ public final class BrowserWindowModel {
             lastError = StoreErrorText.message(for: error)
             return
         }
-        if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) { clearSelection(reportDeselect: false) }
+        if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) {
+            // Gone from this window's rows. A tab that still exists was moved away (its page survives), so this window reports it deselected;
+            // an archived or removed tab is covered by `tabClosed` instead.
+            clearSelection(reportDeselect: (try? store.tabExists(id)) == true)
+        }
         dropStaleHighlight()
     }
 
@@ -180,7 +184,7 @@ public final class BrowserWindowModel {
         livePages.bringHere(id, to: windowID)
     }
 
-    /// A tab that is gone from the snapshot is not reported as deselected; its close was (or will be) reported instead.
+    /// `reportDeselect` is false only for a tab that no longer exists; its close is reported instead.
     private func clearSelection(reportDeselect: Bool = true) {
         guard let previous = selectedTabID else { return }
         selectedTabID = nil

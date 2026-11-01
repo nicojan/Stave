@@ -153,4 +153,18 @@ struct PageLifecycleTests {
         let empty = PageMenuState.from(status: PageStatusSummary(isLoading: true, canGoBack: true, hasPage: false), sheetOpen: false)
         #expect(empty == none)
     }
+
+    @Test func movingSelectedTabAwayReportsDeselectedOnly() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        let pages = FakePages()
+        window.pages = pages
+        window.apply(.tab(tab.id, workspaceID: other.id, section: .regular, folderID: nil, after: nil))
+        #expect(window.selectedTabID == nil)
+        #expect(pages.closed.isEmpty)
+        #expect(pages.unloaded.isEmpty)
+        #expect(pages.deselected == [tab.id])
+    }
 }
