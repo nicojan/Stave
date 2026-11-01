@@ -81,6 +81,8 @@ public final class LivePage {
     @ObservationIgnored var blockingHost: String?
     /// The last URL written as committed; a URL change with nothing loading is a same-document one.
     @ObservationIgnored private var lastCommittedURL: String?
+    /// Test hook: how many main-frame commits this page has seen.
+    @ObservationIgnored private(set) var commitCount = 0
     @ObservationIgnored var isShown = false
     @ObservationIgnored var lastShownAt: Date
 
@@ -150,6 +152,7 @@ public final class LivePage {
     /// URL first changes, so a load that fails never blanks them). Ends any hold and clears the failure.
     func committed() {
         guard !isClosed else { return }
+        commitCount += 1
         restorePending = false
         holdsWrites = false
         status.failure = nil

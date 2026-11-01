@@ -44,6 +44,8 @@ struct NavigationRequest {
     var isMainFrame = true
     var type: WKNavigationType = .linkActivated
     var modifiers: NSEvent.ModifierFlags = []
+    /// An `<a download>` link.
+    var shouldDownload = false
 
     @MainActor init(_ action: WKNavigationAction) {
         url = action.request.url?.absoluteString ?? ""
@@ -51,14 +53,16 @@ struct NavigationRequest {
         isMainFrame = action.targetFrame?.isMainFrame ?? true
         type = action.navigationType
         modifiers = action.modifierFlags
+        shouldDownload = action.shouldPerformDownload
     }
 
-    init(_ url: String, targetsNewWindow: Bool = false, isMainFrame: Bool = true, type: WKNavigationType = .linkActivated, modifiers: NSEvent.ModifierFlags = []) {
+    init(_ url: String, targetsNewWindow: Bool = false, isMainFrame: Bool = true, type: WKNavigationType = .linkActivated, modifiers: NSEvent.ModifierFlags = [], shouldDownload: Bool = false) {
         self.url = url
         self.targetsNewWindow = targetsNewWindow
         self.isMainFrame = isMainFrame
         self.type = type
         self.modifiers = modifiers
+        self.shouldDownload = shouldDownload
     }
 }
 
@@ -74,6 +78,12 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     private var pendingURL: URL?
     /// The latest external-app hand-off, kept so tests can wait for it.
     var externalTask: Task<Void, Never>?
+    /// One external-app question at a time: a page clicking a `mailto:` link by script in a loop would
+    /// otherwise stack sheets. Requests made while one is pending, or within the cooldown after a
+    /// decline, are dropped.
+    private var externalPending = false
+    private var externalQuietUntil: Date?
+    static let externalCooldown: TimeInterval = 1
 
     /// `events` may be nil; the host's `events` is used then.
     public init(page: LivePage, host: PageHost, events: PageEvents?) {
@@ -167,6 +177,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             startExternal(address, typed: false)
             return .cancel
         case .allow:
+            // An `<a download>` link the policy allows downloads, whatever frame or window it targets.
+            if navigation.shouldDownload { return .download }
             // A new window goes on to `createWebViewWith`; a ⌘-click opens the tab here.
             if !targetsNewWindow, case .newTab(let select) = disposition {
                 _ = events?.openLinkedTab(opener: tabID, url: url, select: select, webView: nil)
@@ -240,7 +252,13 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     // MARK: External apps
 
     func startExternal(_ address: String, typed: Bool) {
-        externalTask = Task { [weak self] in await self?.openExternally(address, typed: typed) }
+        guard !externalPending else { return }
+        if let quietUntil = externalQuietUntil, let now = host?.currentDate(), now < quietUntil { return }
+        externalPending = true
+        externalTask = Task { [weak self] in
+            await self?.openExternally(address, typed: typed)
+            self?.externalPending = false
+        }
     }
 
     /// Asks before handing a link to its app. With no app, only a typed address says so.
@@ -250,7 +268,14 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             if typed, let page, !page.isClosed { page.status.failure = .noAppForLink(url: address) }
             return
         }
-        guard let events, await events.confirmExternalApp(url: url, appName: Self.appName(app)) else { return }
+        guard let events else { return }
+        let confirmed = await events.confirmExternalApp(url: url, appName: Self.appName(app))
+        guard confirmed else {
+            externalQuietUntil = host.currentDate().addingTimeInterval(Self.externalCooldown)
+            return
+        }
+        // The tab may have closed (or its page been replaced) while the question was up.
+        guard let page, !page.isClosed, host.existingPage(tabID) === page else { return }
         host.externalApps.open(url)
     }
 

@@ -55,8 +55,12 @@ final class FakeEvents: PageEvents {
 
     func closePage(_ tabID: UUID) { closed.append(tabID) }
 
+    /// Runs while the question is "up" (before the answer returns).
+    var whileConfirming: (() -> Void)?
+
     func confirmExternalApp(url: URL, appName: String) async -> Bool {
         externalQuestions.append((url, appName))
+        whileConfirming?()
         return externalAnswer
     }
 
@@ -410,6 +414,12 @@ struct PageDelegateTests {
         #expect(events.externalQuestions.first?.1 == "Mail")
         #expect(apps.opened.isEmpty)
 
+        // Within a second of a decline, a new request is dropped.
+        _ = delegate.decide(NavigationRequest("mailto:a@example.com"))
+        await delegate.externalTask?.value
+        #expect(events.externalQuestions.count == 1)
+        clock.date += PageDelegate.externalCooldown + 0.1
+
         // Accepted: it opens.
         events.externalAnswer = true
         _ = delegate.decide(NavigationRequest("mailto:a@example.com"))
@@ -421,6 +431,110 @@ struct PageDelegateTests {
         host.loadTyped("zoommtg://x", in: page.tabID)
         await delegate.externalTask?.value
         #expect(page.status.failure == .noAppForLink(url: "zoommtg://x"))
+        host.close(page.tabID)
+    }
+
+    @Test func externalPromptsAreSingleFlight() async throws {
+        let host = makeHost()
+        let apps = FakeExternalApps()
+        apps.app = URL(fileURLWithPath: "/System/Applications/Mail.app")
+        host.externalApps = apps.seam
+        events.externalAnswer = true
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        // A script clicking a mailto: link in a loop: only the first request asks.
+        #expect(delegate.decide(NavigationRequest("mailto:a@example.com")) == .cancel)
+        #expect(delegate.decide(NavigationRequest("mailto:b@example.com")) == .cancel)
+        await delegate.externalTask?.value
+        #expect(events.externalQuestions.count == 1)
+        #expect(apps.opened == [URL(string: "mailto:a@example.com")!])
+        // Once answered (yes), the next request asks again.
+        _ = delegate.decide(NavigationRequest("mailto:c@example.com"))
+        await delegate.externalTask?.value
+        #expect(events.externalQuestions.count == 2)
+        host.close(page.tabID)
+    }
+
+    @Test func externalAppNotOpenedForAClosedTab() async throws {
+        let host = makeHost()
+        let apps = FakeExternalApps()
+        apps.app = URL(fileURLWithPath: "/System/Applications/Mail.app")
+        host.externalApps = apps.seam
+        events.externalAnswer = true
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        events.whileConfirming = { host.close(page.tabID) }
+        _ = delegate.decide(NavigationRequest("mailto:a@example.com"))
+        await delegate.externalTask?.value
+        #expect(events.externalQuestions.count == 1)
+        #expect(apps.opened.isEmpty)
+    }
+
+    // MARK: Download links
+
+    @Test func downloadLinkDownloads() throws {
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        #expect(delegate.decide(NavigationRequest("https://example.com/f.txt", shouldDownload: true)) == .download)
+        #expect(delegate.decide(NavigationRequest("https://example.com/f.txt", isMainFrame: false, shouldDownload: true)) == .download)
+        #expect(delegate.decide(NavigationRequest("blob:https://example.com/x", type: .other, shouldDownload: true)) == .download)
+        // The policy still comes first.
+        #expect(delegate.decide(NavigationRequest("file:///etc/hosts", shouldDownload: true)) == .cancel)
+        host.close(page.tabID)
+    }
+
+    /// A real `<a download>` blob link clicked by script lands in the downloads directory; the page stays.
+    @Test func downloadLinkLandsInTheDirectory() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        page.webView.loadHTMLString("<title>T</title>", baseURL: URL(string: "https://example.com/"))
+        let loaded = try await waitUntil { page.status.title == "T" && !page.webView.isLoading }
+        #expect(loaded)
+        let script = "const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['hello'], {type: 'text/plain'})); a.download = 'note.txt'; document.body.appendChild(a); a.click(); 1"
+        _ = try await page.webView.evaluateJavaScript(script)
+        let finished = try await waitUntil {
+            events.downloads.items(for: .profile(page.tabID)).contains { if case .finished = $0.state { true } else { false } }
+        }
+        #expect(finished)
+        let item = try #require(events.downloads.items(for: .profile(page.tabID)).first)
+        #expect(item.filename == "note.txt")
+        #expect(try Data(contentsOf: dir.appendingPathComponent("note.txt")) == Data("hello".utf8))
+        #expect(page.status.url == "https://example.com/")
+        #expect(page.webView.title == "T")
+        host.close(page.tabID)
+    }
+
+    // MARK: R5: a new document's URL is written on commit only
+
+    @Test func crossDocumentURLIsWrittenOnlyOnCommit() async throws {
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        // Each load's URL may be written only after the commit counter moved past where it was when
+        // the load started; a write from the provisional url KVO would come before.
+        var commitsAtStart = 0
+        var newURL = ""
+        var writtenEarly: [String] = []
+        writer.onNavigation = { url in
+            if url == newURL, page.commitCount == commitsAtStart { writtenEarly.append(url) }
+        }
+        let loads: [(String, () -> Void)] = [
+            ("https://example.com/a", { page.webView.loadSimulatedRequest(URLRequest(url: URL(string: "https://example.com/a")!), responseHTML: "<title>A</title>") }),
+            ("https://example.com/b", { page.webView.loadSimulatedRequest(URLRequest(url: URL(string: "https://example.com/b")!), responseHTML: "<title>B</title>") }),
+            ("https://example.org/c", { page.webView.loadHTMLString("<title>C</title>", baseURL: URL(string: "https://example.org/c")) }),
+        ]
+        for (url, load) in loads {
+            commitsAtStart = page.commitCount
+            newURL = url
+            load()
+            let done = try await waitUntil { page.webView.url?.absoluteString == url && page.commitCount > commitsAtStart && !page.webView.isLoading }
+            #expect(done)
+            #expect(writer.calls.contains { if case .navigation(_, url, _, _) = $0 { true } else { false } })
+        }
+        #expect(writtenEarly.isEmpty)
         host.close(page.tabID)
     }
 

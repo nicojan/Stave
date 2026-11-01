@@ -143,6 +143,10 @@ public final class PageHost {
         captureSnapshot(of: page, thenTearDown: false, keeping: nil)
     }
 
+    func currentDate() -> Date {
+        now()
+    }
+
     public func flushAll() {
         for page in pages.values { page.flush() }
     }

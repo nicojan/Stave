@@ -15,8 +15,10 @@ final class FakeWriter: PageWriter {
     }
 
     var calls: [Call] = []
+    var onNavigation: ((String) -> Void)?
 
     func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) {
+        onNavigation?(url)
         calls.append(.navigation(tabID: tabID, url: url, title: title, faviconURL: faviconURL))
     }
 
