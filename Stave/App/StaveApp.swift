@@ -22,6 +22,9 @@ struct StaveApp: App {
                     Button("New Window") { delegate.newWindow() }
                         .keyboardShortcut("n", modifiers: .command)
                         .disabled(!state.isEnabled(.newWindow))
+                    Button(PrivateWindowText.menuItem) { delegate.newPrivateWindow() }
+                        .keyboardShortcut("n", modifiers: [.command, .shift])
+                        .disabled(!state.isEnabled(.newWindow))
                 }
                 CommandGroup(after: .newItem) {
                     Button(CommandBarText.openLocationMenuItem) { delegate.openLocation() }

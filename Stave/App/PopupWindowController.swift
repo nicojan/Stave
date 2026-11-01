@@ -98,6 +98,29 @@ final class PopupWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+extension PopupWindowController {
+    /// A sized `window.open`: a pop-up window around the web view WebKit made. The view is adopted (the delegate refuses an unadopted one)
+    /// under a fresh page ID that is no store tab, with the opener's data store and profile (none for a private page); its writer drops
+    /// every write. It is registered under its opener tab, whose page going closes it.
+    static func open(opener: UUID, webView: WKWebView, features: WKWindowFeatures, near parent: NSWindow?, environment: AppEnvironment) {
+        guard let openerPage = environment.pageHost.existingPage(opener) else { return }
+        let id = UUID()
+        let request = PageRequest(
+            tabID: id, store: openerPage.store, siteSettingsProfileID: openerPage.siteSettingsProfileID,
+            url: "", title: "", faviconURL: nil, interactionState: nil
+        )
+        let page = environment.pageHost.adopt(webView, as: request, writer: environment.popupWriter)
+        environment.pageHost.markShown(id, true)
+        let popups = environment.popups
+        let popup = PopupWindowController(
+            id: id, openerTabID: popups.openerTab(of: opener), page: page, features: features, near: parent,
+            pageHost: environment.pageHost, onClose: { closed in popups.remove(closed) }
+        )
+        popups.add(popup)
+        popup.show()
+    }
+}
+
 /// Every open pop-up, by the sidebar tab that opened it. App-wide: an opener tab may move between windows.
 @MainActor
 final class PopupRegistry {

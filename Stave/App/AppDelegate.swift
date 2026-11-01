@@ -7,6 +7,8 @@ import StaveCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var environment: AppEnvironment?
     private var controllers: [BrowserWindowController] = []
+    /// Open private windows. Never in `WindowSession`, never saved, never restored.
+    private var privateControllers: [PrivateWindowController] = []
     private var isTerminating = false
     /// True once every saved window is open. A launch that fails part-way must not save its partial set over the user's windows.
     private var launchCompleted = false
@@ -57,7 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.compactMode = environment.compactMode
             menuState.searchEngine = environment.searchEngine
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
-            let router = PageEventsRouter(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
+            let router = PageEventsRouter(
+                environment: environment, controllers: { [weak self] in self?.controllers ?? [] },
+                privateControllers: { [weak self] in self?.privateControllers ?? [] }
+            )
             environment.pageHost.events = router
             pageEvents = router
             observeKeyWindow()
@@ -83,6 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
         guard launchCompleted, let environment else { return }
+        // Private windows leave nothing: their pages close unflushed, their pop-ups close, their stores and download rows go.
+        for controller in privateControllers { controller.tearDown() }
         environment.pageHost.flushAll()
         for controller in controllers { controller.reportNow() }
         environment.sidebarWidth.saveIfChanged()
@@ -114,14 +121,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⇧⌘N: a private window beside the front window. Opens with an empty tab list; nothing of it is saved.
+    func newPrivateWindow() {
+        guard let environment, launchCompleted else { return }
+        let controller = PrivateWindowController(
+            environment: environment, near: NSApp.keyWindow ?? frontController?.window,
+            onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
+        )
+        privateControllers = privateControllers + [controller]
+        controller.show()
+        controller.openCommandBar(.newTab)
+        refreshWorkspaceMenu()
+    }
+
+    private func privateWindowClosed(_ closed: PrivateWindowController) {
+        privateControllers = privateControllers.filter { $0 !== closed }
+        refreshWorkspaceMenu()
+    }
+
+    /// The private window that is key, or the one a key sheet is attached to.
+    private var keyPrivate: PrivateWindowController? {
+        guard let key = NSApp.keyWindow else { return nil }
+        return privateControllers.first { $0.window === key || $0.window === key.sheetParent }
+    }
+
     /// ⌘T: the command bar on the key browser window, for a new tab.
-    func newTab() { guard let controller = keyController, allowed(.newTab, on: controller) else { return }; controller.openCommandBar(.newTab) }
+    func newTab() {
+        if let keyPrivate { if keyPrivate.window.attachedSheet == nil { keyPrivate.openCommandBar(.newTab) }; return }
+        guard let controller = keyController, allowed(.newTab, on: controller) else { return }
+        controller.openCommandBar(.newTab)
+    }
 
     /// ⌘L: the command bar on the key browser window, prefilled with the selected tab's address.
-    func openLocation() { guard let controller = keyController, allowed(.openLocation, on: controller) else { return }; controller.openCommandBar(.currentTab) }
+    func openLocation() {
+        if let keyPrivate { if keyPrivate.window.attachedSheet == nil { keyPrivate.openCommandBar(.currentTab) }; return }
+        guard let controller = keyController, allowed(.openLocation, on: controller) else { return }
+        controller.openCommandBar(.currentTab)
+    }
 
     /// ⌘W: closes the selected tab when the key window is a browser window (or a sheet on one); otherwise closes the key window, as in any app.
     func closeSelectedTab() {
+        if let keyPrivate {
+            if keyPrivate.window.attachedSheet == nil, let id = keyPrivate.model.selectedTabID { keyPrivate.model.close(id) }
+            return
+        }
         guard let controller = keyController else { NSApp.keyWindow?.performClose(nil); return }
         guard allowed(.closeTab, on: controller) else { return }
         controller.model.closeSelectedTab()
@@ -170,12 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Page commands
 
     /// View ▸ Back (⌘[), Forward (⌘]), Reload Page (⌘R) and Stop (⌘.): act on the key browser window's shown page; nothing while a sheet is up.
-    func goBack() { pageCommand { $0.goBack() } }
-    func goForward() { pageCommand { $0.goForward() } }
-    func reloadPage() { pageCommand { $0.reloadPage() } }
-    func stopLoading() { pageCommand { $0.stopLoading() } }
-    /// View ▸ Content Blocking on This Site: switches blocking for the key window's shown page's site, which reloads.
-    func toggleContentBlocking() { pageCommand { $0.toggleContentBlocking() } }
+    func goBack() { if !privatePageCommand({ $0.goBack() }) { pageCommand { $0.goBack() } } }
+    func goForward() { if !privatePageCommand({ $0.goForward() }) { pageCommand { $0.goForward() } } }
+    func reloadPage() { if !privatePageCommand({ $0.reloadPage() }) { pageCommand { $0.reloadPage() } } }
+    func stopLoading() { if !privatePageCommand({ $0.stopLoading() }) { pageCommand { $0.stopLoading() } } }
+    /// View ▸ Content Blocking on This Site: switches blocking for the key window's shown page's site, which reloads. In a private window it
+    /// applies to that page only and is never remembered.
+    func toggleContentBlocking() { if !privatePageCommand({ $0.toggleContentBlocking() }) { pageCommand { $0.toggleContentBlocking() } } }
 
     #if DEBUG
     /// Debug ▸ Crash Page Process: ends the key window's shown page's web content process through WebKit.
@@ -185,6 +229,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func pageCommand(_ run: (BrowserWindowController) -> Void) {
         guard let controller = keyController, !isBusy(controller) else { return }
         run(controller)
+    }
+
+    /// The same page commands on the key private window.
+    private func privatePageCommand(_ run: (PrivateWindowController) -> Void) -> Bool {
+        guard let keyPrivate else { return false }
+        if keyPrivate.window.attachedSheet == nil { run(keyPrivate) }
+        return true
     }
 
     // MARK: - First run
@@ -268,6 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let generation = menuGeneration
         let menu: MenuSnapshot = withObservationTracking {
             // With no browser window key (Settings in front) the checkmark follows the setting itself.
+            if let keyPrivate { return Self.privateMenu(keyPrivate, compact: environment?.compactMode.isEnabled ?? false) }
             guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else {
                 return MenuSnapshot(compact: environment?.compactMode.isEnabled ?? false)
             }
@@ -313,6 +365,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
         if menuState.pageMenu != menu.pageMenu { menuState.pageMenu = menu.pageMenu }
         if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
+    }
+
+    /// The menus for a key private window: only the page commands; no workspaces, tab actions or moves.
+    private static func privateMenu(_ controller: PrivateWindowController, compact: Bool) -> MenuSnapshot {
+        let busy = controller.window.attachedSheet != nil
+        let summary = controller.shownPage.map {
+            PageStatusSummary(
+                isLoading: $0.status.isLoading, canGoBack: $0.status.canGoBack, canGoForward: $0.status.canGoForward,
+                hasPage: true, blockingOn: $0.isContentBlockingOn
+            )
+        }
+        return MenuSnapshot(compact: compact, busy: busy, pageMenu: PageMenuState.from(status: summary, sheetOpen: busy))
     }
 
     /// Everything the menus show for the key window, read in one observation pass.

@@ -1,6 +1,13 @@
 import Foundation
 import Observation
 
+/// A window the command bar runs its rows in: a browser window, or a private window (which has only the typed row).
+@MainActor
+public protocol CommandBarWindow: AnyObject {
+    func perform(_ result: CommandResult, mode: CommandBarMode, target: UUID?) -> CommandOutcome
+    func chooseSearchEngine(_ engine: SearchEngine, thenSearching query: String, mode: CommandBarMode, target: UUID?)
+}
+
 /// The command bar's state: the typed text, the ranked results and the selected row. The view only draws it.
 @MainActor @Observable
 public final class CommandBarModel {
@@ -96,7 +103,7 @@ public final class CommandBarModel {
 
     /// Runs the selected result in the window. A search with no engine chosen keeps the bar open on the engine picker; picking an engine saves
     /// it and then runs that search.
-    public func activate(in window: BrowserWindowModel) -> Step {
+    public func activate(in window: CommandBarWindow) -> Step {
         if let query = pendingSearch {
             guard let engine = selectedEngine else { return .stay }
             window.chooseSearchEngine(engine, thenSearching: query, mode: effectiveMode, target: targetTabID)

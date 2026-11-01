@@ -35,25 +35,9 @@ extension BrowserWindowController: PageEvents {
         return id
     }
 
-    /// A sized `window.open`: a pop-up window around the web view WebKit made. The view is adopted (the delegate refuses an unadopted one)
-    /// under a fresh page ID that is no store tab, with the opener's data store and profile; its writer drops every write. It is registered
-    /// under its opener tab, whose page going closes it.
+    /// A sized `window.open`: a pop-up window owned by its opener tab (see `PopupWindowController.open`).
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
-        guard let openerPage = environment.pageHost.existingPage(opener) else { return }
-        let id = UUID()
-        let request = PageRequest(
-            tabID: id, store: openerPage.store, siteSettingsProfileID: openerPage.siteSettingsProfileID,
-            url: "", title: "", faviconURL: nil, interactionState: nil
-        )
-        let page = environment.pageHost.adopt(webView, as: request, writer: environment.popupWriter)
-        environment.pageHost.markShown(id, true)
-        let popups = environment.popups
-        let popup = PopupWindowController(
-            id: id, openerTabID: popups.openerTab(of: opener), page: page, features: features, near: window,
-            pageHost: environment.pageHost, onClose: { closed in popups.remove(closed) }
-        )
-        popups.add(popup)
-        popup.show()
+        PopupWindowController.open(opener: opener, webView: webView, features: features, near: window, environment: environment)
     }
 
     /// `window.close()` from a page Stave opened closes its tab, as the close shortcut would.

@@ -18,7 +18,7 @@ public protocol PageLifecycle: AnyObject {
 /// What one browser window shows and does. Views read it and call it; every write goes through `perform(_:)`,
 /// so no method throws after `init` and a failure becomes `lastError` text.
 @MainActor @Observable
-public final class BrowserWindowModel {
+public final class BrowserWindowModel: CommandBarWindow {
     // MARK: - State
 
     public let windowID: UUID

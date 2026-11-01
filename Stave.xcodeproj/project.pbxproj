@@ -12,6 +12,7 @@
 		0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8BC787394FE59027F03DE4 /* PageFailureView.swift */; };
 		0A72401CB50855852A482D81 /* PageContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0514FA8A157CC9EE49809FB /* PageContentView.swift */; };
 		0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */; };
+		0CAE474AB3F75F2AACC5302C /* PrivateWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */; };
 		12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */; };
 		2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3BA1703865C93D34246435 /* StaveApp.swift */; };
 		2F9223943913552679A1DF70 /* DownloadsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */; };
@@ -27,6 +28,7 @@
 		4A6E8FB8ED8CC65D780164AD /* FirstRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81BBB8D6BF636D5428804CE /* FirstRunView.swift */; };
 		551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */; };
 		616C13F8718E2365EC357D6A /* SidebarPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */; };
+		6CBDEC5AEF74820B1ADFD55F /* PrivateWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C0F9B1806E7F1C7A10F109 /* PrivateWindowView.swift */; };
 		7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 381B620D30A72B457FDC56E5 /* SettingsView.swift */; };
 		829BEB3A5BA3BEEDB81DF151 /* ArcImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E80432D1CC0368349814BADA /* ArcImportSheet.swift */; };
 		8C325985CD5E15C282708FFA /* BrowserWindowController+Pages.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE092AF52ED81A9E996EF1C0 /* BrowserWindowController+Pages.swift */; };
@@ -77,6 +79,7 @@
 		BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCoordinator.swift; sourceTree = "<group>"; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
 		BE092AF52ED81A9E996EF1C0 /* BrowserWindowController+Pages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+Pages.swift"; sourceTree = "<group>"; };
+		C7C0F9B1806E7F1C7A10F109 /* PrivateWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateWindowView.swift; sourceTree = "<group>"; };
 		C81BBB8D6BF636D5428804CE /* FirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunView.swift; sourceTree = "<group>"; };
 		CC23353CB79C824619134179 /* NamePromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamePromptSheet.swift; sourceTree = "<group>"; };
 		D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactDriver.swift; sourceTree = "<group>"; };
@@ -90,6 +93,7 @@
 		E80432D1CC0368349814BADA /* ArcImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcImportSheet.swift; sourceTree = "<group>"; };
 		ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		F0514FA8A157CC9EE49809FB /* PageContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageContentView.swift; sourceTree = "<group>"; };
+		F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateWindowController.swift; sourceTree = "<group>"; };
 		FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeCatcher.swift; sourceTree = "<group>"; };
 		FF9003316572911593E1DFEE /* ArchivePopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePopover.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -157,6 +161,7 @@
 				0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */,
 				81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */,
 				68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */,
+				F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */,
 				BD3BA1703865C93D34246435 /* StaveApp.swift */,
 				B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */,
 			);
@@ -171,6 +176,7 @@
 				2EF56A5AD52A919E8AF23C07 /* Compact */,
 				21A24A833C93DF9ED96A4030 /* Content */,
 				A8539378ED7C0FF8F168B7BA /* Import */,
+				9FFB2863537CCAAE3D6E17C3 /* Private */,
 				0631CD175876F9C48EF5AA42 /* Settings */,
 				C2073894525C070D00943647 /* Sidebar */,
 			);
@@ -192,6 +198,14 @@
 				DF4BAC5AFA0C792A5B1E4A20 /* StaveCore */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		9FFB2863537CCAAE3D6E17C3 /* Private */ = {
+			isa = PBXGroup;
+			children = (
+				C7C0F9B1806E7F1C7A10F109 /* PrivateWindowView.swift */,
+			);
+			path = Private;
 			sourceTree = "<group>";
 		};
 		A8539378ED7C0FF8F168B7BA /* Import */ = {
@@ -329,6 +343,8 @@
 				0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */,
 				4360D4C8CE0C05CB647EEE2D /* PagePrompts.swift in Sources */,
 				3A45E58A25EFCE4B95B8A42F /* PopupWindowController.swift in Sources */,
+				0CAE474AB3F75F2AACC5302C /* PrivateWindowController.swift in Sources */,
+				6CBDEC5AEF74820B1ADFD55F /* PrivateWindowView.swift in Sources */,
 				7CF88472476A24A14E07C919 /* SettingsView.swift in Sources */,
 				A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */,
 				C49FE23D12CF17115CDCAB97 /* SidebarDragState.swift in Sources */,

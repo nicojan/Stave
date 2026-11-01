@@ -61,6 +61,15 @@ final class SidebarPresenter {
         returnsFocusToList = true
     }
 
+    /// Opens the private window's bar: only the typed row (an address or a search), nothing of the store (plan 3, decision 15).
+    func openCommandBar(_ mode: CommandBarMode, for model: PrivateWindowModel) {
+        commandBar = CommandBarModel(
+            mode: mode, candidates: model.commandCandidates, currentURL: model.selectedTab?.url,
+            searchEngine: model.searchEngine, currentTabID: model.selectedTabID
+        )
+        returnsFocusToList = true
+    }
+
     /// Shows the archive the way `ArchivePresentation` says for what asked: a mouse click toggles the popover, anything else opens the sheet.
     func openArchive(_ trigger: ArchiveTrigger) {
         switch ArchivePresentation.presentation(for: trigger) {
@@ -89,7 +98,7 @@ final class SidebarPresenter {
     }
 
     /// Runs the bar's selected row. The bar closes unless it needs an engine choice; an outcome the window cannot handle is handled here.
-    func activate(in model: BrowserWindowModel) {
+    func activate(in model: CommandBarWindow) {
         guard let bar = commandBar else { return }
         pageTakesFocus = false
         let step = bar.activate(in: model)
