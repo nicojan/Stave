@@ -16,6 +16,8 @@ public protocol SiteSettingsSource: AnyObject {
 @Observable
 public final class PageHost {
     private(set) var pages: [UUID: LivePage] = [:]
+    /// Pop-ups, linked tabs, panels, permissions and downloads go here. Set by the app.
+    @ObservationIgnored public weak var events: PageEvents?
 
     @ObservationIgnored private let stores: WebDataStores
     @ObservationIgnored private let contentBlocker: ContentBlockerManager
@@ -28,9 +30,16 @@ public final class PageHost {
     /// The latest snapshot asked for per tab; an older or cancelled one never lands.
     @ObservationIgnored private var snapshotTokens: [UUID: UUID] = [:]
     @ObservationIgnored private var hibernationTask: Task<Void, Never>?
-    /// Seam for tests: whether a page is playing media or using the camera or microphone.
+    /// One per page; kept here because WebKit holds its delegates weakly.
+    @ObservationIgnored private var delegates: [UUID: PageDelegate] = [:]
+    @ObservationIgnored private let activeDownloads = ActiveDownloads()
+    /// A private window's camera/microphone answers, in memory only (decision 11).
+    @ObservationIgnored private var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
+    /// Seam for tests: finds and opens apps for non-web links.
+    @ObservationIgnored var externalApps = ExternalApps.system
     /// Test-only seam: extra rule lists added to every page this host makes (a block-all list keeps tests off the network).
     @ObservationIgnored var testRuleLists: [WKContentRuleList] = []
+    /// Seam for tests: whether a page is playing media or using the camera or microphone.
     @ObservationIgnored var mediaCheck: @MainActor (WKWebView) async -> Bool = PageHost.isBusyWithMedia
 
     public init(stores: WebDataStores, contentBlocker: ContentBlockerManager, siteSettings: SiteSettingsSource, applicationName: String, now: @escaping () -> Date = Date.init) {
@@ -56,6 +65,8 @@ public final class PageHost {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         let page = LivePage(request: request, webView: webView, writer: writer, isContentBlockingOn: blocking, now: now)
         insert(page)
+        // Before `start`: the delegate gates the restore navigation too (ruling R7).
+        installDelegate(on: page)
         page.start(request)
         return page
     }
@@ -70,7 +81,29 @@ public final class PageHost {
         // The configuration (and its rule lists) came from the opener and is left as WebKit made it.
         let page = LivePage(request: request, webView: webView, writer: writer, isContentBlockingOn: blockingWanted(for: request), now: now)
         insert(page)
+        installDelegate(on: page)
         return page
+    }
+
+    /// Opens an address the user typed (normalised by the app first), judged with source `.typed`.
+    public func loadTyped(_ address: String, in tabID: UUID) {
+        guard let page = pages[tabID], let delegate = delegates[tabID] else { return }
+        switch NavigationPolicy.decide(address, isMainFrame: true, source: .typed) {
+        case .allow:
+            guard let url = URL(string: address) else {
+                page.status.failure = .refused(url: address)
+                return
+            }
+            page.webView.load(URLRequest(url: url))
+        case .refuse(let failure):
+            page.status.failure = failure ?? .refused(url: address)
+        case .askToOpenExternally(let external):
+            delegate.startExternal(external, typed: true)
+        }
+    }
+
+    func isAdopted(_ webView: WKWebView) -> Bool {
+        pages.values.contains { $0.webView === webView }
     }
 
     public func markShown(_ tabID: UUID, _ shown: Bool) {
@@ -84,13 +117,16 @@ public final class PageHost {
         guard let page = pages.removeValue(forKey: tabID) else { return }
         page.flush()
         page.close()
-        captureSnapshot(of: page, thenTearDown: true)
+        // The delegate stays until the teardown (and while a download it started runs).
+        let delegate = delegates.removeValue(forKey: tabID)
+        captureSnapshot(of: page, thenTearDown: true, keeping: delegate)
     }
 
     /// Ends the page without flushing: its tab is gone, so nothing more is written for it.
     public func close(_ tabID: UUID) {
         guard let page = pages.removeValue(forKey: tabID) else { return }
         page.close()
+        delegates[tabID] = nil
         snapshots[tabID] = nil
         snapshotTokens[tabID] = nil
         Self.tearDown(page)
@@ -104,7 +140,7 @@ public final class PageHost {
     /// Replaces the tab's snapshot with what its page shows now (when its window shows another tab or resigns key).
     public func captureSnapshot(_ tabID: UUID) {
         guard let page = pages[tabID] else { return }
-        captureSnapshot(of: page, thenTearDown: false)
+        captureSnapshot(of: page, thenTearDown: false, keeping: nil)
     }
 
     public func flushAll() {
@@ -169,15 +205,81 @@ public final class PageHost {
     }
 
     func blockingWanted(for request: PageRequest) -> Bool {
-        guard let profileID = request.siteSettingsProfileID, let host = SiteHost.normalized(request.url) else { return true }
+        blockingWanted(profileID: request.siteSettingsProfileID, url: request.url)
+    }
+
+    func blockingWanted(profileID: UUID?, url: String) -> Bool {
+        guard let profileID, let host = SiteHost.normalized(url) else { return true }
         return siteSettings.decision(profileID: profileID, host: host, key: .contentBlocking) != .deny
+    }
+
+    /// Before a main-frame load to a new site, turns the page's rule lists on or off for that site (ruling R6).
+    func updateBlocking(for page: LivePage, navigatingTo url: String) {
+        guard let site = SiteHost.normalized(url), site != page.blockingHost else { return }
+        page.blockingHost = site
+        let wanted = blockingWanted(profileID: page.siteSettingsProfileID, url: url)
+        guard wanted != page.isContentBlockingOn else { return }
+        // TODO(R10): a pop-up or linked tab shares its opener's WKUserContentController (WebKit's configuration
+        // carries it over), so switching one's lists would silently switch the other's. Such pages keep the
+        // lists they have until per-page controllers exist; the explicit menu switch still applies to both.
+        guard !sharesContentController(page) else { return }
+        page.isContentBlockingOn = wanted
+        attachRuleLists(to: page)
+    }
+
+    private func sharesContentController(_ page: LivePage) -> Bool {
+        let content = page.webView.configuration.userContentController
+        return pages.values.contains { $0 !== page && $0.webView.configuration.userContentController === content }
     }
 
     private func attachRuleLists(to page: LivePage) {
         let content = page.webView.configuration.userContentController
         content.removeAllContentRuleLists()
-        guard page.isContentBlockingOn else { return }
-        for list in contentBlocker.enabledLists() { content.add(list) }
+        if page.isContentBlockingOn {
+            for list in contentBlocker.enabledLists() { content.add(list) }
+        }
+        for list in testRuleLists { content.add(list) }
+    }
+
+    // MARK: Camera and microphone
+
+    /// A profile's answers are site settings; a private window's are kept in memory for that window only.
+    func rememberedMedia(for page: LivePage, host: String, key: SiteSettingKey) -> SiteDecision? {
+        if let profileID = page.siteSettingsProfileID {
+            return siteSettings.decision(profileID: profileID, host: host, key: key)
+        }
+        return privateMediaAnswers[PrivateMediaKey(store: page.store, host: host, key: key)]
+    }
+
+    func rememberMedia(_ decision: SiteDecision, for page: LivePage, host: String, key: SiteSettingKey) {
+        if let profileID = page.siteSettingsProfileID {
+            siteSettings.setDecision(profileID: profileID, host: host, key: key, decision)
+        } else {
+            privateMediaAnswers[PrivateMediaKey(store: page.store, host: host, key: key)] = decision
+        }
+    }
+
+    // MARK: Downloads
+
+    func trackDownload(_ download: WKDownload, delegate: PageDelegate) {
+        activeDownloads.track(download, delegate: delegate)
+    }
+
+    func beginDownload(_ download: WKDownload, delegate: PageDelegate, rowID: UUID, list: DownloadList, destination: URL, source: URL?) {
+        activeDownloads.begin(download, delegate: delegate, rowID: rowID, list: list, destination: destination, source: source)
+    }
+
+    func downloadFinished(_ download: WKDownload) {
+        activeDownloads.finished(download)
+    }
+
+    func downloadFailed(_ download: WKDownload, message: String) {
+        activeDownloads.failed(download, message: message)
+    }
+
+    /// The running download behind a list row (nil once it ended or was cancelled).
+    func activeDownload(_ rowID: UUID) -> WKDownload? {
+        activeDownloads.download(forRow: rowID)
     }
 
     // MARK: Internals
@@ -187,18 +289,26 @@ public final class PageHost {
         page.record(.favicon(href))
     }
 
+    private func installDelegate(on page: LivePage) {
+        let delegate = PageDelegate(page: page, host: self, events: nil)
+        delegates[page.tabID] = delegate
+        page.webView.navigationDelegate = delegate
+        page.webView.uiDelegate = delegate
+    }
+
     private func insert(_ page: LivePage) {
         pages[page.tabID] = page
         startHibernationIfNeeded()
     }
 
     /// Snapshots the page; when `thenTearDown`, the web view is kept until the snapshot is taken, then torn down.
-    private func captureSnapshot(of page: LivePage, thenTearDown: Bool) {
+    private func captureSnapshot(of page: LivePage, thenTearDown: Bool, keeping delegate: PageDelegate?) {
         let token = UUID()
         let tabID = page.tabID
         snapshotTokens[tabID] = token
         Task { [weak self] in
             let image = try? await page.webView.takeSnapshot(configuration: nil)
+            withExtendedLifetime(delegate) {}
             if let self, self.snapshotTokens[tabID] == token {
                 self.snapshotTokens[tabID] = nil
                 if let image { self.snapshots[tabID] = image }
@@ -211,6 +321,12 @@ public final class PageHost {
         page.webView.stopLoading()
         page.webView.removeFromSuperview()
     }
+}
+
+struct PrivateMediaKey: Hashable {
+    var store: DataStoreKey
+    var host: String
+    var key: SiteSettingKey
 }
 
 /// Receives favicon messages from the isolated `StaveFavicon` world. Holds the host weakly, because the

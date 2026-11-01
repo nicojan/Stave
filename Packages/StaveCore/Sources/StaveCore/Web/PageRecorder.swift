@@ -2,6 +2,8 @@ import Foundation
 
 public enum PageEvent: Sendable, Equatable {
     case committed(url: String), title(String), favicon(String?), finished, stateChanged
+    /// The URL changed within the same document (a fragment or `pushState`): title and favicon stay.
+    case sameDocument(url: String)
 }
 
 public enum PageWrite: Sendable, Equatable {
@@ -33,6 +35,8 @@ public struct PageRecorder: Sendable {
         switch event {
         case .committed(let newURL):
             return updatePage(url: newURL, title: "", faviconURL: nil)
+        case .sameDocument(let newURL):
+            return updatePage(url: newURL, title: title, faviconURL: faviconURL)
         case .title(let newTitle):
             return updatePage(url: url, title: newTitle, faviconURL: faviconURL)
         case .favicon(let newFavicon):

@@ -14,6 +14,13 @@ import Testing
         #expect(r.record(.title("B"), at: at(2)).isEmpty)
     }
 
+    /// A fragment or `pushState` change keeps the document, so its title and favicon stay.
+    @Test func sameDocumentKeepsTitleAndFavicon() {
+        var r = PageRecorder(url: "https://example.com", title: "A", faviconURL: "https://example.com/f.ico")
+        #expect(r.record(.sameDocument(url: "https://example.com/#b"), at: at(0)) == [.navigation(url: "https://example.com/#b", title: "A", faviconURL: "https://example.com/f.ico")])
+        #expect(r.record(.sameDocument(url: "https://example.com/#b"), at: at(1)).isEmpty)
+    }
+
     @Test func faviconWritesWithPage() {
         var r = make()
         let expected = PageWrite.navigation(url: "https://example.com", title: "A", faviconURL: "https://example.org/f.ico")

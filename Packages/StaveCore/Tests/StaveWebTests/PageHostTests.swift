@@ -210,7 +210,9 @@ struct PageHostTests {
     @Test func restoredHostileStateIsRefused() async throws {
         let host = makeHost()
         let a = host.page(for: request(url: ""), writer: writer)
-        // A local `data:` page, the shape an imported or tampered state could carry.
+        // A local `data:` page, the shape an imported or tampered state could carry. Stave's delegate
+        // refuses a data: main frame, so the state is made without it.
+        a.webView.navigationDelegate = nil
         let dataURL = "data:text/html,%3Ctitle%3EA%3C/title%3E"
         a.webView.load(URLRequest(url: try #require(URL(string: dataURL))))
         let loaded = try await waitUntil { a.webView.title == "A" && !a.webView.isLoading }
@@ -250,7 +252,9 @@ struct PageHostTests {
         page.webView.loadHTMLString("<title>Before</title>", baseURL: URL(string: "https://example.com/"))
         host.close(page.tabID)
         let callsAtClose = writer.calls.count
-        // Push a title through the KVO path of the closed page's web view.
+        // Push a title through the KVO path of the closed page's web view. (Its delegate cancels every
+        // navigation of a closed page, so it is taken off to let this late load happen.)
+        page.webView.navigationDelegate = nil
         page.webView.loadHTMLString("<title>Late</title>", baseURL: URL(string: "https://example.org/"))
         let titled = try await waitUntil { page.webView.title == "Late" && !page.webView.isLoading }
         #expect(titled)
