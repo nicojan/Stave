@@ -29,6 +29,8 @@ public final class PageHost {
     @ObservationIgnored private var snapshotTokens: [UUID: UUID] = [:]
     @ObservationIgnored private var hibernationTask: Task<Void, Never>?
     /// Seam for tests: whether a page is playing media or using the camera or microphone.
+    /// Test-only seam: extra rule lists added to every page this host makes (a block-all list keeps tests off the network).
+    @ObservationIgnored var testRuleLists: [WKContentRuleList] = []
     @ObservationIgnored var mediaCheck: @MainActor (WKWebView) async -> Bool = PageHost.isBusyWithMedia
 
     public init(stores: WebDataStores, contentBlocker: ContentBlockerManager, siteSettings: SiteSettingsSource, applicationName: String, now: @escaping () -> Date = Date.init) {
@@ -47,7 +49,7 @@ public final class PageHost {
         let blocking = blockingWanted(for: request)
         let configuration = PageConfiguration.make(
             store: stores.store(for: request.store),
-            ruleLists: blocking ? contentBlocker.enabledLists() : [],
+            ruleLists: (blocking ? contentBlocker.enabledLists() : []) + testRuleLists,
             applicationName: applicationName,
             messageHandler: faviconRelay
         )

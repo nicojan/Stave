@@ -162,25 +162,71 @@ struct PageHostTests {
         #expect(host.existingPage(tabID) == nil)
     }
 
+    /// A rule list that blocks every load, so a restored page never reaches the network.
+    func blockAllRuleList() async throws -> WKContentRuleList {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StaveRuleLists-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = try #require(WKContentRuleListStore(url: dir))
+        let list = try await store.compileContentRuleList(forIdentifier: "blockAll", encodedContentRuleList: #"[{"trigger":{"url-filter":".*"},"action":{"type":"block"}}]"#)
+        return try #require(list)
+    }
+
+    /// Page A's state, from a simulated (network-free) load, so it has a real back/forward item.
+    func savedState(of host: PageHost, url: String, html: String) async throws -> Data {
+        let a = host.page(for: request(url: ""), writer: writer)
+        a.webView.loadSimulatedRequest(URLRequest(url: try #require(URL(string: url))), responseHTML: html)
+        let loaded = try await waitUntil { a.webView.url?.absoluteString == url && !a.webView.isLoading }
+        #expect(loaded)
+        #expect(a.webView.backForwardList.currentItem?.url.absoluteString == url)
+        let state = try #require(a.webView.interactionState as? Data)
+        host.close(a.tabID)
+        return state
+    }
+
     @Test func restoreUsesInteractionState() async throws {
         let host = makeHost()
+        host.testRuleLists = [try await blockAllRuleList()]
+        let aURL = "https://example.com/a"
+        let state = try await savedState(of: host, url: aURL, html: "<title>A</title>")
+        writer.calls.removeAll()
+
+        let b = host.page(for: request(url: "https://example.invalid", state: state), writer: writer)
+        #expect(b.didRestoreState)
+        #expect(b.status.failure == nil)
+        #expect(b.webView.backForwardList.currentItem?.url.absoluteString == aURL)
+        var seen: Set<String> = []
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline {
+            if let host = b.webView.url?.host { seen.insert(host) }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!seen.contains("example.invalid"))
+        #expect(!b.webView.backForwardList.backList.contains { $0.url.host == "example.invalid" })
+        #expect(b.webView.backForwardList.currentItem?.url.absoluteString == aURL)
+        host.close(b.tabID)
+    }
+
+    @Test func restoredHostileStateIsRefused() async throws {
+        let host = makeHost()
         let a = host.page(for: request(url: ""), writer: writer)
-        // A `loadHTMLString` page leaves no back/forward item, so page A loads its HTML as a data URL: still
-        // local, and restoring it never touches the network.
-        let aURL = "data:text/html,%3Ctitle%3EA%3C/title%3E"
-        a.webView.load(URLRequest(url: try #require(URL(string: aURL))))
+        // A local `data:` page, the shape an imported or tampered state could carry.
+        let dataURL = "data:text/html,%3Ctitle%3EA%3C/title%3E"
+        a.webView.load(URLRequest(url: try #require(URL(string: dataURL))))
         let loaded = try await waitUntil { a.webView.title == "A" && !a.webView.isLoading }
         #expect(loaded)
         let state = try #require(a.webView.interactionState as? Data)
         host.close(a.tabID)
+        writer.calls.removeAll()
 
-        let b = host.page(for: request(url: "https://example.invalid", state: state), writer: writer)
+        let b = host.page(for: request(url: "https://example.com/", state: state), writer: writer)
         #expect(b.didRestoreState)
-        #expect(b.webView.backForwardList.currentItem?.url.absoluteString == aURL)
-        #expect(b.webView.url?.absoluteString == aURL)
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(b.webView.url?.host != "example.invalid")
-        #expect(b.webView.backForwardList.currentItem?.url.absoluteString == aURL)
+        #expect(b.status.failure == .refused(url: dataURL))
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(b.webView.title != "A")
+        #expect(!b.webView.isLoading)
+        #expect(b.status.failure == .refused(url: dataURL))
+        #expect(writer.calls.isEmpty)
         host.close(b.tabID)
     }
 

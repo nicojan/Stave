@@ -71,6 +71,10 @@ public final class LivePage {
     @ObservationIgnored private(set) var isClosed = false
     /// Test hook: the stored `interactionState` was set on the web view instead of loading the URL.
     @ObservationIgnored private(set) var didRestoreState = false
+    /// While true, KVO changes are ignored: the restored item was refused, or is still being checked.
+    @ObservationIgnored private var holdsRefusedState = false
+    /// Kept alive here because WebKit holds its navigation delegate weakly.
+    @ObservationIgnored private var restoreGate: RestoreGate?
     @ObservationIgnored var isShown = false
     @ObservationIgnored var lastShownAt: Date
 
@@ -90,11 +94,7 @@ public final class LivePage {
 
     /// Restores the stored back/forward list, or loads the stored URL once the navigation policy allows it.
     func start(_ request: PageRequest) {
-        if let state = request.interactionState {
-            webView.interactionState = state
-            didRestoreState = true
-            return
-        }
+        if let state = request.interactionState, restore(state) { return }
         guard !request.url.isEmpty else { return }
         switch NavigationPolicy.decide(request.url, isMainFrame: true, source: .stored) {
         case .allow:
@@ -109,6 +109,36 @@ public final class LivePage {
             // A stored URL never hands off to another app.
             status.failure = .refused(url: request.url)
         }
+    }
+
+    /// Sets the stored back/forward list and gates its current item like any restored URL. A `RestoreGate`
+    /// decides the restore navigation before it loads (stopping it afterwards is too late: a `data:` page has
+    /// already run). KVO is held until the item is allowed; a refused item is shown as refused and the hold
+    /// stays until the page reaches an address the policy allows, so nothing about it is written. False when
+    /// the state holds no current item, so the stored URL is used instead.
+    private func restore(_ state: Data) -> Bool {
+        holdsRefusedState = true
+        let gate = RestoreGate()
+        gate.onDecided = { [weak self] in self?.restoreGate = nil }
+        restoreGate = gate
+        webView.navigationDelegate = gate
+        webView.interactionState = state
+        didRestoreState = true
+        guard let current = webView.backForwardList.currentItem?.url.absoluteString else {
+            webView.stopLoading()
+            gate.detach(from: webView)
+            restoreGate = nil
+            holdsRefusedState = false
+            return false
+        }
+        guard NavigationPolicy.decide(current, isMainFrame: true, source: .restored) == .allow else {
+            status.failure = .refused(url: current)
+            return true
+        }
+        holdsRefusedState = false
+        urlChanged()
+        updateNavigationState()
+        return true
     }
 
     /// Feeds one event to the recorder and passes its writes on. Does nothing once closed.
@@ -169,20 +199,25 @@ public final class LivePage {
 
     private func urlChanged() {
         guard !isClosed, let url = webView.url?.absoluteString, !url.isEmpty else { return }
+        if holdsRefusedState {
+            guard NavigationPolicy.decide(url, isMainFrame: true, source: .restored) == .allow else { return }
+            holdsRefusedState = false
+            status.failure = nil
+        }
         status.url = url
         record(.committed(url: url))
         record(.stateChanged)
     }
 
     private func titleChanged() {
-        guard !isClosed else { return }
+        guard !isClosed, !holdsRefusedState else { return }
         let title = webView.title ?? ""
         status.title = title
         record(.title(title))
     }
 
     private func loadingChanged() {
-        guard !isClosed else { return }
+        guard !isClosed, !holdsRefusedState else { return }
         updateNavigationState()
         guard !webView.isLoading else { return }
         // A same-URL commit (reload) blanks the recorder's title; this heals it (ruling R4).
@@ -192,10 +227,30 @@ public final class LivePage {
     }
 
     private func updateNavigationState() {
-        guard !isClosed else { return }
+        guard !isClosed, !holdsRefusedState else { return }
         status.isLoading = webView.isLoading
         status.progress = webView.estimatedProgress
         status.canGoBack = webView.canGoBack
         status.canGoForward = webView.canGoForward
+    }
+}
+
+/// Decides the one navigation a restored `interactionState` starts, before it loads, with
+/// `NavigationPolicy` (source `.restored`), then steps aside. Task 7's page delegate takes over from here.
+@MainActor
+final class RestoreGate: NSObject, WKNavigationDelegate {
+    var onDecided: (() -> Void)?
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        guard navigationAction.targetFrame?.isMainFrame ?? true else { return .allow }
+        let url = navigationAction.request.url?.absoluteString ?? ""
+        let allowed = NavigationPolicy.decide(url, isMainFrame: true, source: .restored) == .allow
+        detach(from: webView)
+        onDecided?()
+        return allowed ? .allow : .cancel
+    }
+
+    func detach(from webView: WKWebView) {
+        if webView.navigationDelegate === self { webView.navigationDelegate = nil }
     }
 }
