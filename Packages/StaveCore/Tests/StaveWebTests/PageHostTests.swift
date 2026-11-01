@@ -279,6 +279,7 @@ struct PageHostTests {
         // The test clock never moves, so this state change is throttled and left pending.
         page.record(.stateChanged)
         writer.calls.removeAll()
+        host.hasOwner = { _ in true } // another window shows the tab, so its snapshot is kept
 
         host.unload(page.tabID)
         #expect(writer.stateWrites == 1)
@@ -299,6 +300,7 @@ struct PageHostTests {
         let loaded = try await loadLocal(page, html: "<body style='background:#3c3'>drawn</body>", base: "https://example.com/")
         #expect(loaded)
         try await Task.sleep(for: .milliseconds(200))
+        host.hasOwner = { _ in true }
         host.unload(page.tabID)
         let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
         #expect(snapped)
@@ -326,6 +328,96 @@ struct PageHostTests {
         writer.calls.removeAll()
         host.flushAll()
         #expect(writer.stateWrites == 1)
+        host.close(page.tabID)
+    }
+
+    // MARK: Snapshot memory
+
+    /// Snapshots are kept for at most `snapshotLimit` tabs, the least recently taken dropped first.
+    @Test func snapshotsAreCapped() {
+        let host = makeHost()
+        host.hasOwner = { _ in true }
+        let ids = (0..<(PageHost.snapshotLimit + 6)).map { _ in UUID() }
+        for id in ids { host.storeSnapshot(NSImage(size: NSSize(width: 4, height: 4)), for: id) }
+        #expect(ids.filter { host.snapshot(for: $0) != nil }.count == PageHost.snapshotLimit)
+        #expect(host.snapshot(for: ids[0]) == nil)
+        #expect(host.snapshot(for: ids[5]) == nil)
+        #expect(host.snapshot(for: ids[6]) != nil)
+        #expect(host.snapshot(for: ids[ids.count - 1]) != nil)
+    }
+
+    /// An unloaded page nobody shows keeps no snapshot: no window can show it.
+    @Test func unloadedPageWithNoOwnerKeepsNoSnapshot() async throws {
+        let host = makeHost()
+        host.snapshotter = { _, done in done(NSImage(size: NSSize(width: 4, height: 4))) }
+        let kept = host.page(for: request(url: ""), writer: writer)
+        let dropped = host.page(for: request(url: ""), writer: writer)
+        host.hasOwner = { $0 == kept.tabID }
+        host.unload(kept.tabID)
+        host.unload(dropped.tabID)
+        #expect(host.snapshot(for: kept.tabID) != nil)
+        #expect(host.snapshot(for: dropped.tabID) == nil)
+        // A live page's snapshot (a deselected tab) stays while the page lives.
+        let live = host.page(for: request(url: ""), writer: writer)
+        host.captureSnapshot(live.tabID)
+        #expect(host.snapshot(for: live.tabID) != nil)
+        host.close(live.tabID)
+        host.close(kept.tabID)
+    }
+
+    /// Snapshots are taken scaled down, never wider than `snapshotWidth`.
+    @Test func snapshotsAreTakenScaledDown() async throws {
+        let host = makeHost()
+        let page = host.page(for: request(url: ""), writer: writer)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = page.webView
+        defer { window.close() }
+        let loaded = try await loadLocal(page, html: "<body style='background:#33c'>drawn</body>", base: "https://example.com/")
+        #expect(loaded)
+        try await Task.sleep(for: .milliseconds(200))
+        host.captureSnapshot(page.tabID)
+        let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
+        #expect(snapped)
+        let width = try #require(host.snapshot(for: page.tabID)).size.width
+        #expect(width <= PageHost.snapshotWidth)
+        host.close(page.tabID)
+    }
+
+    /// A snapshot that never comes doesn't keep an unloaded page alive: it is torn down after the timeout, and a late snapshot is dropped.
+    @Test func hungSnapshotStillTearsDown() async throws {
+        let host = makeHost()
+        host.hasOwner = { _ in true }
+        host.snapshotTimeout = .milliseconds(50)
+        var late: [@MainActor (NSImage?) -> Void] = []
+        host.snapshotter = { _, done in late.append(done) }
+        let page = host.page(for: request(url: ""), writer: writer)
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        container.addSubview(page.webView)
+        host.unload(page.tabID)
+        #expect(page.webView.superview === container)
+        let tornDown = try await waitUntil(seconds: 5) { page.webView.superview == nil }
+        #expect(tornDown)
+        let done = try #require(late.first)
+        done(NSImage(size: NSSize(width: 4, height: 4)))
+        #expect(host.snapshot(for: page.tabID) == nil)
+    }
+
+    // MARK: Held writes
+
+    /// A crashed page writes nothing, not even a flush of state left pending from before the crash.
+    @Test func crashedPageWritesNothing() {
+        let host = makeHost()
+        let page = host.page(for: request(url: ""), writer: writer)
+        page.record(.stateChanged)
+        page.record(.stateChanged) // throttled: left pending
+        writer.calls.removeAll()
+        page.processTerminated()
+        page.record(.title("Late"))
+        page.record(.stateChanged)
+        page.flush()
+        host.flushAll()
+        #expect(writer.calls.isEmpty)
         host.close(page.tabID)
     }
 

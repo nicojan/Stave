@@ -211,7 +211,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         PopupWindowController.open(opener: opener, webView: webView, features: features, near: window, environment: environment)
     }
 
-    /// `window.close()` from a page Stave opened closes its tab.
+    /// `window.close()` from any of this window's tabs closes that tab (a private window has no archive: the tab just goes, as its window's
+    /// tabs all do when it closes).
     func closePage(_ tabID: UUID) { model.close(tabID) }
 
     // MARK: - Closing

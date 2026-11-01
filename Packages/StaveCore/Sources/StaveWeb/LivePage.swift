@@ -173,15 +173,17 @@ public final class LivePage {
         status.isLoading = false
     }
 
-    /// Feeds one event to the recorder and passes its writes on. Does nothing once closed.
+    /// Feeds one event to the recorder and passes its writes on. Does nothing once closed, or while writes are held (a refused restore,
+    /// a crashed page): such a page writes nothing until a new load commits.
     func record(_ event: PageEvent) {
-        guard !isClosed else { return }
+        guard !isClosed, !holdsWrites else { return }
         perform(recorder.record(event, at: now()))
     }
 
-    /// Writes any throttled `interactionState` now.
+    /// Writes any throttled `interactionState` now. Nothing while writes are held: the web view's state then is the crashed or refused
+    /// page's, not one worth keeping.
     func flush() {
-        guard !isClosed else { return }
+        guard !isClosed, !holdsWrites else { return }
         perform(recorder.flush(at: now()))
     }
 

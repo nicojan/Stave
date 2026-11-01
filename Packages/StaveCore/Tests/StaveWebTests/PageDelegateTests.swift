@@ -22,6 +22,11 @@ final class FakeEvents: PageEvents {
     var popups: [WKWebView] = []
     var closed: [UUID] = []
     var externalQuestions: [(URL, String)] = []
+    /// The tab and asking site passed with each external-app question.
+    var externalAskers: [(tabID: UUID, host: String?)] = []
+    /// The asking site of each "download several files" question, and the answer given.
+    var severalDownloadsQuestions: [(tabID: UUID, host: String?)] = []
+    var severalDownloadsAnswer = true
     var externalAnswer = false
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
@@ -60,8 +65,14 @@ final class FakeEvents: PageEvents {
     /// Runs while the question is "up" (before the answer returns).
     var whileConfirming: (() -> Void)?
 
-    func confirmExternalApp(url: URL, appName: String) async -> Bool {
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+        severalDownloadsQuestions.append((tabID, host))
+        return severalDownloadsAnswer
+    }
+
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
         externalQuestions.append((url, appName))
+        externalAskers.append((tabID, host))
         whileConfirming?()
         return externalAnswer
     }
@@ -459,6 +470,30 @@ struct PageDelegateTests {
         host.close(page.tabID)
     }
 
+    /// The question carries the asking tab (so only the window showing it asks) and the page's site, which the sheet names; a typed
+    /// address names none.
+    @Test func externalQuestionNamesTheAskingPage() async throws {
+        let host = makeHost()
+        let apps = FakeExternalApps()
+        apps.app = URL(fileURLWithPath: "/System/Applications/Mail.app")
+        host.externalApps = apps.seam
+        let page = host.page(for: request(), writer: writer)
+        page.status.url = "https://www.example.com/contact"
+        let delegate = try delegate(of: page)
+        _ = delegate.decide(NavigationRequest("mailto:a@example.com"))
+        await delegate.externalTask?.value
+        #expect(events.externalAskers.count == 1)
+        #expect(events.externalAskers.first?.tabID == page.tabID)
+        #expect(events.externalAskers.first?.host == "example.com")
+        clock.date += PageDelegate.externalCooldown + 0.1
+        host.loadTyped("mailto:b@example.com", in: page.tabID)
+        await delegate.externalTask?.value
+        #expect(events.externalAskers.count == 2)
+        #expect(events.externalAskers.last?.tabID == page.tabID)
+        #expect(events.externalAskers.last?.host == nil)
+        host.close(page.tabID)
+    }
+
     @Test func externalAppNotOpenedForAClosedTab() async throws {
         let host = makeHost()
         let apps = FakeExternalApps()
@@ -833,6 +868,148 @@ struct PageDelegateTests {
         events.downloads.cancel(row.id)
         #expect(otherCancels == [row.id])
         #expect(host.activeDownload(row.id) == nil)
+        host.close(page.tabID)
+    }
+
+    // MARK: Quarantine from the first byte
+
+    private func quarantine(_ file: URL) -> [String: Any]? {
+        (try? URL(fileURLWithPath: file.path).resourceValues(forKeys: [.quarantinePropertiesKey]))?.quarantineProperties
+    }
+
+    private func isQuarantined(_ file: URL) -> Bool {
+        quarantine(file)?[kLSQuarantineAgentNameKey as String] as? String == "Stave"
+    }
+
+    /// The file is marked as soon as WebKit's first bytes make it Stave's, and a failed download leaves it marked.
+    @Test func claimedFileIsQuarantinedAndStaysSoWhenTheDownloadFails() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let (row, destination) = try await handDrivenDownload(host, page, name: "half.bin")
+        try Data("half".utf8).write(to: destination)
+        #expect(!isQuarantined(destination))
+        host.claimDownloadFile(row)
+        #expect(isQuarantined(destination))
+        let download = try #require(host.activeDownload(row))
+        host.downloadFailed(download, message: "Network lost")
+        #expect(isQuarantined(destination))
+        #expect(events.downloads.items(for: .profile(page.tabID)).first { $0.id == row }?.state == .failed("Network lost"))
+        host.close(page.tabID)
+    }
+
+    /// When the file can't be marked, a failed download removes its own claimed file rather than leave it unmarked.
+    @Test func failedDownloadThatCantBeMarkedRemovesItsOwnFile() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        host.markDownload = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        let page = host.page(for: request(), writer: writer)
+        let (row, destination) = try await handDrivenDownload(host, page, name: "half.bin")
+        try Data("half".utf8).write(to: destination)
+        host.claimDownloadFile(row)
+        let download = try #require(host.activeDownload(row))
+        host.downloadFailed(download, message: "Network lost")
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+        host.close(page.tabID)
+    }
+
+    /// A finish whose mark fails removes the file (only when it is still this download's) and fails the row.
+    @Test func finishThatCantBeMarkedFailsAndRemovesOnlyItsOwnFile() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let own = try await handDrivenDownload(host, page, name: "own.bin")
+        try Data("all".utf8).write(to: own.destination)
+        host.claimDownloadFile(own.row)
+        host.markDownload = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        host.downloadFinished(try #require(host.activeDownload(own.row)))
+        #expect(!FileManager.default.fileExists(atPath: own.destination.path))
+        let ownState = events.downloads.items(for: .profile(page.tabID)).first { $0.id == own.row }?.state
+        #expect(ownState.map { if case .failed = $0 { true } else { false } } == true)
+
+        // Swapped for another file after the claim: left alone.
+        host.markDownload = { try Quarantine.mark($0, source: $1) }
+        let swapped = try await handDrivenDownload(host, page, name: "swapped.bin")
+        try Data("half".utf8).write(to: swapped.destination)
+        host.claimDownloadFile(swapped.row)
+        let other = dir.appendingPathComponent("incoming.tmp")
+        try Data("replacement".utf8).write(to: other)
+        try FileManager.default.removeItem(at: swapped.destination)
+        try FileManager.default.moveItem(at: other, to: swapped.destination)
+        host.markDownload = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        host.downloadFinished(try #require(host.activeDownload(swapped.row)))
+        #expect(try Data(contentsOf: swapped.destination) == Data("replacement".utf8))
+        host.close(page.tabID)
+    }
+
+    /// A `data:` (or `blob:`) download names the page that made it as its source, not the data itself. (The source goes to the system's
+    /// quarantine events database, not the file's attribute, so it is read at the seam.)
+    @Test func dataDownloadQuarantineNamesThePage() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        var marked: [(file: URL, source: URL?)] = []
+        host.markDownload = { file, source in
+            marked.append((file, source))
+            try Quarantine.mark(file, source: source)
+        }
+        let page = host.page(for: request(), writer: writer)
+        page.webView.loadHTMLString("<title>T</title>", baseURL: URL(string: "https://example.com/page"))
+        let loaded = try await waitUntil { page.status.title == "T" && !page.webView.isLoading }
+        #expect(loaded)
+        let (row, destination) = try await handDrivenDownload(host, page, name: "data.txt")
+        try Data("abc".utf8).write(to: destination)
+        host.claimDownloadFile(row)
+        #expect(marked.count == 1)
+        #expect(marked.first?.file == destination)
+        #expect(marked.first?.source == URL(string: "https://example.com/page"))
+        #expect(isQuarantined(destination))
+        #expect(PageDelegate.quarantineSource(URL(string: "blob:https://example.com/1"), pageURL: URL(string: "https://example.com/")) == URL(string: "https://example.com/"))
+        #expect(PageDelegate.quarantineSource(URL(string: "https://cdn.example.com/f.zip"), pageURL: URL(string: "https://example.com/")) == URL(string: "https://cdn.example.com/f.zip"))
+        host.close(page.tabID)
+    }
+
+    // MARK: Several downloads
+
+    /// A document's first download goes ahead; the second asks, naming the site; refused, the rest of the document's downloads are
+    /// refused without asking; a new document starts over.
+    @Test func secondDownloadOfADocumentAsks() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.severalDownloadsAnswer = false
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        page.status.url = "https://files.example.com/list"
+        let delegate = try delegate(of: page)
+        func start(_ name: String) async -> URL? {
+            let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
+            return await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: name)
+        }
+        #expect(await start("1.txt") != nil)
+        #expect(events.severalDownloadsQuestions.isEmpty)
+        #expect(await start("2.txt") == nil)
+        #expect(events.severalDownloadsQuestions.count == 1)
+        #expect(events.severalDownloadsQuestions.first?.tabID == page.tabID)
+        #expect(events.severalDownloadsQuestions.first?.host == "files.example.com")
+        #expect(await start("3.txt") == nil)
+        #expect(events.severalDownloadsQuestions.count == 1)
+        // Only the first went into the list.
+        #expect(events.downloads.items(for: .profile(page.tabID)).map(\.filename) == ["1.txt"])
+
+        page.committed() // a new document
+        events.severalDownloadsAnswer = true
+        #expect(await start("4.txt") != nil)
+        #expect(await start("5.txt") != nil)
+        #expect(await start("6.txt") != nil)
+        #expect(events.severalDownloadsQuestions.count == 2)
         host.close(page.tabID)
     }
 }

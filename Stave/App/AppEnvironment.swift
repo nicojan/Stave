@@ -85,6 +85,9 @@ final class AppEnvironment {
         // An opener with pop-ups open never hibernates: the pop-up's `window.opener` (an OAuth sign-in, say) needs its page (ruling R14).
         let popups = self.popups
         host.hasOpenPopups = { [weak popups] id in popups?.hasPopups(openedBy: id) ?? false }
+        // A snapshot stands in only for a tab another window shows; one with no owner and no live page is dropped.
+        let livePages = self.livePages
+        host.hasOwner = { [weak livePages] id in livePages?.owner(of: id) != nil }
         // Lists that compile after pages were made are attached to them, taking effect from each page's next load.
         blocker.onReady = { [weak host] in host?.reattachRuleLists() }
         blocker.start()

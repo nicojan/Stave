@@ -81,17 +81,17 @@ final class PageEventsRouter: PageEvents {
         popups.popup(tabID)?.prompts ?? privateController(for: tabID)?.prompts ?? controller(for: tabID)?.prompts
     }
 
-    /// No tab ID comes with the question; the frontmost browser or pop-up window asks it.
-    func confirmExternalApp(url: URL, appName: String) async -> Bool {
-        let all = controllers()
-        let privates = privateControllers()
-        let popupList = popups.all
-        let front = NSApp.orderedWindows.lazy.compactMap { window -> PagePrompts? in
-            all.first { $0.window === window }?.prompts ?? privates.first { $0.window === window }?.prompts
-                ?? popupList.first { $0.window === window }?.prompts
-        }.first
-        guard let front else { return false }
-        return await front.confirmExternalApp(url: url, appName: appName)
+    /// Asked on the window (or pop-up) of the tab that asks, and only while it shows that tab; anywhere else it resolves false. Ending
+    /// the tab's panels (closed, unloaded, deselected) resolves it too, which frees the delegate's one-at-a-time lock.
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
+        guard let prompts = prompts(for: tabID) else { return false }
+        return await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
+    }
+
+    /// Asked like the external-app question: only while the tab is shown, else refused.
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+        guard let prompts = prompts(for: tabID) else { return false }
+        return await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
     }
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {

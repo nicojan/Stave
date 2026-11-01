@@ -23,7 +23,8 @@ extension BrowserWindowController: PageEvents {
             return webView == nil ? id : nil
         }
         let request = PageRequest(
-            tabID: id, store: .persistent(storeID), siteSettingsProfileID: model.snapshot.profile.id,
+            // The opener page's profile, not the window's: the new page shares the opener's store, so its site settings must match.
+            tabID: id, store: .persistent(storeID), siteSettingsProfileID: environment.pageHost.existingPage(opener)?.siteSettingsProfileID ?? model.snapshot.profile.id,
             url: url, title: "", faviconURL: nil, interactionState: nil
         )
         if let webView {
@@ -40,15 +41,20 @@ extension BrowserWindowController: PageEvents {
         PopupWindowController.open(opener: opener, webView: webView, features: features, near: window, environment: environment)
     }
 
-    /// `window.close()` from a page Stave opened closes its tab, as the close shortcut would.
+    /// `window.close()` from any tab's page closes that tab, as the close shortcut would: it goes to the archive (as in Safari, where a
+    /// script may close any tab, not only one a page opened).
     func closePage(_ tabID: UUID) {
         model.close(tabID)
     }
 
     // MARK: - Questions
 
-    func confirmExternalApp(url: URL, appName: String) async -> Bool {
-        await prompts.confirmExternalApp(url: url, appName: appName)
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
+        await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
+    }
+
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+        await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
     }
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {

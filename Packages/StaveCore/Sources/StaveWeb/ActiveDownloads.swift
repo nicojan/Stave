@@ -30,6 +30,8 @@ final class ActiveDownloads {
     private var byRow: [UUID: WKDownload] = [:]
     /// The list whose `onCancel` already reaches here.
     private weak var wiredList: DownloadList?
+    /// Seam for tests: how a file is quarantined.
+    var mark: @MainActor (URL, URL?) throws -> Void = { try Quarantine.mark($0, source: $1) }
 
     func track(_ download: WKDownload, delegate: PageDelegate) {
         download.delegate = delegate
@@ -59,32 +61,68 @@ final class ActiveDownloads {
         }
     }
 
-    /// Records the destination file's identity as this download's, once. Called when WebKit has written bytes, so the file there is the
-    /// one WebKit created for it (WebKit fails rather than write into a file it did not create).
+    /// Records the destination file's identity as this download's, once, and quarantines it at once, so the file is never in the
+    /// Downloads folder unmarked while it is written. Called when WebKit has written bytes, so the file there is the one WebKit created for
+    /// it (WebKit fails rather than write into a file it did not create). A mark that fails here is tried again at the end, where a file
+    /// that still can't be marked is removed.
     func claimDestination(forRow rowID: UUID) {
-        guard let download = byRow[rowID], let entry = entries[ObjectIdentifier(download)], entry.fileIdentity == nil,
-              let destination = entry.destination else { return }
-        entry.fileIdentity = FileIdentity(of: destination)
+        guard let download = byRow[rowID], let entry = entries[ObjectIdentifier(download)] else { return }
+        claim(entry)
+    }
+
+    private func claim(_ entry: Entry) {
+        guard entry.fileIdentity == nil, let destination = entry.destination,
+              let identity = FileIdentity(of: destination) else { return }
+        entry.fileIdentity = identity
+        do {
+            try mark(destination, entry.source)
+        } catch {
+            NSLog("Stave: could not quarantine a download as it started: \(error)")
+        }
     }
 
     func download(forRow rowID: UUID) -> WKDownload? {
         byRow[rowID]
     }
 
-    /// Quarantines the file with its source URL, then marks the row finished.
+    /// Quarantines the file with its source URL again, then marks the row finished. A file that WebKit wrote without ever reporting
+    /// progress (an empty one) is claimed here: WebKit has just finished writing it. When the mark fails, the file is removed, but only
+    /// when it is provably this download's (`removeIfOwn`), and the row fails: a download is never left in the folder unmarked.
     func finished(_ download: WKDownload) {
         guard let entry = remove(download), let rowID = entry.rowID, let destination = entry.destination else { return }
+        claim(entry)
         do {
-            try Quarantine.mark(destination, source: entry.source)
+            try mark(destination, entry.source)
             entry.list?.finish(rowID, at: destination)
         } catch {
+            removeIfOwn(entry)
             entry.list?.fail(rowID, message: error.localizedDescription)
         }
     }
 
+    /// The row fails; whatever WebKit left of a claimed file is quarantined, or removed (only when provably this download's) when it
+    /// can't be.
     func failed(_ download: WKDownload, message: String) {
         guard let entry = remove(download), let rowID = entry.rowID else { return }
+        if let destination = entry.destination, let identity = entry.fileIdentity, FileIdentity(of: destination) == identity {
+            do {
+                try mark(destination, entry.source)
+            } catch {
+                removeIfOwn(entry)
+            }
+        }
         entry.list?.fail(rowID, message: message)
+    }
+
+    /// Removes the entry's file only when its identity was captured from WebKit's own write and the file at the path still has it; a
+    /// foreign file, or one swapped in since, is never touched.
+    private func removeIfOwn(_ entry: Entry) {
+        guard let destination = entry.destination, let identity = entry.fileIdentity, FileIdentity(of: destination) == identity else { return }
+        do {
+            try FileManager.default.removeItem(at: destination)
+        } catch {
+            NSLog("Stave: could not remove a download's file: \(error)")
+        }
     }
 
     /// Stops the download and removes what it had written. WebKit leaves the partial file at the destination on cancel (checked against a
@@ -96,12 +134,7 @@ final class ActiveDownloads {
         guard let download = byRow[rowID] else { return }
         let entry = remove(download)
         download.cancel(nil)
-        guard let destination = entry?.destination, let identity = entry?.fileIdentity, FileIdentity(of: destination) == identity else { return }
-        do {
-            try FileManager.default.removeItem(at: destination)
-        } catch {
-            NSLog("Stave: could not remove a cancelled download's partial file: \(error)")
-        }
+        if let entry { removeIfOwn(entry) }
     }
 
     private func progress(_ rowID: UUID, fraction: Double?) {

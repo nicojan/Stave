@@ -25,8 +25,18 @@ public final class PageHost {
     @ObservationIgnored private let applicationName: String
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private lazy var faviconRelay = FaviconRelay(host: self)
-    /// In memory only (decision 16).
+    /// In memory only (decision 16), at most `snapshotLimit`, least recently taken dropped first (`snapshotOrder`, oldest first).
     @ObservationIgnored private var snapshots: [UUID: NSImage] = [:]
+    @ObservationIgnored private var snapshotOrder: [UUID] = []
+    static let snapshotLimit = 24
+    /// Snapshots are taken at most this wide: they only stand in for a page shown in another window.
+    static let snapshotWidth: CGFloat = 600
+    /// Seam for tests: how long an unloading page waits for its snapshot before it is torn down anyway.
+    @ObservationIgnored var snapshotTimeout: Duration = .seconds(3)
+    /// Seam for tests: takes a page's snapshot and calls back on the main actor (maybe never, if WebKit hangs).
+    @ObservationIgnored var snapshotter: @MainActor (WKWebView, @escaping @MainActor (NSImage?) -> Void) -> Void = PageHost.takeSnapshot
+    /// Set by the app: whether a window owns the tab (shows it), so its snapshot can still stand in for it elsewhere.
+    @ObservationIgnored public var hasOwner: @MainActor (UUID) -> Bool = { _ in false }
     /// The latest snapshot asked for per tab; an older or cancelled one never lands.
     @ObservationIgnored private var snapshotTokens: [UUID: UUID] = [:]
     @ObservationIgnored private var hibernationTask: Task<Void, Never>?
@@ -114,7 +124,8 @@ public final class PageHost {
         page.lastShownAt = now()
     }
 
-    /// Flushes pending state, keeps a snapshot, then tears the page down.
+    /// Flushes pending state, snapshots the page (kept only while a window still shows the tab, see `storeSnapshot`), then tears it down,
+    /// within `snapshotTimeout` whatever the snapshot does.
     public func unload(_ tabID: UUID) {
         guard let page = pages.removeValue(forKey: tabID) else { return }
         page.flush()
@@ -127,7 +138,7 @@ public final class PageHost {
     /// Ends the page without flushing: its tab is gone, so nothing more is written for it.
     /// The snapshot goes too, also for a page hibernation already unloaded (which `unload` left a snapshot for).
     public func close(_ tabID: UUID) {
-        snapshots[tabID] = nil
+        dropSnapshot(tabID)
         snapshotTokens[tabID] = nil
         guard let page = pages.removeValue(forKey: tabID) else { return }
         page.close()
@@ -284,6 +295,12 @@ public final class PageHost {
         activeDownloads.begin(download, delegate: delegate, rowID: rowID, list: list, destination: destination, source: source)
     }
 
+    /// Seam for tests: how a download's file is quarantined.
+    var markDownload: @MainActor (URL, URL?) throws -> Void {
+        get { activeDownloads.mark }
+        set { activeDownloads.mark = newValue }
+    }
+
     /// Test seam: what WebKit's first progress report does, capturing the destination file's identity as this download's.
     func claimDownloadFile(_ rowID: UUID) {
         activeDownloads.claimDestination(forRow: rowID)
@@ -321,25 +338,80 @@ public final class PageHost {
         startHibernationIfNeeded()
     }
 
-    /// Snapshots the page; when `thenTearDown`, the web view is kept until the snapshot is taken, then torn down.
+    /// Snapshots the page; when `thenTearDown`, the web view is kept until the snapshot is taken, then torn down. A snapshot that hasn't
+    /// come within `snapshotTimeout` doesn't hold the page: it is torn down anyway, and the late snapshot, if it ever comes, is dropped.
     private func captureSnapshot(of page: LivePage, thenTearDown: Bool, keeping delegate: PageDelegate?) {
         let token = UUID()
         let tabID = page.tabID
         snapshotTokens[tabID] = token
-        Task { [weak self] in
-            let image = try? await page.webView.takeSnapshot(configuration: nil)
-            withExtendedLifetime(delegate) {}
+        let pending = PendingTearDown(page: thenTearDown ? page : nil, delegate: delegate)
+        snapshotter(page.webView) { [weak self] image in
             if let self, self.snapshotTokens[tabID] == token {
                 self.snapshotTokens[tabID] = nil
-                if let image { self.snapshots[tabID] = image }
+                if let image { self.storeSnapshot(image, for: tabID) }
             }
-            if thenTearDown { PageHost.tearDown(page) }
+            pending.run()
+        }
+        guard thenTearDown else { return }
+        let timeout = snapshotTimeout
+        Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard pending.isWaiting else { return }
+            if let self, self.snapshotTokens[tabID] == token { self.snapshotTokens[tabID] = nil }
+            pending.run()
         }
     }
 
-    private static func tearDown(_ page: LivePage) {
+    /// Keeps the tab's snapshot as the most recent, then drops the snapshots no window can show: a tab with no live page and no owner
+    /// (hibernated, or unloaded with nobody showing it), and the least recently taken beyond `snapshotLimit`.
+    func storeSnapshot(_ image: NSImage, for tabID: UUID) {
+        snapshots[tabID] = image
+        let (order, evicted) = RecentlyUsed.use(tabID, in: snapshotOrder, limit: Self.snapshotLimit)
+        snapshotOrder = order
+        for id in evicted { snapshots[id] = nil }
+        for id in snapshotOrder where pages[id] == nil && !hasOwner(id) { dropSnapshot(id) }
+    }
+
+    private func dropSnapshot(_ tabID: UUID) {
+        snapshots[tabID] = nil
+        snapshotOrder = snapshotOrder.filter { $0 != tabID }
+    }
+
+    /// WebKit's snapshot, scaled down to at most `snapshotWidth`.
+    static func takeSnapshot(_ webView: WKWebView, completion: @escaping @MainActor (NSImage?) -> Void) {
+        let configuration = WKSnapshotConfiguration()
+        let width = min(snapshotWidth, webView.bounds.width)
+        if width > 0 { configuration.snapshotWidth = NSNumber(value: Double(width)) }
+        webView.takeSnapshot(with: configuration) { image, _ in
+            MainActor.assumeIsolated { completion(image) }
+        }
+    }
+
+    static func tearDown(_ page: LivePage) {
         page.webView.stopLoading()
         page.webView.removeFromSuperview()
+    }
+}
+
+/// An unloaded page waiting for its snapshot before it is torn down: whichever comes first (the snapshot or the timeout) tears it down,
+/// once, and lets the page and its delegate go.
+@MainActor
+private final class PendingTearDown {
+    private var page: LivePage?
+    private var delegate: PageDelegate?
+
+    init(page: LivePage?, delegate: PageDelegate?) {
+        self.page = page
+        self.delegate = delegate
+    }
+
+    var isWaiting: Bool { page != nil }
+
+    func run() {
+        guard let page else { return }
+        self.page = nil
+        delegate = nil
+        PageHost.tearDown(page)
     }
 }
 

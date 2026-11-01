@@ -9,9 +9,15 @@ import WebKit
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID?
     /// The app adopts `webView` (`PageHost.adopt`) before returning.
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures)
-    /// `window.close()` from a page Stave opened.
+    /// `window.close()` from any page: a pop-up's window closes; a tab closes as with the close shortcut (it goes to the archive, as in
+    /// Safari, where a script may close any tab).
     func closePage(_ tabID: UUID)
-    func confirmExternalApp(url: URL, appName: String) async -> Bool
+    /// "Open this link in ‹App›?" for the tab's page. `host`: the asking page's site, named in the question; nil for a typed address.
+    /// Asked only while the tab is shown; otherwise false.
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool
+    /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
+    /// Asked only while the tab is shown; otherwise false.
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
     /// `origin`: the host of the frame that asked (nil for a frame with no web origin), which the dialog names instead of the top page.
     func alert(tabID: UUID, origin: String?, message: String) async
@@ -85,6 +91,9 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// decline, are dropped.
     private var externalPending = false
     private var externalQuietUntil: Date?
+    /// Counts the downloads of the page's current document, so a page can't save file after file with no click.
+    private var downloadGate = PageDownloadGate()
+    private var downloadQuestionPending = false
     static let externalCooldown: TimeInterval = 1
 
     /// `events` may be nil; the host's `events` is used then.
@@ -275,7 +284,9 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             return
         }
         guard let events else { return }
-        let confirmed = await events.confirmExternalApp(url: url, appName: Self.appName(app))
+        // The page that asks is named; a typed address is the user's own, so none is.
+        let asking = typed ? nil : page.flatMap { SiteHost.normalized($0.status.url) }
+        let confirmed = await events.confirmExternalApp(tabID: tabID, host: asking, url: url, appName: Self.appName(app))
         guard confirmed else {
             externalQuietUntil = host.currentDate().addingTimeInterval(Self.externalCooldown)
             return
@@ -294,14 +305,47 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     // MARK: Downloads
 
+    /// Every download a page starts comes through here, whatever started it (an attachment response, a type the page can't show, an
+    /// `<a download>` link clicked by the user or by script): the document's first proceeds, later ones ask (`PageDownloadGate`). WebKit
+    /// cancels a download given no destination.
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        // No owner to file it under: refused (WebKit cancels a download given no destination).
+        // No owner to file it under: refused.
+        guard host != nil, self.events?.downloadOwner(tabID: tabID) != nil else { return nil }
+        guard await mayDownload() else { return nil }
+        // The question may have been up for a while: everything is looked up again.
         guard let host, let events, let owner = events.downloadOwner(tabID: tabID) else { return nil }
         let destination = Self.destination(for: suggestedFilename, in: events.downloadsDirectory)
-        let source = download.originalRequest?.url ?? response.url
+        let source = Self.quarantineSource(download.originalRequest?.url ?? response.url, pageURL: page?.webView.url ?? page.flatMap { URL(string: $0.status.url) })
         let rowID = events.downloads.begin(owner: owner, filename: destination.lastPathComponent, sourceHost: source?.host)
         host.beginDownload(download, delegate: self, rowID: rowID, list: events.downloads, destination: destination, source: source)
         return destination
+    }
+
+    /// Whether this download may go ahead: the document's first does; a later one asks, one question at a time (a download that arrives
+    /// while one is up is refused), and the answer holds for the rest of the document. A question that can't be asked counts as refused.
+    func mayDownload() async -> Bool {
+        let navigation = page.map(\.commitCount)
+        switch downloadGate.next(navigation: navigation) {
+        case .proceed: return true
+        case .refuse: return false
+        case .ask:
+            guard !downloadQuestionPending, let events else { return false }
+            downloadQuestionPending = true
+            let allowed = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+            downloadQuestionPending = false
+            downloadGate.answer(allow: allowed, navigation: navigation)
+            return allowed
+        }
+    }
+
+    /// The URL the quarantine names as the file's source. A `data:` or `blob:` URL holds the file itself (or names nothing outside the
+    /// page), so the page that made it is named instead.
+    static func quarantineSource(_ source: URL?, pageURL: URL?) -> URL? {
+        guard let source else { return pageURL }
+        switch source.scheme?.lowercased() {
+        case "data", "blob": return pageURL
+        default: return source
+        }
     }
 
     public func downloadDidFinish(_ download: WKDownload) {

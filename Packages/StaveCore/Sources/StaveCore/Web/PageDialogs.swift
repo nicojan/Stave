@@ -59,6 +59,73 @@ extension PageText {
     public static let rememberForSite = "Remember for this site"
 }
 
+/// Keeps a page from saving file after file with no click (plan 3 final review). The first download of a document proceeds; the next one
+/// asks ("‹host› wants to download several files"). Allowed: the rest of that document's downloads proceed. Refused (or not askable): the
+/// rest are refused without asking again. A new document (`navigation`, the page's main-frame commit count, changes) starts over.
+public struct PageDownloadGate: Equatable, Sendable {
+    public enum Verdict: Equatable, Sendable {
+        case proceed
+        case ask
+        case refuse
+    }
+
+    private enum Answer: Equatable, Sendable { case allowed, refused }
+
+    private var navigation: Int?
+    private var started = 0
+    private var answer: Answer?
+
+    public init() {}
+
+    /// `current` nil: the page has no document to compare (it closed), so the one counted so far still applies.
+    public mutating func next(navigation current: Int?) -> Verdict {
+        if let current, current != navigation {
+            navigation = current
+            started = 0
+            answer = nil
+        }
+        started += 1
+        if started == 1 { return .proceed }
+        switch answer {
+        case .allowed: return .proceed
+        case .refused: return .refuse
+        case nil: return .ask
+        }
+    }
+
+    /// The question's answer for the document `navigation`; an answer for a document the page already left is ignored.
+    public mutating func answer(allow: Bool, navigation current: Int?) {
+        guard current == nil || current == navigation else { return }
+        answer = allow ? .allowed : .refused
+    }
+}
+
+extension PageText {
+    /// `host`: the asking page's site (a host or URL); nil, or a page with no web origin, gets the neutral wording.
+    public static func severalDownloadsQuestion(host: String?) -> String {
+        guard let host, let site = SiteHost.normalized(host) else { return "This page wants to download several files" }
+        return "\(site) wants to download several files"
+    }
+
+    public static let severalDownloadsDetail = "Allow it to keep saving files to your Downloads folder?"
+
+    /// "Open this link in ‹App›?", naming the page that asks when there is one (a typed address has none).
+    public static func externalAppQuestion(appName: String, host: String?) -> String {
+        guard let host, let site = SiteHost.normalized(host) else { return externalAppQuestion(appName: appName) }
+        return "Allow \(site) to open this link in \(appName)?"
+    }
+}
+
+/// Least-recently-used order for a small in-memory cache (the page host's snapshots).
+public enum RecentlyUsed {
+    /// The order after `key` is used: oldest first, `key` moved (or added) to the newest end, and the oldest beyond `limit` dropped.
+    public static func use<Key: Equatable>(_ key: Key, in order: [Key], limit: Int) -> (order: [Key], evicted: [Key]) {
+        let used = order.filter { $0 != key } + [key]
+        let overflow = max(used.count - max(limit, 1), 0)
+        return (Array(used.dropFirst(overflow)), Array(used.prefix(overflow)))
+    }
+}
+
 /// A pop-up window's size and title.
 public enum PopupFrame {
     public static let defaultSize = CGSize(width: 480, height: 640)
@@ -76,10 +143,19 @@ public enum PopupFrame {
         )
     }
 
+    /// The page's own title is cut to this many characters, then an ellipsis.
+    public static let titleLimit = 80
+    /// What leads the title when the pop-up shows no web site (nothing loaded yet, `about:blank`, `data:`).
+    public static let neutralTitle = "Pop-up"
+
+    /// The site the pop-up shows now, then its page's title: "accounts.example.com — Sign in". The host always leads, so a page can't
+    /// pass its window off as another site's by its title.
     public static func title(pageTitle: String, url: String) -> String {
-        let trimmed = pageTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-        return SiteHost.normalized(url) ?? "Pop-up"
+        let site = SiteHost.normalized(url) ?? neutralTitle
+        let words = pageTitle.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+        guard !words.isEmpty else { return site }
+        let capped = words.count > titleLimit ? String(words.prefix(titleLimit)) + "…" : words
+        return "\(site) — \(capped)"
     }
 }
 

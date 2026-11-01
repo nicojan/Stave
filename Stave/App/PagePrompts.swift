@@ -4,19 +4,19 @@ import StaveWeb
 
 /// A page's question up as a sheet; `end` cancels it, and its waiting question then resolves with the safe answer.
 struct PagePanel {
-    let tabID: UUID?
+    let tabID: UUID
     let end: () -> Void
 }
 
-/// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, camera and microphone, JavaScript
-/// alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
+/// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download several files", camera
+/// and microphone, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
 /// can't be asked (its tab isn't shown here, another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its
 /// own window, so it never blocks another window.
 @MainActor
 final class PagePrompts {
     private weak var window: NSWindow?
     private let pageHost: PageHost
-    /// Whether this window shows the tab now; a nil tab (the external-app question) is always allowed.
+    /// Whether this window shows the tab now: every question is asked only on the window showing its tab.
     private let shows: (UUID) -> Bool
     private var panels: [UUID: PagePanel] = [:]
     /// Per tab: stops a page that loops `alert()` from locking the window (`PageDialogGate`). Each gate belongs to one `LivePage` (held
@@ -37,13 +37,24 @@ final class PagePrompts {
 
     // MARK: - Questions
 
-    func confirmExternalApp(url: URL, appName: String) async -> Bool {
+    /// "Allow example.com to open this link in Zoom?", naming the page that asks (a typed address names none), with the link below.
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
         let alert = NSAlert()
-        alert.messageText = PageText.externalAppQuestion(appName: appName)
+        alert.messageText = PageText.externalAppQuestion(appName: appName, host: host)
         alert.informativeText = PageText.dialogMessage(url.absoluteString)
         alert.addButton(withTitle: PageText.openButton)
         alert.addButton(withTitle: PageText.cancelButton)
-        return await present(alert, for: nil) == .alertFirstButtonReturn
+        return await present(alert, for: tabID) == .alertFirstButtonReturn
+    }
+
+    /// "example.com wants to download several files", Allow / Don't Allow. A cancelled sheet refuses.
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = PageText.severalDownloadsQuestion(host: host)
+        alert.informativeText = PageText.severalDownloadsDetail
+        alert.addButton(withTitle: PageText.allowButton)
+        alert.addButton(withTitle: PageText.dontAllowButton)
+        return await present(alert, for: tabID) == .alertFirstButtonReturn
     }
 
     /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). A
@@ -127,10 +138,9 @@ final class PagePrompts {
 
     // MARK: - Internals
 
-    private func canAsk(_ tabID: UUID?) -> Bool {
+    private func canAsk(_ tabID: UUID) -> Bool {
         guard let window, !isClosed, window.attachedSheet == nil else { return false }
-        if let tabID { return shows(tabID) }
-        return true
+        return shows(tabID)
     }
 
     /// The JavaScript dialog: the asking frame's site as the heading and its capped text below. Nil when the page's dialogs were stopped,
@@ -166,7 +176,7 @@ final class PagePrompts {
     }
 
     /// Shows the alert as a sheet and waits for its answer, or `.abort` at once when it can't be asked.
-    private func present(_ alert: NSAlert, for tabID: UUID?) async -> NSApplication.ModalResponse {
+    private func present(_ alert: NSAlert, for tabID: UUID) async -> NSApplication.ModalResponse {
         guard let window, canAsk(tabID) else { return .abort }
         let id = UUID()
         let sheet = alert.window

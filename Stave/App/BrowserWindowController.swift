@@ -195,8 +195,10 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         let shown = shownPage?.tabID
         isClosed = true
         model.windowWillClose()
-        // No other window took the page over: it is no longer shown anywhere, so hibernation may unload it later.
-        if let shown, environment.livePages.owner(of: shown) == nil { environment.pageHost.markShown(shown, false) }
+        // No other window took the page over: nothing shows it now, so it is unloaded (flushed first) rather than left running, which
+        // would keep a camera or microphone going (hibernation never unloads such a page). Its questions end and its pop-ups close, as
+        // for any unloaded tab.
+        if let shown, environment.livePages.owner(of: shown) == nil { tabUnloaded(shown) }
         onClose(self)
     }
 }
