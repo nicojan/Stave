@@ -262,7 +262,7 @@ public final class BrowserWindowModel {
         }
         let archivedIDs = (try? store.sidebarSnapshot(workspaceID: id)).map { Self.pinnedTabs($0.pinned) + $0.regular }?.map(\.id) ?? []
         guard perform({ try store.deleteWorkspace(id) }) != nil else { return }
-        archivedIDs.forEach(tabGone)
+        for id in archivedIDs { tabGone(id) }
     }
 
     public func moveWorkspace(_ id: UUID, after previousID: UUID?) {
