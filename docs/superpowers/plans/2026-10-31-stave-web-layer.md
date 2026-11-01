@@ -558,3 +558,98 @@ Each one goes to Chorus as its own change and comes back through a new tag. Then
 5. An option on `DataStoreManager` to keep ITP on.
 
 None is needed for the beta.
+
+## Outcome (2026-11-01)
+
+Built on `feat/web-layer` (`c64fa45..464a795`, 23 commits, stacked on PR #3): all 12 tasks reviewed (spec and quality, with fix rounds), then the final whole-branch review and one fix wave. There are 679 package tests (66 + 613 across the two test runners), and CI is green on macOS 14 (Xcode 16.2, Swift 6.0.3) and macOS 15 on the final head: run 41273837903 on `464a795`. Debug and Release both build with no warnings. Review Focus 1–5 hold end to end (Focus 4 only after the final fix wave). By-hand checks ran on localhost pages and throwaway data only; everything that needs a signed build, a pointer, an account or a live VoiceOver is on the "Nico checks" list below and has not been seen working.
+
+What was built, by area:
+
+- **Engine and package layout:** `ChorusEngine` pinned `exact: "1.5.32"` (content blocker and `WebViewContainer` only); a new `StaveWeb` target for WebKit code. The Task 1 spike (a `WKWebView` loads local HTML) passed on CI macOS 14 and 15, so the load tests run for real.
+- **Navigation rules (StaveCore):** `NavigationPolicy` (scheme checks per source: stored, restored, typed, page), `PageFailure`, the Safari-based user agent, page text, `AddressInput` normalising typed `localhost:port` before the policy.
+- **Store and writes:** per-site settings (content blocking, camera and microphone answers) keyed by profile and lowercase host (migration v4), `interactionState` writes, `dataStoreID(forTab:)`, `PageRecorder` (deduped URL, title and favicon writes, `interactionState` at most every 2 s, flushed on unload, close, deselect and quit) and `HibernationPolicy` (30 minutes unshown, cap 24, never media, camera or tabs with open pop-ups).
+- **Downloads model:** `DownloadList`, `DownloadFilename` (sanitised at the scalar level, 200-byte cap, unique names), `DownloadOwner`.
+- **StaveWeb:** per-profile `WKWebsiteDataStore(forIdentifier:)` stores (never the default store; ITP left on), one non-persistent store per private window, `PageHost` and `LivePage` (lazy restore through the navigation policy, hibernation, snapshots, favicon relay), and `PageDelegate` (navigation, pop-ups, JS dialogs, file upload, media permission, downloads with quarantine from the first byte, external-app prompts, crash and error states).
+- **Window model hooks:** page lifecycle events (`tabClosed`, `tabDeselected`, `tabUnloaded`), `PageMenuState`, linked tabs, compact Tab that passes through inside a page, and the plan 4 carry-forwards (unload releases pinned pages, cross-window reload moved out of `.onChange`).
+- **App:** browser windows show live pages (progress bar, error and crash panels, Back/Forward/Reload/Stop, "showing in another window" snapshots, cross-window ownership); pop-up windows tied to their opener; JS alert, confirm and prompt sheets naming the asking origin and capped in length; the camera and microphone sheet with "Remember"; the downloads popover; the per-site blocking switch (menu and command bar action); the private window (⇧⌘N) on a non-persistent store that writes nothing to disk, cancels its downloads and forgets its pages and answers when it closes.
+
+Rulings made during execution (the controller's calls; Nico can overturn any, with the cost if wrong):
+
+- **R1:** `blob:` main frames load only from a page-made navigation; from stored, restored or typed sources they are refused with the panel. Cost if wrong: a restored blob tab shows the refused panel instead of loading a dead URL.
+- **R2:** `file:` and other refused schemes from a page are silently ignored; from a stored, restored or typed main frame they show the refused panel. Cost if wrong: a page link to `file:` does nothing instead of showing a panel.
+- **R3:** the download-name sanitiser strips the leading run of `.`, space, `/` and `:` then replaces the rest (the plan's order contradicted its own test). Cost if wrong: a name like `/a` loses its leading separator.
+- **R4:** a page feeds its title to the recorder when a load finishes, so a same-URL reload that blanked the title heals. Cost if wrong: one redundant (deduped) recorder call per load.
+- **R5:** `.committed` comes from `didCommit`, not URL KVO, so a failed load never blanks the stored title. Cost if wrong: none seen.
+- **R6:** content blocking is re-evaluated per main-frame navigation to a new host, before the load. Cost if wrong: a tab that crosses sites keeps the first site's blocking setting.
+- **R7:** `PageDelegate` takes over the restore gate rather than being replaced by it. Cost if wrong: none seen.
+- **R8:** back, forward and reload count as user-initiated page navigations; an external scheme with no installed app shows "No app can open this link" only for a typed address and is silent for page links. Cost if wrong: a page link to an unknown scheme does nothing visible.
+- **R9:** TLS errors (-1201 to -1206) and secure-connection failures set the insecure state; -999 and WebKit 102 set nothing; a combined camera and microphone request skips asking only when both stored answers are Allow, and any Deny denies. Cost if wrong: an extra prompt or a denied combined request.
+- **R10:** pop-ups adopt the opener's content controller, so they share the opener's rule lists; documented, no copy workaround. Cost if wrong: toggling blocking on a pop-up also changes its opener's lists.
+- **R11:** `<a download href="data:…">` becomes a download even though `data:` main frames are refused. Cost if wrong: a page can push a sanitised, quarantined `data:` file into `~/Downloads`.
+- **R12:** page prompts resolve false or nil when their tab or window closes, and `window.open` runs the navigation policy on its URL before a tab is stored. Cost if wrong: a `window.open` to an odd scheme opens nothing.
+- **R13:** JS panels show the origin host, cap page text at about 1,000 characters, and after three panels in a short window offer to suppress more until the page navigates; a download with no owner fails rather than inventing a profile. Cost if wrong: an extra checkbox on the third dialog.
+- **R14:** an opener with open pop-ups is not hibernated (instead of closing a sign-in pop-up mid-flow). Cost if wrong: a few extra live pages while pop-ups are open.
+- **R15:** dialogs from a background tab resolve at once (alert dismissed, confirm false, prompt nil); queueing until the tab is shown is carried forward. Cost if wrong: a timer `confirm()` in a background tab gets false.
+- **R16:** private pages, and links and pop-ups from them, stay in their private window; a hibernated private page reloads from its model URL without history. Cost if wrong: a re-shown private tab loses its back/forward history.
+- **R17:** closing a private window cancels its running downloads (finished files stay) and clears its snapshots and in-memory media answers. Cost if wrong: a large private download is lost when its window closes.
+- **R18:** the final whole-branch review and its fix wave ran before this task, so this Outcome describes the final code. Cost if wrong: none beyond ordering.
+- **R19:** the final fix wave took the critical (an unmarked download on failure; quarantine now starts with the first byte and names the real source), the six important items (external-app question names the site and shows on its own window; pop-up title leads with the host; closing a window frees its pages, so a camera page goes dark; snapshot memory is bounded; a hung snapshot no longer pins an unloaded page; several downloads from one document ask once) and three minors. Title-write coalescing and the decision 5 plan text were left. Cost if wrong: extra sidebar reloads on pages that flip their title.
+
+Decisions still flagged for Nico: **decision 1** (Intelligent Tracking Prevention stays on, as in Safari, instead of the engine's ITP-off stores; if a sign-in loops, this is the first suspect) and **decision 9** (`https://user@host` links open as other browsers do, with the address field showing only the real host; Nico may prefer to refuse them).
+
+By-hand run, Step 2 (DRM and YouTube): the unsigned Debug build reached the network this time. `https://bitmovin.com/demos/drm` loaded and rendered the "DRM Stream Test" page, but a marketing overlay and then a cookie consent panel sat over the player, and clearing them needs a pointer click that this session did not send. So playback, fullscreen and Picture in Picture were **not exercised**, and a DRM stream was never played. YouTube was not tried. Both move to the Nico checks. (Screenshots stayed in the session scratchpad.)
+
+Nico checks (not seen by the build sessions):
+
+- [ ] Sign in at Google, then open Google Docs and edit a document.
+- [ ] Sign in at Microsoft; watch for an SSO redirect loop (decision 1, ITP on).
+- [ ] Sign in with Apple.
+- [ ] An Okta-style SSO sign-in that uses a pop-up window; the pop-up title should lead with the host.
+- [ ] Sign in at GitHub.
+- [ ] Google Meet with camera and microphone: the sheet, then the macOS prompt, then "Remember for this site" honoured on reload.
+- [ ] DRM playback on `https://bitmovin.com/demos/drm` (dismiss the overlays by hand), YouTube playback with fullscreen and Picture in Picture.
+- [ ] Debug ▸ Crash Page Process on a signed build (the unsigned build was refused by libxpc): the crash panel shows, and Reload recovers.
+- [ ] Downloads on a signed build: the popover (Cancel, Show in Finder, Clear), `xattr -p com.apple.quarantine ~/Downloads/<file>` while a slow download is still running, and whether the first download freezes the UI (the unsigned build hung on the Downloads-folder privacy prompt).
+- [ ] A private download end to end; closing that private window cancels it; and a real example.com page in a private window.
+- [ ] example.com over the real network (the earlier by-hand runs used localhost because the unsigned Debug build was blocked, likely Little Snitch).
+- [ ] Compact mode: Tab past a page's last field currently reveals the sidebar (product choice: keep or change).
+- [ ] The one ⌘Q that didn't quit after the failed crash attempt (not reproduced).
+- [ ] Camera and microphone sheet in a window, then close that window with another open: the camera light goes off and the tab reloads when shown again.
+- [ ] Click a `mailto:` link: the sheet reads "Allow ‹site› to open this link in Mail?" and shows only on that site's window; switching tabs closes it and clicking again asks again.
+- [ ] A page that downloads twice by script: the first saves, the second asks "wants to download several files".
+- [ ] An OAuth-style pop-up: the title reads "‹host› — ‹title›" and follows redirects to other hosts.
+- [ ] A slow download with `xattr` run before it finishes shows the quarantine.
+- [ ] A live VoiceOver pass over the downloads popover and every prompt sheet (external app, JS panels, camera and microphone, several downloads).
+- [ ] Pointer-driven steps from Tasks 9–11 that were driven by keyboard only: right-click and menu items on pages, ⌘-click and ⇧⌘-click links, the downloads button and popover, the cookie and consent style overlays on real sites.
+
+## Carried into later plans
+
+- **Downloads (plan 5 or a hardening pass):**
+  - A complete download is deleted if the finish-time re-mark throws after a successful first mark; check for an existing quarantine before deleting.
+  - `failed` doesn't claim an unclaimed file, so a narrow KVO-hop window can leave an unmarked partial.
+  - Same-name concurrent downloads can collide (unique name is check-then-use); a name can start with a combining mark; a multi-dot extension such as `a.tar (2).gz` is renamed oddly; `isControl` misses a few invisible code points (U+061C, U+2028, U+2029, U+200B–U+200D, U+2060, U+FEFF); progress NaN is unguarded.
+  - Address-bar-started downloads count toward the several-downloads gate; a question that can't be asked refuses further downloads until the page navigates (accepted).
+  - A script `a.click()` on `<a download>` can still start silent downloads before the second asks.
+  - The partial-delete KVO-to-claim path is untested; the `claimDownloadFile` test seam is in production code; main-thread `fileExists` in `~/Downloads`.
+- **Prompts and dialogs:**
+  - R15: background-tab dialogs resolve at once; queue them until the tab is shown.
+  - The external-app heading names the top page, not the frame that clicked (`NavigationRequest` has no source frame); dialog headings show the host only, no scheme or port.
+  - Pop-up titles after "Pop-up — " are not capped and an opaque-origin pop-up shows the page's own title; stale dialog-gate entries remain until forgotten; the gate counts unseen dialogs.
+  - Hibernation unload doesn't forget prompts in either window kind; `hibernateIdle` snapshots `hasOpenPopups` before awaiting the media checks (narrow race).
+- **Pages, hibernation and snapshots:**
+  - R10: pop-ups share the opener's content controller, so per-site blocking on a pop-up also changes its opener's lists; adopted pages' `isContentBlockingOn` and request store can disagree.
+  - Snapshot LRU can evict a snapshot of an owned tab that is shown elsewhere (needs 24 newer snapshots); elsewhere snapshots are polled on timers.
+  - Title-only writes are uncoalesced (a title-flipping page reloads the sidebar often); `flush` and `record` ignore `holdsWrites` in a few paths; `tabDeselected` flushes everything on every deselect; the menu snapshot is recomputed on every progress tick.
+  - After a refused-restore hold, the first allowed navigation doesn't call `updateNavigationState`; unload never tears down if `takeSnapshot` hangs; the hibernation loop exits up to 60 s after the last page closes; a window-close archive comment says `window.close` archives any tab.
+  - Same-address cross-window reset has code but no by-hand run or test; `tabClosed` or `tabUnloaded` from another window's view reconcile path is unconfirmed.
+- **Windows and routing:**
+  - A linked tab from a container tab gets the opener's store; the opener's container is assumed to be in the workspace's profile; an adopted `dataStoreID` throw leaves a stored row with no page; the router doc promises a frontmost-window fallback that returns nil.
+  - Typing for a tab shown elsewhere navigates the other window's page and `focusPage` gives up silently; `PageArea` stays blank if `request(for:)` fails.
+  - `AppDelegate` is about 490 lines (move private-window routing to an extension); the private window has no drag reorder, compact mode or resizable sidebar; its search-engine pick is per window; a no-op New Tab on a private blank placeholder; private settings are read once at open.
+  - `deleteWorkspace` and `reload()` read archived IDs and tab existence with `try?`, so a read failure reports nothing; no pinned-in-folder `deleteWorkspace` test; `tabDeselected` ordering and the host tolerating `tabClosed` then `tabDeselected` are undocumented.
+- **Strings and small tidy-ups:** literal strings left in views ("Loading", "n percent", "No tab selected"); the content-blocking menu is enabled on `about:blank` and its rule lives in the app, not StaveCore; `SiteHost` keeps IPv6 brackets and does no IDN punycode; `UserAgent` accepts "." versions; the media-question default branch hides `(false, false)`; `DownloadOwner` fallbacks; `trackDownload` and `commitCount` visibility; the `StaveWebTests` dependency on StaveCore is unused.
+- **Missing tests:** the unique `(profileID, host, key)` index, a v3-has-no-table migration control, `MAILTO:`, `ABOUT:BLANK` and typed `data:`, quarantine source URL, crash-to-commit, rule-list attachment and reattachment, the gate detaching after an allowed restore, flush resetting the throttle clock, same-state commit, the idle plus overflow union, dialog-gate and media-default identity (app target), the EngineLinkTests 60 s timeout task never cancelled, and `#expect(ready)` with no failure message.
+- **Plan 5 and other plans' items still open:** web notifications (needs the engine change 1 below), location permission, history recording and favicon images in the sidebar, find, zoom, print, Web Inspector, HTTP auth prompts, default-browser registration, passkeys, and profile and container deletion UI, as the Scope section listed.
+- **Engine changes Stave would use later** (requests to Chorus, none needed for the beta): the five listed at the end of the Tasks section above (notification bridge on any `WKUserContentController`; public `DownloadCenter.begin`, `setDestination` and `fail`; `WebSurface.DataStore.nonPersistent`; a logger subsystem parameter; an option on `DataStoreManager` to keep ITP on).
+- **Housekeeping:** delete `.superpowers/sdd/2026-10-31-stave-web-layer/` (the execution ledger, briefs, reports and review diffs) when this plan's PR is merged or the branch is wrapped up.
+- **Open questions for Nico:** whether to keep ITP on (decision 1); whether to refuse `https://user@host` links (decision 9); whether compact Tab past a page's last field should reveal the sidebar; whether a several-downloads question that can't be asked should refuse only that one download rather than the rest of the document.
