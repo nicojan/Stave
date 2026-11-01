@@ -160,13 +160,17 @@ extension BrowserWindowController: PageLifecycle {
     }
 
     /// The store replaced the tab's address and history (Back to Pinned Page). The live page is closed without a flush, so nothing of the old
-    /// page is written back, and made again from the store: here at once when this window shows it, else when its owner next shows it
-    /// (its address changed, which re-runs `showSelected` there).
+    /// page is written back, and made again from the store by whichever window shows the tab, this one or another.
     func tabNavigated(_ id: UUID) {
         guard pageHost.existingPage(id) != nil else { return }
         endQuestionsEverywhere(for: id)
         pageHost.close(id)
-        // Another owner re-reads the store first (its snapshot is stale until the revision reaches it), so it is left to its own observer.
+        // A window showing the tab remakes the page now, after re-reading the store (its snapshot would still hold the old address and
+        // history until the revision reaches it). Its own observer would also do it, but only when the address changed.
+        for controller in peers() where controller !== self && controller.model.selectedTabID == id {
+            controller.model.reload()
+            controller.showSelected()
+        }
         showSelected()
     }
 
