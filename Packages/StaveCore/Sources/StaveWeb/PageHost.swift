@@ -41,6 +41,8 @@ public final class PageHost {
     @ObservationIgnored var testRuleLists: [WKContentRuleList] = []
     /// Seam for tests: whether a page is playing media or using the camera or microphone.
     @ObservationIgnored var mediaCheck: @MainActor (WKWebView) async -> Bool = PageHost.isBusyWithMedia
+    /// Set by the app: whether the tab's page has pop-ups open, which keeps it from hibernating (ruling R14).
+    @ObservationIgnored public var hasOpenPopups: @MainActor (UUID) -> Bool = { _ in false }
 
     public init(stores: WebDataStores, contentBlocker: ContentBlockerManager, siteSettings: SiteSettingsSource, applicationName: String, now: @escaping () -> Date = Date.init) {
         self.stores = stores
@@ -159,7 +161,9 @@ public final class PageHost {
         var infos: [LivePageInfo] = []
         for page in candidates {
             let busy = page.isShown ? false : await mediaCheck(page.webView)
-            infos.append(LivePageInfo(id: page.tabID, isShown: page.isShown, lastShownAt: page.lastShownAt, isBusyWithMedia: busy))
+            infos.append(LivePageInfo(
+                id: page.tabID, isShown: page.isShown, lastShownAt: page.lastShownAt, isBusyWithMedia: busy, hasOpenPopups: hasOpenPopups(page.tabID)
+            ))
         }
         for id in HibernationPolicy.pagesToUnload(infos, now: now()) {
             // The pool may have changed while the media checks ran.

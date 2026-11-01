@@ -112,6 +112,11 @@ final class PopupRegistry {
         byOpener[popup.openerTabID] = kept.isEmpty ? nil : kept
     }
 
+    /// Whether the tab (or pop-up) opened pop-ups that are still open; such a page is kept from hibernating (ruling R14).
+    func hasPopups(openedBy tabID: UUID) -> Bool {
+        !(byOpener[tabID] ?? []).isEmpty
+    }
+
     func popup(_ id: UUID) -> PopupWindowController? {
         byOpener.values.lazy.flatMap { $0 }.first { $0.id == id }
     }

@@ -46,9 +46,10 @@ extension PageText {
         return String(message.prefix(dialogMessageLimit)) + "…"
     }
 
-    /// The dialog's heading names the page's site, so a page can't pass its text off as Stave's own.
-    public static func dialogHeading(pageURL: String) -> String {
-        guard let host = SiteHost.normalized(pageURL) else { return "This page says" }
+    /// The dialog's heading names the site of the frame that asked (a host or URL), so neither a page nor a frame inside it can pass its
+    /// text off as Stave's or the top site's. A frame with no web origin gets the neutral heading.
+    public static func dialogHeading(origin: String?) -> String {
+        guard let origin, let host = SiteHost.normalized(origin) else { return "This page says" }
         return "\(host) says"
     }
 

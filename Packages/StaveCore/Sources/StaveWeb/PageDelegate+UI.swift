@@ -36,22 +36,33 @@ extension PageDelegate {
 
     public func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {
         guard isOpen, let events else { return }
-        await events.alert(tabID: tabID, message: message)
+        await events.alert(tabID: tabID, origin: Self.dialogOrigin(of: frame), message: message)
     }
 
     public func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async -> Bool {
         guard isOpen, let events else { return false }
-        return await events.confirm(tabID: tabID, message: message)
+        return await events.confirm(tabID: tabID, origin: Self.dialogOrigin(of: frame), message: message)
     }
 
     public func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo) async -> String? {
         guard isOpen, let events else { return nil }
-        return await events.prompt(tabID: tabID, message: prompt, defaultText: defaultText)
+        return await events.prompt(tabID: tabID, origin: Self.dialogOrigin(of: frame), message: prompt, defaultText: defaultText)
     }
 
     public func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo) async -> [URL]? {
         guard isOpen, let events else { return nil }
         return await events.chooseFiles(tabID: tabID, allowsMultiple: parameters.allowsMultipleSelection, allowsDirectories: parameters.allowsDirectories)
+    }
+
+    /// The asking frame's host: its security origin's, else its request's; nil when it has none (an opaque origin such as a sandboxed srcdoc).
+    static func dialogOrigin(of frame: WKFrameInfo) -> String? {
+        dialogOrigin(securityHost: frame.securityOrigin.host, requestURL: frame.request.url)
+    }
+
+    static func dialogOrigin(securityHost: String, requestURL: URL?) -> String? {
+        if !securityHost.isEmpty { return securityHost }
+        guard let host = requestURL?.host, !host.isEmpty else { return nil }
+        return host
     }
 
     private var isOpen: Bool {

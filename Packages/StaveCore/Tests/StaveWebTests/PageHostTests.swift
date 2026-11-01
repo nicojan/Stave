@@ -357,6 +357,19 @@ struct PageHostTests {
         host.close(shown.tabID)
     }
 
+    @Test func hibernateIdleKeepsAnOpenerWithPopups() async {
+        let host = makeHost()
+        let opener = host.page(for: request(url: ""), writer: writer)
+        let other = host.page(for: request(url: ""), writer: writer)
+        host.mediaCheck = { _ in false }
+        host.hasOpenPopups = { $0 == opener.tabID }
+        clock.date += HibernationPolicy.idleLimit + 1
+        await host.hibernateIdle()
+        #expect(host.existingPage(opener.tabID) === opener)
+        #expect(host.existingPage(other.tabID) == nil)
+        host.close(opener.tabID)
+    }
+
     // MARK: Quarantine
 
     @Test func finishedDownloadIsQuarantined() throws {

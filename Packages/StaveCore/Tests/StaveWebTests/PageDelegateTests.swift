@@ -26,6 +26,8 @@ final class FakeEvents: PageEvents {
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
     var alerts: [String] = []
+    /// The asking frame's host passed with each alert, confirm and prompt.
+    var dialogOrigins: [String?] = []
     var confirmAnswer = false
     var promptAnswer: String?
     var chosenFiles: [URL]?
@@ -69,9 +71,9 @@ final class FakeEvents: PageEvents {
         return mediaAnswer
     }
 
-    func alert(tabID: UUID, message: String) async { alerts.append(message) }
-    func confirm(tabID: UUID, message: String) async -> Bool { confirmAnswer }
-    func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? { promptAnswer }
+    func alert(tabID: UUID, origin: String?, message: String) async { alerts.append(message); dialogOrigins.append(origin) }
+    func confirm(tabID: UUID, origin: String?, message: String) async -> Bool { dialogOrigins.append(origin); return confirmAnswer }
+    func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? { dialogOrigins.append(origin); return promptAnswer }
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? { chosenFiles }
     /// False: no owner can be found for the page, so its downloads are refused.
     var hasOwner = true
@@ -585,7 +587,27 @@ struct PageDelegateTests {
         #expect(try await page.webView.evaluateJavaScript("confirm('ok?')") as? Bool == true)
         events.promptAnswer = "x"
         #expect(try await page.webView.evaluateJavaScript("prompt('name?')") as? String == "x")
+        #expect(events.dialogOrigins == ["example.com", "example.com", "example.com"])
         host.close(page.tabID)
+    }
+
+    /// A dialog from a frame is attributed to that frame, never to the top page: an opaque-origin (sandboxed srcdoc) frame names no site.
+    @Test func dialogsNameTheAskingFrame() async throws {
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let html = "<title>T</title><iframe sandbox='allow-scripts allow-modals' srcdoc=\"<script>alert('from frame')</script>\"></iframe>"
+        page.webView.loadHTMLString(html, baseURL: URL(string: "https://example.com/"))
+        let asked = try await waitUntil { events.alerts.contains("from frame") }
+        #expect(asked)
+        #expect(events.dialogOrigins.last == .some(nil))
+        host.close(page.tabID)
+    }
+
+    @Test func dialogOriginPrefersTheSecurityOrigin() {
+        #expect(PageDelegate.dialogOrigin(securityHost: "ads.example.net", requestURL: URL(string: "https://example.com/")) == "ads.example.net")
+        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: URL(string: "https://frame.example.org/x")) == "frame.example.org")
+        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: URL(string: "about:srcdoc")) == nil)
+        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: nil) == nil)
     }
 
     // MARK: Media

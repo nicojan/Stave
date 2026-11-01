@@ -13,9 +13,10 @@ import WebKit
     func closePage(_ tabID: UUID)
     func confirmExternalApp(url: URL, appName: String) async -> Bool
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
-    func alert(tabID: UUID, message: String) async
-    func confirm(tabID: UUID, message: String) async -> Bool
-    func prompt(tabID: UUID, message: String, defaultText: String?) async -> String?
+    /// `origin`: the host of the frame that asked (nil for a frame with no web origin), which the dialog names instead of the top page.
+    func alert(tabID: UUID, origin: String?, message: String) async
+    func confirm(tabID: UUID, origin: String?, message: String) async -> Bool
+    func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String?
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]?
     /// Whose downloads list the page's download joins. Nil: no owner can be found, and the download is refused.
     func downloadOwner(tabID: UUID) -> DownloadOwner?

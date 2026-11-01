@@ -16,6 +16,15 @@ import Testing
         #expect(HibernationPolicy.pagesToUnload([shown, busy, old, recent], now: now) == [old.id])
     }
 
+    /// Ruling R14: an opener with open pop-ups keeps its page (a pop-up's `window.opener`, e.g. an OAuth sign-in, needs it).
+    @Test func openerWithPopupsIsNeverUnloaded() {
+        let opener = LivePageInfo(id: UUID(), isShown: false, lastShownAt: now.addingTimeInterval(-3600), isBusyWithMedia: false, hasOpenPopups: true)
+        let old = page(minutesAgo: 31)
+        #expect(HibernationPolicy.pagesToUnload([opener, old], now: now) == [old.id])
+        let crowd = (0..<30).map { _ in LivePageInfo(id: UUID(), isShown: false, lastShownAt: now, isBusyWithMedia: false, hasOpenPopups: true) }
+        #expect(HibernationPolicy.pagesToUnload(crowd, now: now).isEmpty)
+    }
+
     @Test func idleBoundaryIsInclusive() {
         let exact = page(minutesAgo: 30)
         #expect(HibernationPolicy.pagesToUnload([exact], now: now) == [exact.id])

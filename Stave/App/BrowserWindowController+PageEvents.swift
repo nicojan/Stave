@@ -71,16 +71,16 @@ extension BrowserWindowController: PageEvents {
         await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
     }
 
-    func alert(tabID: UUID, message: String) async {
-        await prompts.alert(tabID: tabID, message: message)
+    func alert(tabID: UUID, origin: String?, message: String) async {
+        await prompts.alert(tabID: tabID, origin: origin, message: message)
     }
 
-    func confirm(tabID: UUID, message: String) async -> Bool {
-        await prompts.confirm(tabID: tabID, message: message)
+    func confirm(tabID: UUID, origin: String?, message: String) async -> Bool {
+        await prompts.confirm(tabID: tabID, origin: origin, message: message)
     }
 
-    func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? {
-        await prompts.prompt(tabID: tabID, message: message, defaultText: defaultText)
+    func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
+        await prompts.prompt(tabID: tabID, origin: origin, message: message, defaultText: defaultText)
     }
 
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? {

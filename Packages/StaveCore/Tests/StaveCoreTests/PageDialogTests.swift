@@ -55,9 +55,11 @@ struct PageDialogTests {
     }
 
     @Test func headingNamesTheOrigin() {
-        #expect(PageText.dialogHeading(pageURL: "https://www.example.com:8443/path") == "example.com says")
-        #expect(PageText.dialogHeading(pageURL: "") == "This page says")
-        #expect(PageText.dialogHeading(pageURL: "about:blank") == "This page says")
+        #expect(PageText.dialogHeading(origin: "https://www.example.com:8443/path") == "example.com says")
+        #expect(PageText.dialogHeading(origin: "ads.example.net") == "ads.example.net says")
+        #expect(PageText.dialogHeading(origin: "") == "This page says")
+        #expect(PageText.dialogHeading(origin: nil) == "This page says")
+        #expect(PageText.dialogHeading(origin: "about:blank") == "This page says")
         #expect(PageText.stopDialogsOption == "Don’t show more dialogs from this page")
     }
 

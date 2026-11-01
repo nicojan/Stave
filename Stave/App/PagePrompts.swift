@@ -19,8 +19,14 @@ final class PagePrompts {
     /// Whether this window shows the tab now; a nil tab (the external-app question) is always allowed.
     private let shows: (UUID) -> Bool
     private var panels: [UUID: PagePanel] = [:]
-    /// Per page: stops a page that loops `alert()` from locking the window (`PageDialogGate`).
-    private var gates: [UUID: PageDialogGate] = [:]
+    /// Per tab: stops a page that loops `alert()` from locking the window (`PageDialogGate`). Each gate belongs to one `LivePage` (held
+    /// weakly): a page that was unloaded or remade gets a fresh gate, so a stopped gate never matches the new page's commit count.
+    private var gates: [UUID: GateEntry] = [:]
+
+    private struct GateEntry {
+        weak var page: LivePage?
+        var gate: PageDialogGate
+    }
     private var isClosed = false
 
     init(window: NSWindow, pageHost: PageHost, shows: @escaping (UUID) -> Bool) {
@@ -40,8 +46,8 @@ final class PagePrompts {
         return await present(alert, for: nil) == .alertFirstButtonReturn
     }
 
-    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site". A cancelled sheet denies and remembers
-    /// nothing.
+    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). A
+    /// cancelled sheet denies and remembers nothing.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
         let alert = NSAlert()
         alert.messageText = PageText.mediaQuestion(host: host, camera: camera, microphone: microphone)
@@ -49,27 +55,27 @@ final class PagePrompts {
         alert.addButton(withTitle: PageText.dontAllowButton)
         alert.showsSuppressionButton = true
         alert.suppressionButton?.title = PageText.rememberForSite
-        alert.suppressionButton?.state = .off
+        alert.suppressionButton?.state = .on
         let response = await present(alert, for: tabID)
         guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return (false, false) }
         return (response == .alertFirstButtonReturn, alert.suppressionButton?.state == .on)
     }
 
-    func alert(tabID: UUID, message: String) async {
-        guard let alert = dialog(tabID: tabID, message: message) else { return }
+    func alert(tabID: UUID, origin: String?, message: String) async {
+        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return }
         alert.addButton(withTitle: PageText.okButton)
         _ = await presentDialog(alert, tabID: tabID)
     }
 
-    func confirm(tabID: UUID, message: String) async -> Bool {
-        guard let alert = dialog(tabID: tabID, message: message) else { return false }
+    func confirm(tabID: UUID, origin: String?, message: String) async -> Bool {
+        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return false }
         alert.addButton(withTitle: PageText.okButton)
         alert.addButton(withTitle: PageText.cancelButton)
         return await presentDialog(alert, tabID: tabID) == .alertFirstButtonReturn
     }
 
-    func prompt(tabID: UUID, message: String, defaultText: String?) async -> String? {
-        guard let alert = dialog(tabID: tabID, message: message) else { return nil }
+    func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
+        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return nil }
         let field = NSTextField(string: PageText.dialogMessage(defaultText ?? ""))
         field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
         field.setAccessibilityLabel(PageText.dialogMessage(message))
@@ -127,16 +133,16 @@ final class PagePrompts {
         return true
     }
 
-    /// The JavaScript dialog: the page's site as the heading and its capped text below. Nil when the page's dialogs were stopped, so the
-    /// question resolves at once.
-    private func dialog(tabID: UUID, message: String) -> NSAlert? {
-        let page = pageHost.existingPage(tabID)
-        var gate = gates[tabID] ?? PageDialogGate()
-        let verdict = gate.next(at: Date(), navigation: page?.commitCount ?? 0)
-        gates[tabID] = gate
+    /// The JavaScript dialog: the asking frame's site as the heading and its capped text below. Nil when the page's dialogs were stopped,
+    /// or the page is gone, so the question resolves at once.
+    private func dialog(tabID: UUID, origin: String?, message: String) -> NSAlert? {
+        guard let page = pageHost.existingPage(tabID) else { return nil }
+        var entry = gates[tabID].flatMap { $0.page === page ? $0 : nil } ?? GateEntry(page: page, gate: PageDialogGate())
+        let verdict = entry.gate.next(at: Date(), navigation: page.commitCount)
+        gates[tabID] = entry
         guard case .ask(let offerToStop) = verdict else { return nil }
         let alert = NSAlert()
-        alert.messageText = PageText.dialogHeading(pageURL: page?.status.url ?? "")
+        alert.messageText = PageText.dialogHeading(origin: origin)
         alert.informativeText = PageText.dialogMessage(message)
         if offerToStop {
             alert.showsSuppressionButton = true
@@ -148,11 +154,13 @@ final class PagePrompts {
 
     /// Shows a JavaScript dialog; a ticked "Don't show more dialogs" stops the page's dialogs until it navigates.
     private func presentDialog(_ alert: NSAlert, tabID: UUID) async -> NSApplication.ModalResponse {
-        let navigation = pageHost.existingPage(tabID)?.commitCount ?? 0
+        let page = pageHost.existingPage(tabID)
+        let navigation = page?.commitCount ?? 0
         let response = await present(alert, for: tabID)
-        if alert.showsSuppressionButton, alert.suppressionButton?.state == .on, var gate = gates[tabID] {
-            gate.stop(navigation: navigation)
-            gates[tabID] = gate
+        // Only the page that asked is stopped; a page remade while the sheet was up keeps its own fresh gate.
+        if alert.showsSuppressionButton, alert.suppressionButton?.state == .on, var entry = gates[tabID], let page, entry.page === page {
+            entry.gate.stop(navigation: navigation)
+            gates[tabID] = entry
         }
         return response
     }

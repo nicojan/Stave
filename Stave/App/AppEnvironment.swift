@@ -82,6 +82,9 @@ final class AppEnvironment {
             applicationName: UserAgent.applicationName(safariVersion: Self.systemSafariVersion())
         )
         self.pageHost = host
+        // An opener with pop-ups open never hibernates: the pop-up's `window.opener` (an OAuth sign-in, say) needs its page (ruling R14).
+        let popups = self.popups
+        host.hasOpenPopups = { [weak popups] id in popups?.hasPopups(openedBy: id) ?? false }
         // Lists that compile after pages were made are attached to them, taking effect from each page's next load.
         blocker.onReady = { [weak host] in host?.reattachRuleLists() }
         blocker.start()
