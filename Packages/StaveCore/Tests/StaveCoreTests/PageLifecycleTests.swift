@@ -10,6 +10,8 @@ private final class FakePages: PageLifecycle {
     func tabClosed(_ id: UUID) { closed.append(id) }
     func tabUnloaded(_ id: UUID) { unloaded.append(id) }
     func tabDeselected(_ id: UUID) { deselected.append(id) }
+    var navigated: [UUID] = []
+    func tabNavigated(_ id: UUID) { navigated.append(id) }
 }
 
 @MainActor
@@ -200,5 +202,48 @@ struct PageLifecycleTests {
         #expect(selected.url == "https://example.net/")
         #expect(loads.map(\.0) == [selected.id])
         #expect(loads.map(\.1) == ["https://example.net/"])
+    }
+
+    @Test func linkedTabKeepsOpenersContainerAndStore() throws {
+        let world = try makeWorld()
+        let container = try world.store.createContainer(profileID: world.profile.id, name: "C", colorHex: "#000000")
+        let opener = try world.store.openTab(url: "https://example.com/a", title: "a", workspaceID: world.home.id, origin: .commandBar, containerID: container.id, edge: .bottom)
+        let plain = try world.tab("b")
+        let window = try world.window(selected: opener.id)
+        let linked = try #require(window.openLinkedTab(url: "https://example.org/", opener: opener.id, select: false))
+        let fromPlain = try #require(window.openLinkedTab(url: "https://example.net/", opener: plain.id, select: false))
+        let stored = try #require(try world.store.regularTabs(workspaceID: world.home.id).first { $0.id == linked })
+        #expect(stored.containerID == container.id)
+        #expect(try world.store.dataStoreID(forTab: linked) == container.dataStoreID)
+        #expect(try world.store.dataStoreID(forTab: fromPlain) == world.profile.dataStoreID)
+    }
+
+    @Test func backToPinnedPageTellsTheLivePage() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("pinned")
+        try world.store.pinTab(tab.id, folderID: nil)
+        try world.store.updateNavigation(tabID: tab.id, url: "https://example.com/drifted", title: "d", faviconURL: nil, interactionState: Data([1]))
+        let window = try world.window(selected: tab.id)
+        let pages = FakePages()
+        window.pages = pages
+        window.resetPinned(tab.id)
+        #expect(pages.navigated == [tab.id])
+        #expect(window.selectedTab?.url == "https://example.com/pinned")
+        #expect(window.selectedTab?.interactionState == nil)
+        // A regular tab can't be reset: nothing changes, nothing is reported.
+        let regular = try world.tab("regular")
+        window.resetPinned(regular.id)
+        #expect(pages.navigated == [tab.id])
+    }
+
+    @Test func navigateSelectedTellsTheLivePage() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        let pages = FakePages()
+        window.pages = pages
+        window.navigateSelected(to: "https://example.org/next")
+        #expect(pages.navigated == [tab.id])
+        #expect(window.selectedTab?.url == "https://example.org/next")
     }
 }

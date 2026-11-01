@@ -140,15 +140,34 @@ extension BrowserWindowController: PageLifecycle {
 
     // MARK: - PageLifecycle
 
+    /// Ends the tab's pending questions in every window: the sheet may be up in the window that showed the page, not the one that closed it.
+    private func endQuestionsEverywhere(for id: UUID) {
+        let all = peers()
+        for controller in all.contains(where: { $0 === self }) ? all : all + [self] {
+            controller.endPanels { $0.tabID == id }
+        }
+    }
+
     func tabClosed(_ id: UUID) {
-        endPanels { $0.tabID == id }
+        endQuestionsEverywhere(for: id)
         pendingTyped[id] = nil
         pageHost.close(id)
     }
 
     func tabUnloaded(_ id: UUID) {
-        endPanels { $0.tabID == id }
+        endQuestionsEverywhere(for: id)
         pageHost.unload(id)
+    }
+
+    /// The store replaced the tab's address and history (Back to Pinned Page). The live page is closed without a flush, so nothing of the old
+    /// page is written back, and made again from the store: here at once when this window shows it, else when its owner next shows it
+    /// (its address changed, which re-runs `showSelected` there).
+    func tabNavigated(_ id: UUID) {
+        guard pageHost.existingPage(id) != nil else { return }
+        endQuestionsEverywhere(for: id)
+        pageHost.close(id)
+        // Another owner re-reads the store first (its snapshot is stale until the revision reaches it), so it is left to its own observer.
+        showSelected()
     }
 
     /// Keeps a snapshot for "showing in another window" and writes the page's pending state. The page stays shown when another window

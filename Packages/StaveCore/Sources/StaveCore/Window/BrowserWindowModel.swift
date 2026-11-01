@@ -10,6 +10,9 @@ public protocol PageLifecycle: AnyObject {
     func tabUnloaded(_ id: UUID)
     /// This window stopped showing the tab (selection moved on or cleared).
     func tabDeselected(_ id: UUID)
+    /// The tab's stored address and history were replaced from outside its page (Back to Pinned Page, `navigateSelected`): a live page must
+    /// follow the store instead of writing its old page back.
+    func tabNavigated(_ id: UUID)
 }
 
 /// What one browser window shows and does. Views read it and call it; every write goes through `perform(_:)`,
@@ -279,11 +282,12 @@ public final class BrowserWindowModel {
     }
 
     /// A link that opens a new tab (target=_blank, window.open, middle-click). It lands by the opener's placement rule and is selected only
-    /// when `select` is true. Nil when the opener is gone.
+    /// when `select` is true, and it keeps the opener's container: the page WebKit makes for it shares the opener's data store, so the stored
+    /// tab must too. Nil when the opener is gone.
     @discardableResult
     public func openLinkedTab(url: String, opener: UUID, select shouldSelect: Bool) -> UUID? {
-        guard Self.allTabs(in: snapshot).contains(where: { $0.id == opener }),
-              let created = createTab(url: url, origin: .link(openerTabID: opener), containerID: nil) else { return nil }
+        guard let openerTab = Self.allTabs(in: snapshot).first(where: { $0.id == opener }),
+              let created = createTab(url: url, origin: .link(openerTabID: opener), containerID: openerTab.containerID) else { return nil }
         if shouldSelect { select(created.id) }
         return created.id
     }
@@ -297,10 +301,12 @@ public final class BrowserWindowModel {
         }
     }
 
-    /// No web layer yet: stores the URL and clears the title so the sidebar shows the host.
+    /// Stores the URL, clears the title (the sidebar shows the host) and the history; a live page then reloads from the store.
     public func navigateSelected(to url: String) {
         guard let id = selectedTabID else { return }
-        perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
+        if perform({ try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }) != nil {
+            pages?.tabNavigated(id)
+        }
     }
 
     /// Closing the selected tab selects the tab row below it, else the one above, else nothing. An Essential follows grid order instead.
@@ -389,7 +395,10 @@ public final class BrowserWindowModel {
         livePages.tabRemoved(id)
         pages?.tabClosed(id)
     }
-    public func resetPinned(_ tabID: UUID) { perform { try store.resetPinnedTab(tabID) } }
+    /// Back to Pinned Page: the store takes the pinned address and drops the history; a live page then reloads from the store.
+    public func resetPinned(_ tabID: UUID) {
+        if perform({ try store.resetPinnedTab(tabID) }) != nil { pages?.tabNavigated(tabID) }
+    }
 
     // MARK: - Moving
 

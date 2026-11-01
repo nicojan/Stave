@@ -30,6 +30,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     /// Set by the app delegate: the first-run sheet's Continue, and the import sheet's "Choose Another File…".
     var onCompleteFirstRun: (SearchEngine, Bool) -> Void = { _, _ in }
     var onChooseAnotherFile: (ArcImportSession) -> Void = { _ in }
+    /// Every open browser window (set by the app delegate), so a closed tab's questions end wherever they are up.
+    var peers: () -> [BrowserWindowController] = { [] }
     private(set) var isClosed = false
 
     init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onImportFromArc: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {

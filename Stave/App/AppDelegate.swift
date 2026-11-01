@@ -365,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.completeFirstRun(on: controller, engine: engine, importFromArc: importArc)
         }
         controller.onChooseAnotherFile = { [weak self] session in self?.importCoordinator?.chooseAnotherFile(for: session) }
+        controller.peers = { [weak self] in self?.controllers ?? [] }
         // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it. Only after the
         // controller exists: a failed init must leave the saved set alone.
         environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID } + [controller.model.windowID]))
