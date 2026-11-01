@@ -1,0 +1,45 @@
+public enum PageFailure: Sendable, Equatable {
+    case refused(url: String)
+    case noAppForLink(url: String)
+    case loadFailed(host: String, message: String)
+    case insecure(host: String)
+    case crashed
+}
+
+/// Every string shown in the page area.
+public enum PageText {
+    public static func title(_ f: PageFailure) -> String {
+        switch f {
+        case .refused: "Stave won't open this address"
+        case .noAppForLink: "No app can open this link"
+        case .loadFailed: "Stave couldn't open this page"
+        case .insecure: "This connection isn't private"
+        case .crashed: "This page stopped working"
+        }
+    }
+
+    public static func detail(_ f: PageFailure) -> String {
+        switch f {
+        case .refused(let url): "Stave only opens web addresses. It won't open \(url)."
+        case .noAppForLink(let url): "Nothing on this Mac is set up to open \(url)."
+        case .loadFailed(_, let message): message
+        case .insecure(let host): "Stave can't confirm that \(host) is the site it says it is, so it didn't open it."
+        case .crashed: "Reload the tab to try again."
+        }
+    }
+
+    public static let newTabHint = "Press ⌘L to enter an address or search."
+
+    public static func externalAppQuestion(appName: String) -> String { "Open this link in \(appName)?" }
+
+    public static func mediaQuestion(host: String, camera: Bool, microphone: Bool) -> String {
+        let what = switch (camera, microphone) {
+        case (true, true): "camera and microphone"
+        case (true, false): "camera"
+        default: "microphone"
+        }
+        return "Allow \(host) to use your \(what)?"
+    }
+
+    public static let elsewhereTitle = "This tab is open in another window"
+}
