@@ -601,25 +601,27 @@ By-hand run, Step 2 (DRM and YouTube): the unsigned Debug build reached the netw
 
 Nico checks (not seen by the build sessions):
 
-- [ ] Sign in at Google, then open Google Docs and edit a document.
-- [ ] Sign in at Microsoft; watch for an SSO redirect loop (decision 1, ITP on).
-- [ ] Sign in with Apple.
-- [ ] An Okta-style SSO sign-in that uses a pop-up window; the pop-up title should lead with the host.
-- [ ] Sign in at GitHub.
-- [ ] Google Meet with camera and microphone: the sheet, then the macOS prompt, then "Remember for this site" honoured on reload.
-- [ ] DRM playback on `https://bitmovin.com/demos/drm` (dismiss the overlays by hand), YouTube playback with fullscreen and Picture in Picture.
-- [ ] Debug ▸ Crash Page Process on a signed build (the unsigned build was refused by libxpc): the crash panel shows, and Reload recovers.
-- [ ] Downloads on a signed build: the popover (Cancel, Show in Finder, Clear), `xattr -p com.apple.quarantine ~/Downloads/<file>` while a slow download is still running, and whether the first download freezes the UI (the unsigned build hung on the Downloads-folder privacy prompt).
-- [ ] A private download end to end; closing that private window cancels it; and a real example.com page in a private window.
-- [ ] example.com over the real network (the earlier by-hand runs used localhost because the unsigned Debug build was blocked, likely Little Snitch).
-- [ ] Compact mode: Tab past a page's last field currently reveals the sidebar (product choice: keep or change).
-- [ ] The one ⌘Q that didn't quit after the failed crash attempt (not reproduced).
-- [ ] Camera and microphone sheet in a window, then close that window with another open: the camera light goes off and the tab reloads when shown again.
-- [ ] Click a `mailto:` link: the sheet reads "Allow ‹site› to open this link in Mail?" and shows only on that site's window; switching tabs closes it and clicking again asks again.
-- [ ] A page that downloads twice by script: the first saves, the second asks "wants to download several files".
-- [ ] An OAuth-style pop-up: the title reads "‹host› — ‹title›" and follows redirects to other hosts.
-- [ ] A live VoiceOver pass over the downloads popover and every prompt sheet (external app, JS panels, camera and microphone, several downloads).
-- [ ] Pointer-driven steps from Tasks 9–11 that were driven by keyboard only: right-click and menu items on pages, ⌘-click and ⇧⌘-click links, the downloads button and popover, the cookie and consent style overlays on real sites.
+Walkthrough, first pass (2026-11-01, unattended session): the Debug app was built signed with Nico's Apple Development identity (team passed on the `xcodebuild` command line only: `CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=<Apple Development SHA-1> DEVELOPMENT_TEAM=<team>`; bundle ID stays `com.nicojan.Stave.debug`; nothing committed) and run on `/private/tmp/stave-nico-checks`. Little Snitch held every internet connection at an alert ("Stave has been modified", because the signature changed), so this pass used local pages served from `127.0.0.1:8765` and keyboard, accessibility and in-window pointer events only. Items marked "not run" still need Nico.
+
+- [ ] Sign in at Google, then open Google Docs and edit a document. *Not run (account, network).*
+- [ ] Sign in at Microsoft; watch for an SSO redirect loop (decision 1, ITP on). *Not run.*
+- [ ] Sign in with Apple. *Not run.*
+- [ ] An Okta-style SSO sign-in that uses a pop-up window; the pop-up title should lead with the host. *Not run; the local pop-up check below passed.*
+- [ ] Sign in at GitHub. *Not run.*
+- [ ] Google Meet with camera and microphone: the sheet, then the macOS prompt, then "Remember for this site" honoured on reload. *Not run. On a local `getUserMedia` page, WebKit asked macOS first (`TCCAccessRequest` in the log) and Stave's sheet never appeared. The macOS camera prompt was probably queued behind the pending Downloads-folder prompt. Recheck once that prompt is answered; the expected order (Stave's sheet first) may be wrong.*
+- [ ] DRM playback on `https://bitmovin.com/demos/drm` (dismiss the overlays by hand), YouTube playback with fullscreen and Picture in Picture. *Not run (network).*
+- [ ] Debug ▸ Crash Page Process on a signed build (the unsigned build was refused by libxpc): the crash panel shows, and Reload recovers. **Fail (menu item):** also refused on the Apple Development-signed build (`Could not signal service com.apple.WebKit.WebContent: 1: Operation not permitted`), so nothing happens. Crash panel and Reload **pass** when the page's WebContent process is ended from the terminal (`kill -9 <pid>`). The panel reads "This page stopped working / Reload the tab to try again." and Reload brings the page back. AX note: the subtitle appears twice in the accessibility tree.
+- [ ] Downloads on a signed build: the popover (Cancel, Show in Finder, Clear), `xattr -p com.apple.quarantine ~/Downloads/<file>` while a slow download is still running, and whether the first download freezes the UI (the unsigned build hung on the Downloads-folder privacy prompt). **Fail:** the first download freezes the whole app. `sample` shows the main thread blocked in `PageDelegate.download(_:decideDestinationUsing:)` → WebKit `SandboxExtension::createHandle` → `sandbox_extension_issue` for the `~/Downloads` path while macOS shows "“Stave.app” would like to access files in your Downloads folder." Stave stays hung until the prompt is answered. Reproduced twice (once from a private window). The popover, quarantine attribute and Clear were not reached.
+- [ ] A private download end to end; closing that private window cancels it; and a real example.com page in a private window. *Not reached (download freeze; network). A private window loads a local page, and no private window comes back after relaunch.*
+- [ ] example.com over the real network (the earlier by-hand runs used localhost because the unsigned Debug build was blocked, likely Little Snitch). *Blocked by the Little Snitch alert; needs Nico to accept the modified binary.*
+- [ ] Compact mode: Tab past a page's last field currently reveals the sidebar (product choice: keep or change). *Seen: Tab from the last field reveals the sidebar with focus in the tab list. Decision pending. Also seen: in compact mode the traffic lights overlap the page's top-left content.*
+- [x] The one ⌘Q that didn't quit after the failed crash attempt (not reproduced). *After a refused Crash Page Process, a crash and Reload, ⌘Q quit within 4 s.*
+- [ ] Camera and microphone sheet in a window, then close that window with another open: the camera light goes off and the tab reloads when shown again. *Not reached (camera prompt pending, see Meet).*
+- [ ] Click a `mailto:` link: the sheet reads "Allow ‹site› to open this link in Mail?" and shows only on that site's window; switching tabs closes it and clicking again asks again. **Partial fail.** The text is right ("Allow localhost to open this link in Mail?" with the address below), it shows only on the clicking window, and after Cancel a second click asks again. But the sheet is window-modal, so tabs can't be switched in that window while it's up. When a second window takes the page ("Bring It Here"), the first window keeps the sheet up for a page it no longer shows, and its Open button still works.
+- [ ] A page that downloads twice by script: the first saves, the second asks "wants to download several files". *Not reached (download freeze).*
+- [x] An OAuth-style pop-up: the title reads "‹host› — ‹title›" and follows redirects to other hosts. *Local chain `localhost` → 302 → `localhost` → 302 → `127.0.0.1`: the pop-up window title ended as "127.0.0.1 — Landing".*
+- [ ] A live VoiceOver pass over the downloads popover and every prompt sheet (external app, JS panels, camera and microphone, several downloads). *Live VoiceOver not run. AX tree read: JS alert, confirm and prompt sheets read "localhost says" plus the text, the prompt field is labelled with its question, and the external-app sheet reads as above. After three dialogs in 10 s the "Don't show more dialogs from this page" box appears, and ticking it stops the next dialog (R13).*
+- [ ] Pointer-driven steps from Tasks 9–11 that were driven by keyboard only: right-click and menu items on pages, ⌘-click and ⇧⌘-click links, the downloads button and popover, the cookie and consent style overlays on real sites. *Partly seen. ⌘-click opens a background tab below the opener, and ⇧⌘-click opens and selects one there. Right-click on a link shows WebKit's default menu (Open Link, Open Link in New Window, Download Linked File, Copy Link, Share…, Services), with no "Open Link in New Tab". Downloads button, popover and real-site overlays not reached.*
 
 ## Carried into later plans
 
