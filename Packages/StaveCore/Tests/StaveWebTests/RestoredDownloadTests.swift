@@ -40,7 +40,8 @@ extension PageDelegateTests {
         let page = try await storedPage(host)
         #expect(try await startDownload(on: page, named: "auto.txt") == nil)
         #expect(events.downloads.items(for: .profile(page.tabID)).isEmpty)
-        // Refused without asking: no "several files" question either.
+        // Asked "wants to download a file" and declined (the fake's default answer); no "several files" question yet.
+        #expect(events.downloadQuestions.count == 1)
         #expect(events.severalDownloadsQuestions.isEmpty)
         // A key pressed in the page is the user acting on it. The refused download counted as the document's first, so this one asks.
         page.webView.keyDown(with: try keyPress())
@@ -70,6 +71,31 @@ extension PageDelegateTests {
         #expect(try await startDownload(on: page, named: "second.txt") == nil)
         #expect(events.downloadQuestions.count == 1)
         #expect(events.severalDownloadsQuestions.count == 1)
+        host.close(page.tabID)
+    }
+
+    /// A reopened page nobody touched that reloads itself would otherwise ask on every load.
+    @Test func declinedDownloadStaysDeclinedUntilTheUserActs() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.downloadAnswer = false
+        let host = makeHost()
+        let page = try await storedPage(host)
+        #expect(try await startDownload(on: page, named: "a.txt") == nil)
+        #expect(events.downloadQuestions.count == 1)
+        // The page reloads itself, twice, and downloads again: refused without asking.
+        for name in ["b.txt", "c.txt"] {
+            page.committed()
+            #expect(try await startDownload(on: page, named: name) == nil)
+        }
+        #expect(events.downloadQuestions.count == 1)
+        #expect(page.awaitsUserAction)
+        // Once the user acts on the page, the usual rules apply: a new document's first download goes ahead.
+        page.userActed()
+        page.committed()
+        #expect(try await startDownload(on: page, named: "d.txt") != nil)
+        #expect(events.downloadQuestions.count == 1)
         host.close(page.tabID)
     }
 

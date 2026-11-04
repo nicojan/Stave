@@ -108,6 +108,10 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// Counts the downloads of the page's current document, so a page can't save file after file with no click.
     private var downloadGate = PageDownloadGate()
     private var downloadQuestionPending = false
+    /// The user said Don't Allow to this page's "wants to download a file" while nobody had acted on it. A page Stave reopened that keeps
+    /// reloading itself would otherwise ask on every load; the refusal holds for as long as the page awaits the user (the question is only
+    /// ever asked of such a page, and a page made again gets a new delegate).
+    private var declinedUntouchedDownload = false
     static let externalCooldown: TimeInterval = 1
 
     /// `events` may be nil; the host's `events` is used then.
@@ -356,10 +360,11 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         case .proceed: return true
         case .refuse: return false
         case .askFirst:
-            guard !downloadQuestionPending, let events else { return false }
+            guard !declinedUntouchedDownload, !downloadQuestionPending, let events else { return false }
             downloadQuestionPending = true
             let allowed = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
             downloadQuestionPending = false
+            if !allowed { declinedUntouchedDownload = true }
             return allowed
         case .ask:
             guard !downloadQuestionPending, let events else { return false }
