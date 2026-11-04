@@ -167,17 +167,13 @@ public final class PageHost {
     /// session's store and its camera and microphone answers go, so the next private window starts fresh.
     public func leavePrivateSession(profileID: UUID) {
         // The session ID is read before the store registry drops it.
-        let sessionStore = privateSessionStoreKey(profileID: profileID)
-        if stores.leavePrivateSession(profileID: profileID), let sessionStore {
-            privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != sessionStore }
+        let sessionID = stores.privateSessionID(profileID: profileID)
+        if stores.leavePrivateSession(profileID: profileID), let sessionID {
+            forgetPrivate(sessionID: sessionID)
         }
     }
 
-    private func privateSessionStoreKey(profileID: UUID) -> DataStoreKey? {
-        stores.privateSessionID(profileID: profileID).map { .privateSession($0) }
-    }
-
-    /// Drops one session's in-memory answers (tests, and the last window's close).
+    /// Drops one session's in-memory camera and microphone answers. Runs when the session's last window closes (`leavePrivateSession`).
     func forgetPrivate(sessionID: UUID) {
         let store = DataStoreKey.privateSession(sessionID)
         privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != store }

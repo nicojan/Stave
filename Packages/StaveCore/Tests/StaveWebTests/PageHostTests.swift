@@ -55,9 +55,13 @@ struct PageHostTests {
     let clock = TestClock()
     let writer = FakeWriter()
     let settings = FakeSiteSettings()
+    /// The stores of every host made here unless a test passes its own; a private page's session is joined here (a `.privateSession` ID
+    /// must name a joined session).
+    let sharedStores = WebDataStores()
 
-    func makeHost(stores: WebDataStores = WebDataStores()) -> PageHost {
+    func makeHost(stores: WebDataStores? = nil) -> PageHost {
         let clock = clock
+        let stores = stores ?? sharedStores
         return PageHost(
             stores: stores,
             contentBlocker: ContentBlockerManager(),
@@ -68,7 +72,7 @@ struct PageHostTests {
     }
 
     func request(_ tabID: UUID = UUID(), url: String, state: Data? = nil) -> PageRequest {
-        PageRequest(tabID: tabID, store: .privateSession(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: state)
+        PageRequest(tabID: tabID, store: .privateSession(sharedStores.joinPrivateSession(profileID: UUID())), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: state)
     }
 
     /// Polls on the main actor without blocking it.
@@ -106,7 +110,7 @@ struct PageHostTests {
         #expect(storeB !== storeA)
         #expect(storeB.identifier == b)
         #expect(stores.store(for: .persistent(a)) === storeA)
-        #expect(!stores.store(for: .privateSession(w)).isPersistent)
+        #expect(!stores.store(for: .privateSession(stores.joinPrivateSession(profileID: w))).isPersistent)
         await removePersistentStores([a, b])
     }
 
@@ -164,7 +168,7 @@ struct PageHostTests {
     @Test func noDefaultStoreEver() async {
         let stores = WebDataStores()
         let p = UUID()
-        let made = [stores.store(for: .persistent(p)), stores.store(for: .privateSession(UUID()))]
+        let made = [stores.store(for: .persistent(p)), stores.store(for: .privateSession(stores.joinPrivateSession(profileID: UUID())))]
         let defaultStore = WKWebsiteDataStore.default()
         for store in made {
             #expect(store !== defaultStore)
@@ -469,10 +473,10 @@ struct PageHostTests {
         let host = makeHost()
         let profile = UUID()
         settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
-        let off = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        let off = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(sharedStores.joinPrivateSession(profileID: UUID())), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
         // A blank URL has no host, so the profile's other sites keep blocking on.
         #expect(off.isContentBlockingOn)
-        let request = PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "https://www.example.com/x", title: "", faviconURL: nil, interactionState: nil)
+        let request = PageRequest(tabID: UUID(), store: .privateSession(sharedStores.joinPrivateSession(profileID: UUID())), siteSettingsProfileID: profile, url: "https://www.example.com/x", title: "", faviconURL: nil, interactionState: nil)
         #expect(!host.blockingWanted(for: request))
         host.close(off.tabID)
     }
@@ -480,7 +484,7 @@ struct PageHostTests {
     @Test func setContentBlockingStoresTheSiteChoice() {
         let host = makeHost()
         let profile = UUID()
-        let page = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        let page = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(sharedStores.joinPrivateSession(profileID: UUID())), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
         page.status.url = "https://example.com/x"
         host.setContentBlocking(false, for: page.tabID)
         #expect(!page.isContentBlockingOn)

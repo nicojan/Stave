@@ -19,6 +19,9 @@ public final class WebDataStores {
 
     /// The same instance for the same key until the private session's last window closes.
     public func store(for key: DataStoreKey) -> WKWebsiteDataStore {
+        if case .privateSession(let id) = key {
+            assert(privateSessions.values.contains { $0.id == id }, "A private session's store is asked for only while a private window of it is open (joinPrivateSession)")
+        }
         if let cached = cache[key] { return cached }
         let made: WKWebsiteDataStore = switch key {
         case .persistent(let id): WKWebsiteDataStore(forIdentifier: id)
