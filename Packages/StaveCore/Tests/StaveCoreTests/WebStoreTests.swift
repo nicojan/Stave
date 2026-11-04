@@ -106,6 +106,25 @@ struct WebStoreTests {
         #expect(throws: StoreError.notFound) { try store.profileID(forTab: UUID()) }
     }
 
+    /// "Open Link in New Window" opens on the opener tab's own profile and workspace, read from its stored record.
+    @Test func placementOfATabIsItsOwnProfileAndWorkspace() throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let first = try #require(try store.workspaces(profileID: profile.id).first)
+        let second = try store.createWorkspace(profileID: profile.id, name: "Second", icon: "star", colorHex: "#000000")
+        let inSecond = try store.openTab(url: "https://example.com", title: "a", workspaceID: second.id, origin: .commandBar, containerID: nil, edge: .top)
+        let essential = try store.openTab(url: "https://example.net", title: "c", workspaceID: first.id, origin: .commandBar, containerID: nil, edge: .top)
+        try store.makeEssential(essential.id)
+        let placement = try store.tabHome(forTab: inSecond.id)
+        #expect(placement.profileID == profile.id)
+        #expect(placement.workspaceID == second.id)
+        // An Essential belongs to its profile, not to a workspace.
+        let essentialPlacement = try store.tabHome(forTab: essential.id)
+        #expect(essentialPlacement.profileID == profile.id)
+        #expect(essentialPlacement.workspaceID == nil)
+        #expect(throws: StoreError.notFound) { try store.tabHome(forTab: UUID()) }
+    }
+
     @Test func latePinnedFaviconAdopted() throws {
         let (store, database, _) = try makeTempStore()
         let profile = try store.createProfile(name: "P")

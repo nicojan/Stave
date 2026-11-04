@@ -65,4 +65,17 @@ extension OrganizationStore {
             return slot.profileID
         }
     }
+
+    /// Where the tab lives: its profile and, for a tab in a workspace, that workspace (nil for an Essential, which belongs to its profile).
+    public func tabHome(forTab id: UUID) throws -> TabHome {
+        try database.writer.read { db in
+            guard let tab = try Tab.fetchOne(db, key: id), let slot = try Slot.fetchOne(db, key: tab.slotID) else { throw StoreError.notFound }
+            return TabHome(profileID: slot.profileID, workspaceID: slot.workspaceID)
+        }
+    }
+}
+
+public struct TabHome: Equatable, Sendable {
+    public let profileID: UUID
+    public let workspaceID: UUID?
 }

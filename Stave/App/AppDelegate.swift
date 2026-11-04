@@ -122,18 +122,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// "Open Link in New Window": a window on the opener tab's profile and workspace (that of the window `source` shows it in, not the front
-    /// window's), with the link as its one tab and selected, in the opener's data store like any linked tab. A link the window can't open
-    /// (its opener tab is gone) leaves no empty window behind.
+    /// "Open Link in New Window": a window on the opener tab's own profile and workspace, read from its stored record (not the front window's,
+    /// and not the window `source` that happens to route the event: a pop-up's opener tab may be selected nowhere), with the link as its
+    /// one tab and selected, in the opener's data store like any linked tab. The opener is checked before the window is made. If the window
+    /// can't be made or can't take the link, the link opens as a tab in `source` instead of being lost.
     private func openWindow(forLink url: String, opener: UUID, from source: BrowserWindowController) {
         guard let environment, launchCompleted else { return }
+        guard let home = try? environment.store.tabHome(forTab: opener) else {
+            openAsTab(url, opener: opener, in: source)
+            return
+        }
         let base = source.model.windowState
-        let state = WindowState(profileID: base.profileID, workspaceID: base.workspaceID, selectedTabID: nil, frame: source.cascadedFrame, sortIndex: 0)
+        // An Essential belongs to a profile, not a workspace: it opens on the source window's workspace.
+        let workspaceID = home.workspaceID ?? (base.profileID == home.profileID ? base.workspaceID : nil)
+        guard let workspaceID else {
+            openAsTab(url, opener: opener, in: source)
+            return
+        }
+        let state = WindowState(profileID: home.profileID, workspaceID: workspaceID, selectedTabID: nil, frame: source.cascadedFrame, sortIndex: 0)
         do {
             let controller = try open(state, environment: environment)
-            if controller.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil { controller.window.close() }
+            if controller.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil {
+                controller.window.close()
+                openAsTab(url, opener: opener, in: source)
+            }
         } catch {
             NSLog("Stave: could not open a window for a link: \(error)")
+            openAsTab(url, opener: opener, in: source)
+        }
+    }
+
+    private func openAsTab(_ url: String, opener: UUID, in source: BrowserWindowController) {
+        if source.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil {
+            NSLog("Stave: could not open a link from a tab that is gone")
         }
     }
 
