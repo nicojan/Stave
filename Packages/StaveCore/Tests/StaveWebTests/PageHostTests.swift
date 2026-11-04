@@ -78,6 +78,8 @@ struct PageHostTests {
             if condition() { return true }
             try await Task.sleep(for: .milliseconds(50))
         }
+        // The main thread can stall past the deadline on a loaded CI runner; let the main-actor work queued meanwhile run before the last look.
+        try await Task.sleep(for: .milliseconds(50))
         return condition()
     }
 
@@ -226,9 +228,9 @@ struct PageHostTests {
         let b = host.page(for: request(url: "https://example.com/", state: state), writer: writer)
         #expect(b.didRestoreState)
         #expect(b.status.failure == .refused(url: dataURL))
-        try await Task.sleep(for: .milliseconds(500))
+        // Waited for rather than slept for: on a loaded runner WebKit's `isLoading` change can take longer than a fixed pause.
+        #expect(try await waitUntil { !b.webView.isLoading })
         #expect(b.webView.title != "A")
-        #expect(!b.webView.isLoading)
         #expect(b.status.failure == .refused(url: dataURL))
         #expect(writer.calls.isEmpty)
         host.close(b.tabID)
@@ -242,9 +244,10 @@ struct PageHostTests {
         let page = host.page(for: request(url: ""), writer: writer)
         let loaded = try await loadLocal(page, html: "<title>Hello</title>", base: "https://example.com/")
         #expect(loaded)
-        #expect(page.status.title == "Hello")
+        // The title (and the favicon the page script reports) can arrive after loading ends.
+        let written = FakeWriter.Call.navigation(tabID: page.tabID, url: "https://example.com/", title: "Hello", faviconURL: "https://example.com/favicon.ico")
+        #expect(try await waitUntil { page.status.title == "Hello" && writer.calls.contains(written) })
         #expect(page.status.url == "https://example.com/")
-        #expect(writer.calls.contains(.navigation(tabID: page.tabID, url: "https://example.com/", title: "Hello", faviconURL: "https://example.com/favicon.ico")))
         host.close(page.tabID)
     }
 
@@ -396,7 +399,7 @@ struct PageHostTests {
         container.addSubview(page.webView)
         host.unload(page.tabID)
         #expect(page.webView.superview === container)
-        let tornDown = try await waitUntil(seconds: 5) { page.webView.superview == nil }
+        let tornDown = try await waitUntil { page.webView.superview == nil }
         #expect(tornDown)
         let done = try #require(late.first)
         done(NSImage(size: NSSize(width: 4, height: 4)))

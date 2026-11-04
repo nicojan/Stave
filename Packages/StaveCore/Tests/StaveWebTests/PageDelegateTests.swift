@@ -170,6 +170,8 @@ struct PageDelegateTests {
             if condition() { return true }
             try await Task.sleep(for: .milliseconds(50))
         }
+        // The main thread can stall past the deadline on a loaded CI runner; let the main-actor work queued meanwhile run before the last look.
+        try await Task.sleep(for: .milliseconds(50))
         return condition()
     }
 
