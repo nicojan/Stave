@@ -10,6 +10,7 @@ struct PageFailureView: View {
     let back: () -> Void
 
     var body: some View {
+        let detail = PageText.detail(failure)
         ZStack {
             Rectangle().fill(.background)
             VStack(spacing: 12) {
@@ -18,8 +19,11 @@ struct PageFailureView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
                 Text(PageText.title(failure)).font(.title2.bold()).multilineTextAlignment(.center)
-                Text(PageText.detail(failure))
+                Text(detail)
                     .foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(6).textSelection(.enabled)
+                    // A selectable Text exposes two AXStaticText elements (seen on macOS 27), so VoiceOver reads it twice. One plain Text
+                    // stands in for VoiceOver, which can't select it; on screen it stays selectable.
+                    .accessibilityRepresentation { Text(detail) }
                 HStack(spacing: 10) {
                     if canGoBack { Button(PageText.backButton, action: back) }
                     Button(PageText.reloadButton, action: reload).keyboardShortcut(.defaultAction)
