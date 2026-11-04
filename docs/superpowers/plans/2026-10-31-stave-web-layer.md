@@ -102,15 +102,15 @@ Carried in:
 15. **The private window** (⇧⌘N):
     - It has its own sidebar: a plain tab list, and no Essentials, pinned tabs, workspaces or archive.
     - ⌘T and ⌘L open the command bar with only the typed row (URL or search).
-    - Each private window gets its own non-persistent store. The window is never saved or restored.
-    - Closing it closes its pop-ups and drops its store and download rows.
+    - Revised 2026-11-04 (Nico, matching Chrome and Firefox): the private windows of one profile share one non-persistent store, and the camera and microphone answers kept in memory, while any of them is open, so a sign-in carries to a second private window. Closing the last one drops the store and the answers, and the next private window starts fresh. ⇧⌘N takes the profile of the key private window, else the front browser window's, else the default profile. Before this, each private window had its own store. The window is never saved or restored.
+    - Closing it closes its pop-ups and drops its download rows.
 16. **"Showing in another window"** shows the page's last snapshot, taken when its owner window last shows a different tab or the window resigns key. Snapshots are kept in memory only.
 17. **Pages survive moves:** a tab moved between workspaces of one profile keeps its live page (the host is keyed by tab ID).
 
 ## Review Focus
 
 1. **A stored URL with a hostile scheme** (an Arc-imported `javascript:alert(1)`, `file:///etc/hosts`, `data:text/html,x`, `arc://x`, or `chrome://settings`) is selected. It never loads, the content area shows "Stave won't open this address" with the text, and nothing is written. Tests: Task 2 `storedHostileSchemesRefused`, Task 6 `hostileStoredURLNeverLoads`.
-2. **Stores are isolated.** A tab in profile B, a tab in a named container and a private-window tab each get a different store: profile B's `identifier` is its `dataStoreID`, and a private store has `isPersistent == false`. Two private windows never share one, and no page ever gets `WKWebsiteDataStore.default()`. Tests: Task 6 `storesFollowProfileContainerAndPrivate`, `twoPrivateWindowsNeverShare`.
+2. **Stores are isolated.** A tab in profile B, a tab in a named container and a private-window tab each get a different store: profile B's `identifier` is its `dataStoreID`, and a private store has `isPersistent == false`. A private store is never shared with a persistent profile or container store (since 2026-11-04 the private windows of one profile share theirs while any is open, decision 15), and no page ever gets `WKWebsiteDataStore.default()`. Tests: Task 6 `storesFollowProfileContainerAndPrivate`; `privateSessionNeverSharesAPersistentProfileOrContainerStore` and the other private-session tests replace `twoPrivateWindowsNeverShare`.
 3. **A page write lands after its tab closed.** A late title or `interactionState` arrives after the tab was archived, in this window or another. It is dropped without re-creating the tab, without an error message, and without a revision bump. Tests: Task 4 `closedRecorderEmitsNothing`, Task 6 `writeAfterCloseIsDropped`.
 4. **A download with a hostile or colliding name** (`../../.zshrc`, `.hidden`, `a/b.txt`, an empty name, control characters, 300 characters, an existing `report.pdf`) is saved inside `~/Downloads` under a visible, unique, length-capped name, and quarantined. Tests: Task 5 `filenamesAreSanitized`, `collisionsGetNumbered`; Task 6 `finishedDownloadIsQuarantined`.
 5. **A page's web content process crashes.** The page shows "This page stopped working" with Reload, doesn't reload by itself, its stored state is kept, and other tabs are untouched. Tests: Task 7 `processTerminationShowsCrashedNotReload`; by hand in Task 9.
