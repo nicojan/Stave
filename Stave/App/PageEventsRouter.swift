@@ -106,14 +106,14 @@ final class PageEventsRouter: PageEvents {
     }
 
     /// Asked like the external-app question: only while the tab is shown, else refused.
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
-        guard let prompts = prompts(for: tabID) else { return false }
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
+        guard let prompts = prompts(for: tabID) else { return .unasked }
         return await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
     }
 
     /// Asked like the several-files question: only while the tab is shown, else refused.
-    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
-        guard let prompts = prompts(for: tabID) else { return false }
+    func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
+        guard let prompts = prompts(for: tabID) else { return .unasked }
         return await prompts.confirmDownload(tabID: tabID, host: host)
     }
 

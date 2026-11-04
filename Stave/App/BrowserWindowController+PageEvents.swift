@@ -61,11 +61,11 @@ extension BrowserWindowController: PageEvents {
         await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
     }
 
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
         await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
     }
 
-    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+    func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
         await prompts.confirmDownload(tabID: tabID, host: host)
     }
 

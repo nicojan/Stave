@@ -3,6 +3,12 @@ import Foundation
 import StaveCore
 import WebKit
 
+/// The answer to a download question. `unasked` is not an answer: the sheet couldn't be shown (the tab isn't shown, another sheet is up) or
+/// came down without the user choosing (its tab was hidden, the page navigated, the window closed). Only `declined` is the user's No.
+public enum QuestionAnswer: Sendable {
+    case allowed, declined, unasked
+}
+
 /// What a page asks of the app: tabs, pop-ups, sheets and the downloads list (plan 3, Task 7).
 @MainActor public protocol PageEvents: AnyObject {
     /// Nil: refused (opener gone). When `webView` is given, the app adopts it (`PageHost.adopt`) before returning.
@@ -19,11 +25,11 @@ import WebKit
     /// Asked only while the tab is shown; otherwise false.
     func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool
     /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
-    /// Asked only while the tab is shown; otherwise false.
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool
+    /// Asked only while the tab is shown; otherwise `unasked`.
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer
     /// "‹host› wants to download a file" (Allow / Don't Allow), for the first download of a page Stave reopened by itself, which nobody
-    /// has acted on yet. Asked only while the tab is shown; otherwise false.
-    func confirmDownload(tabID: UUID, host: String?) async -> Bool
+    /// has acted on yet. Asked only while the tab is shown; otherwise `unasked`. Navigating takes its sheet down (`unasked`).
+    func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer
     /// "Allow ‹host› to use your camera?". A question that can't be shown yet (the tab isn't shown, another sheet is up) waits until it can
     /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` is
     /// honoured for an Allow only (`mediaDecision`).
@@ -133,6 +139,12 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     }
 
     var events: PageEvents? { ownEvents ?? host?.events }
+
+    /// Test seam: stands in for the page's top document address.
+    var currentTopURL: (() -> URL?)?
+
+    /// The address of the page's top document, which is what a camera or microphone question is checked against.
+    var topURL: URL? { currentTopURL?() ?? (currentTopURL == nil ? page?.webView.url : nil) }
 
     // MARK: Pure helpers
 
@@ -384,15 +396,16 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         guard let events else { return false }
         downloadQuestionUp = true
         let epoch = questionEpoch
-        let allowed = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
-        if !allowed { declinedUntouchedDownload = true }
-        guard epoch == questionEpoch else { return allowed }
-        if allowed {
+        let answer = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+        // Only a real Don't Allow sticks: a question that couldn't be asked is asked again.
+        if answer == .declined { declinedUntouchedDownload = true }
+        guard epoch == questionEpoch else { return answer == .allowed }
+        if answer == .allowed {
             passQuestionOn()
         } else {
             endQuestion(with: .refused)
         }
-        return allowed
+        return answer == .allowed
     }
 
     private func askSeveralDownloads(_ navigation: Int?) async -> Bool {
@@ -402,19 +415,25 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             endQuestion(with: .refused)
             return false
         }
-        let allowed = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
-        downloadGate.answer(allow: allowed, navigation: navigation)
-        if epoch == questionEpoch { endQuestion(with: allowed ? .allowed : .refused) }
-        return allowed
+        let answer = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+        // A question that couldn't be asked refuses this download but is no answer: the gate records only the user's.
+        if answer != .unasked { downloadGate.answer(allow: answer == .allowed, navigation: navigation) }
+        if epoch == questionEpoch { endQuestion(with: answer == .allowed ? .allowed : .refused) }
+        return answer == .allowed
     }
 
-    /// Waits behind the question that is up. Resumed exactly once, by that question ending (or the document or page going away).
+    /// Waits behind the question that is up. Resumed exactly once, by that question ending (or the document or page going away). A hand-off
+    /// to ask about several files is honoured only if the page is still the one the download came from.
     private func waitForQuestion(_ navigation: Int?) async -> Bool {
+        let epoch = questionEpoch
+        let commits = page?.commitCount
         let outcome = await withCheckedContinuation { waitingDownloads.append($0) }
         switch outcome {
         case .allowed: return true
         case .refused: return false
-        case .askSeveral: return await askSeveralDownloads(navigation)
+        case .askSeveral:
+            guard epoch == questionEpoch, commits == page?.commitCount else { return false }
+            return await askSeveralDownloads(navigation)
         }
     }
 

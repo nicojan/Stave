@@ -51,9 +51,11 @@ final class MediaQuestionCenter {
         Task { @MainActor [weak self] in self?.queue.drain() }
     }
 
-    /// The tab's waiting questions are denied, and a media sheet up for it comes down (it resolves as cancelled).
+    /// The tab's waiting questions are denied, and its media and download sheets come down (they resolve as cancelled, or unasked). The
+    /// page committed a new document, closed or unloaded: a sheet left up would hold up the new page's questions. Other sheets (JavaScript
+    /// dialogs, the file picker, the external-app question) are left alone.
     func cancel(tabID: UUID) {
-        for prompts in windows.compactMap(\.prompts) { prompts.end { $0.tabID == tabID && $0.isMedia } }
+        for prompts in windows.compactMap(\.prompts) { prompts.end { $0.tabID == tabID && ($0.isMedia || $0.isDownload) } }
         queue.cancel(tabID: tabID)
     }
 }

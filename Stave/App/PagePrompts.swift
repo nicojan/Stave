@@ -16,6 +16,9 @@ struct PagePanel {
     }
 
     var isMedia: Bool { sendBack != nil }
+    /// A download question's sheet: it comes down when its page commits a new document (`MediaQuestionCenter.cancel`), so it can't hold up
+    /// the new page's questions.
+    var isDownload = false
 }
 
 /// Set when a media sheet is taken down because its tab was hidden, before the sheet ends: its completion then reports "sent back" rather
@@ -78,25 +81,34 @@ final class PagePrompts {
         return await present(alert, for: tabID) == .alertFirstButtonReturn
     }
 
-    /// "example.com wants to download a file", Allow / Don't Allow, for the first download of a page Stave reopened by itself. A cancelled
-    /// sheet refuses.
-    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+    /// "example.com wants to download a file", Allow / Don't Allow, for the first download of a page Stave reopened by itself. Only a real
+    /// Don't Allow is `declined`; a sheet that can't be shown or comes down is `unasked`.
+    func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
         let alert = NSAlert()
         alert.messageText = PageText.downloadQuestion(host: host)
         alert.informativeText = PageText.downloadDetail
         alert.addButton(withTitle: PageText.allowButton)
         alert.addButton(withTitle: PageText.dontAllowButton)
-        return await present(alert, for: tabID) == .alertFirstButtonReturn
+        return Self.downloadAnswer(await present(alert, for: tabID, isDownload: true))
     }
 
-    /// "example.com wants to download several files", Allow / Don't Allow. A cancelled sheet refuses.
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+    /// "example.com wants to download several files", Allow / Don't Allow. Only a real Don't Allow is `declined`; a sheet that can't be
+    /// shown or comes down is `unasked`.
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
         let alert = NSAlert()
         alert.messageText = PageText.severalDownloadsQuestion(host: host)
         alert.informativeText = PageText.severalDownloadsDetail
         alert.addButton(withTitle: PageText.allowButton)
         alert.addButton(withTitle: PageText.dontAllowButton)
-        return await present(alert, for: tabID) == .alertFirstButtonReturn
+        return Self.downloadAnswer(await present(alert, for: tabID, isDownload: true))
+    }
+
+    private static func downloadAnswer(_ response: NSApplication.ModalResponse) -> QuestionAnswer {
+        switch response {
+        case .alertFirstButtonReturn: .allowed
+        case .alertSecondButtonReturn: .declined
+        default: .unasked
+        }
     }
 
     /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). Only an
@@ -263,14 +275,16 @@ final class PagePrompts {
     }
 
     /// Shows the alert as a sheet and waits for its answer, or `.abort` at once when it can't be asked.
-    private func present(_ alert: NSAlert, for tabID: UUID) async -> NSApplication.ModalResponse {
+    private func present(_ alert: NSAlert, for tabID: UUID, isDownload: Bool = false) async -> NSApplication.ModalResponse {
         guard let window, canAsk(tabID) else { return .abort }
         let id = UUID()
         let sheet = alert.window
-        panels[id] = PagePanel(tabID: tabID, end: { [weak window, weak sheet] in
+        var panel = PagePanel(tabID: tabID, end: { [weak window, weak sheet] in
             guard let window, let sheet else { return }
             window.endSheet(sheet, returnCode: .abort)
         })
+        panel.isDownload = isDownload
+        panels[id] = panel
         let response = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
             alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
         }

@@ -112,11 +112,17 @@ extension PageDelegate {
         return await mediaDecision(originHost: origin.host, camera: camera, microphone: microphone)
     }
 
+    /// Whether the page's current top document is on `site`. The origin WebKit passes is the top page's, so it must match: a commit can
+    /// slip in between WebKit's call and this task, and the question would then name one site over another's page.
+    private func isTopSite(_ site: String) -> Bool {
+        topURL.flatMap { SiteHost.normalized($0.absoluteString) } == site
+    }
+
     /// A remembered answer for every key asked grants; any remembered deny denies (rows stored earlier still count); otherwise the app asks.
     /// Only an Allow is remembered, per key, when the user ticks "Remember for this site" (plan 3, decision 11). A Don't Allow denies this
     /// time and stores nothing, so the next load asks again: a stopgap until a per-site settings panel lets the user undo a stored deny.
     func mediaDecision(originHost: String, camera: Bool, microphone: Bool) async -> WKPermissionDecision {
-        guard let page, !page.isClosed, let host, let events, let site = SiteHost.normalized(originHost) else { return .deny }
+        guard let page, !page.isClosed, let host, let events, let site = SiteHost.normalized(originHost), isTopSite(site) else { return .deny }
         let keys: [SiteSettingKey] = (camera ? [.camera] : []) + (microphone ? [.microphone] : [])
         guard !keys.isEmpty else { return .deny }
         let remembered = keys.map { host.rememberedMedia(for: page, host: site, key: $0) }
@@ -126,7 +132,7 @@ extension PageDelegate {
         let answer = await events.askMedia(tabID: tabID, host: site, camera: camera, microphone: microphone)
         // The question may have waited, or been up, while the page navigated, was unloaded or remade: the answer is then for a page that
         // is gone, so nothing is remembered or granted (an allow must not be stored for the old host).
-        guard !page.isClosed, host.existingPage(tabID) === page, page.commitCount == commits else { return .deny }
+        guard !page.isClosed, host.existingPage(tabID) === page, page.commitCount == commits, isTopSite(site) else { return .deny }
         if answer.remember, answer.allow {
             for key in keys { host.rememberMedia(.allow, for: page, host: site, key: key) }
         }

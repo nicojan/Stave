@@ -157,4 +157,67 @@ extension PageDelegateTests {
         for task in waiting { #expect(await task.value == nil) }
         #expect(delegate.waitingDownloadCount == 0)
     }
+
+    // MARK: A question that could not be asked is not an answer
+
+    /// The sheet couldn't be shown (or came down): this download is refused, but that is not the user's Don't Allow, so the next one asks.
+    @Test func severalFilesQuestionThatCouldNotBeAskedIsNotRecordedAsARefusal() async throws {
+        let dir = try downloadsDirectoryForQueueTests()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        #expect(try await startDownload(on: page, named: "1.txt") != nil)
+        events.severalCouldNotAsk = true
+        #expect(try await startDownload(on: page, named: "2.txt") == nil)
+        #expect(events.severalDownloadsQuestions.count == 1)
+        events.severalCouldNotAsk = false
+        events.severalDownloadsAnswer = true
+        #expect(try await startDownload(on: page, named: "3.txt") != nil)
+        #expect(events.severalDownloadsQuestions.count == 2)
+        // The Allow now holds for the rest of the document.
+        #expect(try await startDownload(on: page, named: "4.txt") != nil)
+        #expect(events.severalDownloadsQuestions.count == 2)
+        host.close(page.tabID)
+    }
+
+    @Test func firstDownloadQuestionThatCouldNotBeAskedDoesNotStickAsADecline() async throws {
+        let dir = try downloadsDirectoryForQueueTests()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let host = makeHost()
+        let page = try await storedPage(host)
+        events.downloadCouldNotAsk = true
+        #expect(try await startDownload(on: page, named: "1.txt") == nil)
+        #expect(events.downloadQuestions.count == 1)
+        // A new document's first download asks again: nobody said no.
+        page.committed()
+        events.downloadCouldNotAsk = false
+        events.downloadAnswer = true
+        #expect(try await startDownload(on: page, named: "2.txt") != nil)
+        #expect(events.downloadQuestions.count == 2)
+        host.close(page.tabID)
+    }
+
+    /// The page commits after the first-download question was allowed but before the first waiting download takes over: that download is
+    /// for the old page, so it is refused and no several-files question names the new page.
+    @Test func handoffAfterAFirstDownloadAllowChecksThePageStillMatches() async throws {
+        let dir = try downloadsDirectoryForQueueTests()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadAnswer = true
+        events.severalDownloadsAnswer = true
+        let host = makeHost()
+        let page = try await storedPage(host)
+        let delegate = try delegate(of: page)
+        var waiting: [Task<URL?, Never>] = []
+        events.whileAskingToDownload = { [self] in
+            waiting = (try? await startWaiting(["2.txt"], delegate: delegate, on: page)) ?? []
+            // Queued before the answer's handoff, so the commit runs first.
+            Task { @MainActor in delegate.webView(page.webView, didCommit: nil) }
+        }
+        _ = try await startDownload(on: page, named: "1.txt")
+        #expect(waiting.count == 1)
+        for task in waiting { #expect(await task.value == nil) }
+        #expect(events.severalDownloadsQuestions.isEmpty)
+        #expect(delegate.waitingDownloadCount == 0)
+        host.close(page.tabID)
+    }
 }

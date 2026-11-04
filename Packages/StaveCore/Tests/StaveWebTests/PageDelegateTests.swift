@@ -33,6 +33,9 @@ final class FakeEvents: PageEvents {
     /// by default, as when the question can't be shown.
     var downloadQuestions: [(tabID: UUID, host: String?)] = []
     var downloadAnswer = false
+    /// True: the question couldn't be asked (no sheet could be shown, or it came down): neither an allow nor a decline.
+    var downloadCouldNotAsk = false
+    var severalCouldNotAsk = false
     /// Runs while a "wants to download a file" question is up.
     var whileAskingToDownload: (() async -> Void)?
     /// Runs while a "wants to download several files" question is up.
@@ -64,7 +67,7 @@ final class FakeEvents: PageEvents {
         linkedTabs.append(LinkedTab(opener: opener, url: url, select: select, hasWebView: webView != nil))
         let id = UUID()
         if let webView, let host {
-            _ = host.adopt(webView, as: PageRequest(tabID: id, store: .privateSession(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: nil), writer: writer)
+            _ = host.adopt(webView, as: PageRequest(tabID: id, store: .privateSession(host.joinPrivateSession(profileID: UUID())), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: nil), writer: writer)
         }
         return id
     }
@@ -77,7 +80,7 @@ final class FakeEvents: PageEvents {
 
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
         popups.append(webView)
-        _ = host?.adopt(webView, as: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        _ = host?.adopt(webView, as: PageRequest(tabID: UUID(), store: .privateSession(host?.joinPrivateSession(profileID: UUID()) ?? UUID()), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
     }
 
     func closePage(_ tabID: UUID) { closed.append(tabID) }
@@ -85,16 +88,18 @@ final class FakeEvents: PageEvents {
     /// Runs while the question is "up" (before the answer returns).
     var whileConfirming: (() -> Void)?
 
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
+    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
         severalDownloadsQuestions.append((tabID, host))
         await whileAskingSeveral?()
-        return severalDownloadsAnswer
+        if severalCouldNotAsk { return .unasked }
+        return severalDownloadsAnswer ? .allowed : .declined
     }
 
-    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+    func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
         downloadQuestions.append((tabID, host))
         await whileAskingToDownload?()
-        return downloadAnswer
+        if downloadCouldNotAsk { return .unasked }
+        return downloadAnswer ? .allowed : .declined
     }
 
     func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
@@ -160,6 +165,14 @@ final class FakeExternalApps {
     }
 }
 
+extension PageDelegate {
+    /// Asks as WebKit does for a page whose top document is on `originHost` (the page's address is what the origin is checked against).
+    func decideMedia(originHost: String, camera: Bool, microphone: Bool) async -> WKPermissionDecision {
+        currentTopURL = { URL(string: "https://\(originHost)/") }
+        return await mediaDecision(originHost: originHost, camera: camera, microphone: microphone)
+    }
+}
+
 // MARK: Tests
 
 @MainActor
@@ -185,7 +198,7 @@ struct PageDelegateTests {
     }
 
     func request(_ tabID: UUID = UUID(), url: String = "", profile: UUID? = nil, title: String = "", state: Data? = nil) -> PageRequest {
-        PageRequest(tabID: tabID, store: profile.map { .persistent($0) } ?? .privateSession(UUID()), siteSettingsProfileID: profile, url: url, title: title, faviconURL: nil, interactionState: state)
+        PageRequest(tabID: tabID, store: profile.map { .persistent($0) } ?? .privateSession(events.host?.joinPrivateSession(profileID: UUID()) ?? UUID()), siteSettingsProfileID: profile, url: url, title: title, faviconURL: nil, interactionState: state)
     }
 
     func delegate(of page: LivePage) throws -> PageDelegate {
@@ -278,8 +291,9 @@ struct PageDelegateTests {
 
     @Test func viewNotAdoptedByTheAppIsRefused() throws {
         let host = makeHost()
+        let pageRequest = request() // joins its private session through the host, before the events forget the host
         events.host = nil
-        let page = host.page(for: request(), writer: writer)
+        let page = host.page(for: pageRequest, writer: writer)
         let delegate = try delegate(of: page)
         let made = delegate.webView(page.webView, createWebViewWith: page.webView.configuration, for: FakeAction("https://example.com/new"), windowFeatures: FakeFeatures())
         #expect(made == nil)
@@ -677,6 +691,47 @@ struct PageDelegateTests {
 
     // MARK: Media
 
+    /// The origin WebKit passes is the page that asked; if the page's top document is on another site by the time the app looks (a commit
+    /// slipped in between WebKit's call and this task), the question would name one site over another's page. Denied, nothing asked or kept.
+    @Test func mediaForAnotherSitesPageIsDeniedWithoutAsking() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let page = host.page(for: request(profile: profile), writer: writer)
+        let delegate = try delegate(of: page)
+        events.mediaAnswer = (true, true)
+        delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
+        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+        #expect(events.mediaQuestions.isEmpty)
+        // A page with no address yet is no match either.
+        delegate.currentTopURL = { nil }
+        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+        #expect(events.mediaQuestions.isEmpty)
+        // A remembered allow doesn't grant a page that is on another site either.
+        settings.setDecision(profileID: profile, host: "evil.example", key: .camera, .allow)
+        delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
+        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+        #expect(settings.decision(profileID: profile, host: "meet.google.com", key: .camera) == nil)
+        host.close(page.tabID)
+        await removeStore(profile)
+    }
+
+    /// The page moves to another site while the question is up: nothing is granted or remembered, even without a commit being seen yet.
+    @Test func mediaAnswerAfterTheTopSiteChangedIsDeniedAndNotRemembered() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let page = host.page(for: request(profile: profile), writer: writer)
+        let delegate = try delegate(of: page)
+        events.mediaAnswer = (true, true)
+        var current = "https://evil.example/"
+        delegate.currentTopURL = { URL(string: current) }
+        events.whileAskingMedia = { current = "https://meet.google.com/abc" }
+        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+        #expect(settings.decision(profileID: profile, host: "evil.example", key: .camera) == nil)
+        host.close(page.tabID)
+        await removeStore(profile)
+    }
+
+
     @Test func mediaUsesRememberedDecision() async throws {
         let host = makeHost()
         let profile = UUID()
@@ -684,31 +739,31 @@ struct PageDelegateTests {
         let page = host.page(for: request(profile: profile), writer: writer)
         let delegate = try delegate(of: page)
 
-        #expect(await delegate.mediaDecision(originHost: "www.example.com", camera: true, microphone: false) == .grant)
+        #expect(await delegate.decideMedia(originHost: "www.example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.isEmpty)
 
         // Camera and microphone together need both remembered.
         events.mediaAnswer = (true, true)
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: true) == .grant)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .grant)
         #expect(events.mediaQuestions.count == 1)
         #expect(events.mediaQuestions.first?.host == "example.com")
         #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == .allow)
 
         // Nothing stored: ask, and remember.
-        #expect(await delegate.mediaDecision(originHost: "example.org", camera: true, microphone: false) == .grant)
+        #expect(await delegate.decideMedia(originHost: "example.org", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 2)
         #expect(settings.decision(profileID: profile, host: "example.org", key: .camera) == .allow)
 
         // Not remembered: asked again next time.
         events.mediaAnswer = (false, false)
-        #expect(await delegate.mediaDecision(originHost: "example.net", camera: false, microphone: true) == .deny)
+        #expect(await delegate.decideMedia(originHost: "example.net", camera: false, microphone: true) == .deny)
         #expect(settings.decision(profileID: profile, host: "example.net", key: .microphone) == nil)
 
         // Any remembered deny denies without asking.
         settings.setDecision(profileID: profile, host: "deny.example", key: .microphone, .deny)
         settings.setDecision(profileID: profile, host: "deny.example", key: .camera, .allow)
         let asked = events.mediaQuestions.count
-        #expect(await delegate.mediaDecision(originHost: "deny.example", camera: true, microphone: true) == .deny)
+        #expect(await delegate.decideMedia(originHost: "deny.example", camera: true, microphone: true) == .deny)
         #expect(events.mediaQuestions.count == asked)
         host.close(page.tabID)
         await removeStore(profile)
@@ -721,11 +776,11 @@ struct PageDelegateTests {
         let page = host.page(for: request(profile: profile), writer: writer)
         let delegate = try delegate(of: page)
         events.mediaAnswer = (false, true)
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: true) == .deny)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
         #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
         #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == nil)
         // The next load asks again.
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: true) == .deny)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
         #expect(events.mediaQuestions.count == 2)
         host.close(page.tabID)
         await removeStore(profile)
@@ -740,11 +795,11 @@ struct PageDelegateTests {
         let delegate = try delegate(of: page)
         events.mediaAnswer = (true, true)
         events.whileAskingMedia = { page.committed() }
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .deny)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
         #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
         // A page remade under the same tab is not the page that asked either.
         events.whileAskingMedia = { host.close(page.tabID); _ = host.page(for: self.request(page.tabID, profile: profile), writer: self.writer) }
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .deny)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
         #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
         host.close(page.tabID)
         await removeStore(profile)
@@ -775,14 +830,14 @@ struct PageDelegateTests {
         let first = host.page(for: make(), writer: writer)
         let second = host.page(for: make(), writer: writer)
         events.mediaAnswer = (true, true)
-        #expect(await (try delegate(of: first)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
-        #expect(await (try delegate(of: second)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: first)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: second)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 1)
         #expect(settings.values.isEmpty)
         // One window closes: the answer stays for the other.
         host.close(first.tabID)
         host.leavePrivateSession(profileID: profile)
-        #expect(await (try delegate(of: second)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: second)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 1)
         // The last closes: a new private window is a new session with no answers.
         host.close(second.tabID)
@@ -790,7 +845,7 @@ struct PageDelegateTests {
         let again = host.joinPrivateSession(profileID: profile)
         #expect(again != session)
         let fresh = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(again), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
-        #expect(await (try delegate(of: fresh)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: fresh)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 2)
         host.close(fresh.tabID)
     }
@@ -800,14 +855,14 @@ struct PageDelegateTests {
         let page = host.page(for: request(), writer: writer)
         let delegate = try delegate(of: page)
         events.mediaAnswer = (true, true)
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
-        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 1)
         #expect(settings.values.isEmpty)
         // Another private window doesn't share the answer.
         let other = host.page(for: request(), writer: writer)
         let otherDelegate = try self.delegate(of: other)
-        #expect(await otherDelegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await otherDelegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 2)
         host.close(page.tabID)
         host.close(other.tabID)
@@ -816,17 +871,17 @@ struct PageDelegateTests {
     /// A closed private window's answers go: a later page on the same store key asks again.
     @Test func forgettingAPrivateWindowDropsItsMediaAnswers() async throws {
         let host = makeHost()
-        let windowID = UUID()
+        let windowID = host.joinPrivateSession(profileID: UUID())
         let make = { PageRequest(tabID: UUID(), store: .privateSession(windowID), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil) }
         let page = host.page(for: make(), writer: writer)
         events.mediaAnswer = (true, true)
-        #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
-        #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: page)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: page)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 1)
         host.close(page.tabID)
         host.forgetPrivate(sessionID: windowID)
         let again = host.page(for: make(), writer: writer)
-        #expect(await (try delegate(of: again)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: again)).decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 2)
         host.close(again.tabID)
     }
