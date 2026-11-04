@@ -68,7 +68,7 @@ struct PageHostTests {
     }
 
     func request(_ tabID: UUID = UUID(), url: String, state: Data? = nil) -> PageRequest {
-        PageRequest(tabID: tabID, store: .privateWindow(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: state)
+        PageRequest(tabID: tabID, store: .privateSession(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: state)
     }
 
     /// Polls on the main actor without blocking it.
@@ -106,26 +106,65 @@ struct PageHostTests {
         #expect(storeB !== storeA)
         #expect(storeB.identifier == b)
         #expect(stores.store(for: .persistent(a)) === storeA)
-        #expect(!stores.store(for: .privateWindow(w)).isPersistent)
+        #expect(!stores.store(for: .privateSession(w)).isPersistent)
         await removePersistentStores([a, b])
     }
 
-    @Test func twoPrivateWindowsNeverShare() {
+    /// Private windows of a profile share one throwaway session, as in Chrome and Firefox, for as long as one of them is open.
+    @Test func privateWindowsOfAProfileShareOneStoreWhileAnyIsOpen() {
         let stores = WebDataStores()
-        let w1 = UUID(), w2 = UUID()
-        let first = stores.store(for: .privateWindow(w1))
-        let second = stores.store(for: .privateWindow(w2))
-        #expect(first !== second)
-        #expect(stores.store(for: .privateWindow(w1)) === first)
-        stores.releasePrivate(w1)
-        #expect(stores.store(for: .privateWindow(w1)) !== first)
-        #expect(stores.store(for: .privateWindow(w2)) === second)
+        let profile = UUID()
+        let first = stores.joinPrivateSession(profileID: profile)
+        let second = stores.joinPrivateSession(profileID: profile)
+        #expect(first == second)
+        let shared = stores.store(for: .privateSession(first))
+        #expect(!shared.isPersistent)
+        #expect(stores.store(for: .privateSession(second)) === shared)
+        // One window closes: the other keeps the session.
+        #expect(!stores.leavePrivateSession(profileID: profile))
+        #expect(stores.store(for: .privateSession(first)) === shared)
+    }
+
+    @Test func afterTheLastPrivateWindowClosesTheNextOneGetsANewStore() {
+        let stores = WebDataStores()
+        let profile = UUID()
+        let first = stores.joinPrivateSession(profileID: profile)
+        let old = stores.store(for: .privateSession(first))
+        #expect(stores.leavePrivateSession(profileID: profile))
+        let next = stores.joinPrivateSession(profileID: profile)
+        #expect(next != first)
+        #expect(stores.store(for: .privateSession(next)) !== old)
+        // A stray window that leaves a session nobody joined changes nothing.
+        #expect(stores.leavePrivateSession(profileID: UUID()))
+        #expect(stores.store(for: .privateSession(next)) !== old)
+    }
+
+    @Test func privateSessionsOfDifferentProfilesAreSeparate() {
+        let stores = WebDataStores()
+        let a = stores.joinPrivateSession(profileID: UUID())
+        let b = stores.joinPrivateSession(profileID: UUID())
+        #expect(a != b)
+        #expect(stores.store(for: .privateSession(a)) !== stores.store(for: .privateSession(b)))
+    }
+
+    @Test func privateSessionNeverSharesAPersistentProfileOrContainerStore() async {
+        let stores = WebDataStores()
+        let profile = UUID(), container = UUID()
+        let session = stores.joinPrivateSession(profileID: profile)
+        let shared = stores.store(for: .privateSession(session))
+        for key in [DataStoreKey.persistent(profile), .persistent(container)] {
+            let persistent = stores.store(for: key)
+            #expect(persistent !== shared)
+            #expect(persistent.isPersistent)
+        }
+        #expect(!shared.isPersistent)
+        await removePersistentStores([profile, container])
     }
 
     @Test func noDefaultStoreEver() async {
         let stores = WebDataStores()
         let p = UUID()
-        let made = [stores.store(for: .persistent(p)), stores.store(for: .privateWindow(UUID()))]
+        let made = [stores.store(for: .persistent(p)), stores.store(for: .privateSession(UUID()))]
         let defaultStore = WKWebsiteDataStore.default()
         for store in made {
             #expect(store !== defaultStore)
@@ -430,10 +469,10 @@ struct PageHostTests {
         let host = makeHost()
         let profile = UUID()
         settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
-        let off = host.page(for: PageRequest(tabID: UUID(), store: .privateWindow(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        let off = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
         // A blank URL has no host, so the profile's other sites keep blocking on.
         #expect(off.isContentBlockingOn)
-        let request = PageRequest(tabID: UUID(), store: .privateWindow(UUID()), siteSettingsProfileID: profile, url: "https://www.example.com/x", title: "", faviconURL: nil, interactionState: nil)
+        let request = PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "https://www.example.com/x", title: "", faviconURL: nil, interactionState: nil)
         #expect(!host.blockingWanted(for: request))
         host.close(off.tabID)
     }
@@ -441,7 +480,7 @@ struct PageHostTests {
     @Test func setContentBlockingStoresTheSiteChoice() {
         let host = makeHost()
         let profile = UUID()
-        let page = host.page(for: PageRequest(tabID: UUID(), store: .privateWindow(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        let page = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
         page.status.url = "https://example.com/x"
         host.setContentBlocking(false, for: page.tabID)
         #expect(!page.isContentBlockingOn)

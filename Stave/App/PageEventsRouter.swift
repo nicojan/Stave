@@ -32,10 +32,10 @@ final class PageEventsRouter: PageEvents {
         privateControllers().first { !$0.isClosed && $0.owns(pageID) }
     }
 
-    /// Whether the page (or the tab behind a pop-up) lives on a private window's store. Such a page never reaches a browser window.
+    /// Whether the page (or the tab behind a pop-up) lives on a private session's store. Such a page never reaches a browser window.
     private func isPrivatePage(_ pageID: UUID) -> Bool {
         for id in [pageID, popups.openerTab(of: pageID)] {
-            if case .privateWindow? = environment.pageHost.existingPage(id)?.store { return true }
+            if case .privateSession? = environment.pageHost.existingPage(id)?.store { return true }
         }
         return false
     }

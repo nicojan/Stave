@@ -64,7 +64,7 @@ final class FakeEvents: PageEvents {
         linkedTabs.append(LinkedTab(opener: opener, url: url, select: select, hasWebView: webView != nil))
         let id = UUID()
         if let webView, let host {
-            _ = host.adopt(webView, as: PageRequest(tabID: id, store: .privateWindow(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: nil), writer: writer)
+            _ = host.adopt(webView, as: PageRequest(tabID: id, store: .privateSession(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: nil), writer: writer)
         }
         return id
     }
@@ -77,7 +77,7 @@ final class FakeEvents: PageEvents {
 
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
         popups.append(webView)
-        _ = host?.adopt(webView, as: PageRequest(tabID: UUID(), store: .privateWindow(UUID()), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        _ = host?.adopt(webView, as: PageRequest(tabID: UUID(), store: .privateSession(UUID()), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
     }
 
     func closePage(_ tabID: UUID) { closed.append(tabID) }
@@ -185,7 +185,7 @@ struct PageDelegateTests {
     }
 
     func request(_ tabID: UUID = UUID(), url: String = "", profile: UUID? = nil, title: String = "", state: Data? = nil) -> PageRequest {
-        PageRequest(tabID: tabID, store: profile.map { .persistent($0) } ?? .privateWindow(UUID()), siteSettingsProfileID: profile, url: url, title: title, faviconURL: nil, interactionState: state)
+        PageRequest(tabID: tabID, store: profile.map { .persistent($0) } ?? .privateSession(UUID()), siteSettingsProfileID: profile, url: url, title: title, faviconURL: nil, interactionState: state)
     }
 
     func delegate(of page: LivePage) throws -> PageDelegate {
@@ -764,6 +764,37 @@ struct PageDelegateTests {
         #expect(events.cancelledTabs.count == 3)
     }
 
+    /// Private windows of a profile share one session, so an answer remembered in one is the other's, until the last of them closes; the
+    /// next private window then asks again.
+    @Test func privateSessionMediaAnswersAreSharedWhileOpenAndGoAfterTheLastClose() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let session = host.joinPrivateSession(profileID: profile)
+        _ = host.joinPrivateSession(profileID: profile)
+        let make = { PageRequest(tabID: UUID(), store: .privateSession(session), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil) }
+        let first = host.page(for: make(), writer: writer)
+        let second = host.page(for: make(), writer: writer)
+        events.mediaAnswer = (true, true)
+        #expect(await (try delegate(of: first)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(await (try delegate(of: second)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(events.mediaQuestions.count == 1)
+        #expect(settings.values.isEmpty)
+        // One window closes: the answer stays for the other.
+        host.close(first.tabID)
+        host.leavePrivateSession(profileID: profile)
+        #expect(await (try delegate(of: second)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(events.mediaQuestions.count == 1)
+        // The last closes: a new private window is a new session with no answers.
+        host.close(second.tabID)
+        host.leavePrivateSession(profileID: profile)
+        let again = host.joinPrivateSession(profileID: profile)
+        #expect(again != session)
+        let fresh = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(again), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        #expect(await (try delegate(of: fresh)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
+        #expect(events.mediaQuestions.count == 2)
+        host.close(fresh.tabID)
+    }
+
     @Test func privateWindowMediaAnswersStayInMemory() async throws {
         let host = makeHost()
         let page = host.page(for: request(), writer: writer)
@@ -786,14 +817,14 @@ struct PageDelegateTests {
     @Test func forgettingAPrivateWindowDropsItsMediaAnswers() async throws {
         let host = makeHost()
         let windowID = UUID()
-        let make = { PageRequest(tabID: UUID(), store: .privateWindow(windowID), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil) }
+        let make = { PageRequest(tabID: UUID(), store: .privateSession(windowID), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil) }
         let page = host.page(for: make(), writer: writer)
         events.mediaAnswer = (true, true)
         #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(await (try delegate(of: page)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 1)
         host.close(page.tabID)
-        host.forgetPrivate(windowID: windowID)
+        host.forgetPrivate(sessionID: windowID)
         let again = host.page(for: make(), writer: writer)
         #expect(await (try delegate(of: again)).mediaDecision(originHost: "example.com", camera: true, microphone: false) == .grant)
         #expect(events.mediaQuestions.count == 2)

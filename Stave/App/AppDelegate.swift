@@ -162,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func openPrivateWindow(forLink url: String, opener: UUID, from source: PrivateWindowController) {
         guard let environment, launchCompleted else { return }
         let controller = PrivateWindowController(
-            environment: environment, near: source.window,
+            environment: environment, profileID: source.profileID, near: source.window,
             onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
         )
         privateControllers = privateControllers + [controller]
@@ -173,15 +173,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// ⇧⌘N: a private window beside the front window. Opens with an empty tab list; nothing of it is saved.
     func newPrivateWindow() {
-        guard let environment, launchCompleted else { return }
+        guard let environment, launchCompleted, let profileID = privateWindowProfileID(environment) else { return }
         let controller = PrivateWindowController(
-            environment: environment, near: NSApp.keyWindow ?? frontController?.window,
+            environment: environment, profileID: profileID, near: NSApp.keyWindow ?? frontController?.window,
             onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
         )
         privateControllers = privateControllers + [controller]
         controller.show()
         controller.openCommandBar(.newTab)
         refreshWorkspaceMenu()
+    }
+
+    /// The profile a new private window belongs to (its throwaway session is shared with that profile's other private windows): the key
+    /// private window's, else the front browser window's, else the default profile's.
+    private func privateWindowProfileID(_ environment: AppEnvironment) -> UUID? {
+        if let keyPrivate { return keyPrivate.profileID }
+        if let front = frontController { return front.model.snapshot.profile.id }
+        do {
+            return try environment.store.ensureDefaultProfile().id
+        } catch {
+            NSLog("Stave: could not find a profile for a private window: \(error)")
+            return nil
+        }
     }
 
     private func privateWindowClosed(_ closed: PrivateWindowController) {

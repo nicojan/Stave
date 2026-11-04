@@ -43,7 +43,7 @@ public final class PageHost {
     /// One per page; kept here because WebKit holds its delegates weakly.
     @ObservationIgnored private var delegates: [UUID: PageDelegate] = [:]
     @ObservationIgnored private let activeDownloads = ActiveDownloads()
-    /// A private window's camera/microphone answers, in memory only (decision 11).
+    /// A private session's camera/microphone answers, in memory only (decision 11); they go with the session's last window.
     @ObservationIgnored private var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
     /// Seam for tests: finds and opens apps for non-web links.
     @ObservationIgnored var externalApps = ExternalApps.system
@@ -158,9 +158,28 @@ public final class PageHost {
         Self.tearDown(page)
     }
 
-    /// A private window closed: its camera and microphone answers go (its pages are closed by then, which drops their snapshots).
-    public func forgetPrivate(windowID: UUID) {
-        let store = DataStoreKey.privateWindow(windowID)
+    /// A private window of the profile opens: it joins the profile's private session (see `WebDataStores.joinPrivateSession`).
+    public func joinPrivateSession(profileID: UUID) -> UUID {
+        stores.joinPrivateSession(profileID: profileID)
+    }
+
+    /// A private window of the profile closed (its pages are closed by then, which drops their snapshots). When it was the last, the
+    /// session's store and its camera and microphone answers go, so the next private window starts fresh.
+    public func leavePrivateSession(profileID: UUID) {
+        // The session ID is read before the store registry drops it.
+        let sessionStore = privateSessionStoreKey(profileID: profileID)
+        if stores.leavePrivateSession(profileID: profileID), let sessionStore {
+            privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != sessionStore }
+        }
+    }
+
+    private func privateSessionStoreKey(profileID: UUID) -> DataStoreKey? {
+        stores.privateSessionID(profileID: profileID).map { .privateSession($0) }
+    }
+
+    /// Drops one session's in-memory answers (tests, and the last window's close).
+    func forgetPrivate(sessionID: UUID) {
+        let store = DataStoreKey.privateSession(sessionID)
         privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != store }
     }
 

@@ -5,8 +5,8 @@ import StaveWeb
 import SwiftUI
 import WebKit
 
-/// Owns one private window (⇧⌘N, plan 3 decision 15): a `PrivateWindowModel` in memory, its own non-persistent website data store
-/// (`.privateWindow(windowID)`), and the pages, pop-ups, questions and download rows of its tabs. Nothing it does reaches the store: its
+/// Owns one private window (⇧⌘N, plan 3 decision 15): a `PrivateWindowModel` in memory, the non-persistent website data store its profile's private windows share
+/// (`.privateSession(sessionID)`), and the pages, pop-ups, questions and download rows of its tabs. Nothing it does reaches the store: its
 /// pages write to the model only, site settings are never read or written (`siteSettingsProfileID: nil`), and the window is never handed to
 /// `WindowSession` and is not restorable. Closing it (or quitting) closes every page without a flush, closes their pop-ups, ends their
 /// questions, then drops the data store and the download rows.
@@ -24,8 +24,13 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     private(set) var isClosed = false
 
     var windowID: UUID { model.windowID }
+    /// The profile this window was opened from. Private windows of a profile share one throwaway session while any is open, as in Chrome and
+    /// Firefox: one non-persistent store, and one set of in-memory camera and microphone answers.
+    let profileID: UUID
+    /// The shared session's ID: the key of its store. Joined at init, left once at tear-down.
+    private let sessionID: UUID
 
-    init(environment: AppEnvironment, near parent: NSWindow?, onClose: @escaping (PrivateWindowController) -> Void) {
+    init(environment: AppEnvironment, profileID: UUID, near parent: NSWindow?, onClose: @escaping (PrivateWindowController) -> Void) {
         // Read once, never written: a search engine picked in this window stays in it.
         let searchEngine = Self.read(SettingKeys.searchEngine, from: environment.store) ?? nil
         let edge = Self.read(SettingKeys.newTabEdge, from: environment.store) ?? SettingKeys.newTabEdge.defaultValue
@@ -33,6 +38,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         self.model = model
         self.environment = environment
         self.onClose = onClose
+        self.profileID = profileID
+        sessionID = environment.pageHost.joinPrivateSession(profileID: profileID)
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: WindowFrameRestore.defaultSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -136,7 +143,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
 
     private func request(tabID: UUID, url: String, title: String) -> PageRequest {
         PageRequest(
-            tabID: tabID, store: .privateWindow(windowID), siteSettingsProfileID: nil,
+            tabID: tabID, store: .privateSession(sessionID), siteSettingsProfileID: nil,
             url: url, title: title, faviconURL: nil, interactionState: nil
         )
     }
@@ -231,9 +238,9 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
             pageHost.close(tab.id)
         }
         pendingTyped = [:]
-        // `close` also drops each page's snapshot, kept even for a page hibernation unloaded; the window's media answers go here.
-        pageHost.forgetPrivate(windowID: windowID)
-        environment.webStores.releasePrivate(windowID)
+        // `close` also drops each page's snapshot, kept even for a page hibernation unloaded. The session's store and media answers go with
+        // the last private window of the profile; while another is open they stay.
+        pageHost.leavePrivateSession(profileID: profileID)
         // Running downloads stop and their partial files go; finished files stay in ~/Downloads. Then the rows go.
         environment.downloads.cancelRunning(owner: .privateWindow(windowID))
         environment.downloads.dropOwner(.privateWindow(windowID))
