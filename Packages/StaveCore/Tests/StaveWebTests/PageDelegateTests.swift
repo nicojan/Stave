@@ -27,6 +27,12 @@ final class FakeEvents: PageEvents {
     /// The asking site of each "download several files" question, and the answer given.
     var severalDownloadsQuestions: [(tabID: UUID, host: String?)] = []
     var severalDownloadsAnswer = true
+    /// The asking site of each "‹host› wants to download a file" question (a page Stave reopened by itself), and the answer given. Refused
+    /// by default, as when the question can't be shown.
+    var downloadQuestions: [(tabID: UUID, host: String?)] = []
+    var downloadAnswer = false
+    /// Runs while a "wants to download a file" question is up.
+    var whileAskingToDownload: (() async -> Void)?
     var externalAnswer = false
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
@@ -68,6 +74,12 @@ final class FakeEvents: PageEvents {
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
         severalDownloadsQuestions.append((tabID, host))
         return severalDownloadsAnswer
+    }
+
+    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+        downloadQuestions.append((tabID, host))
+        await whileAskingToDownload?()
+        return downloadAnswer
     }
 
     func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {

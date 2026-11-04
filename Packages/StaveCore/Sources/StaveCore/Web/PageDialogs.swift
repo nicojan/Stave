@@ -66,9 +66,15 @@ extension PageText {
 /// Keeps a page from saving file after file with no click (plan 3 final review). The first download of a document proceeds; the next one
 /// asks ("‹host› wants to download several files"). Allowed: the rest of that document's downloads proceed. Refused (or not askable): the
 /// rest are refused without asking again. A new document (`navigation`, the page's main-frame commit count, changes) starts over.
+///
+/// A page Stave reopened by itself (nobody has acted on it) is the one exception to "the first proceeds": its first download asks
+/// ("‹host› wants to download a file"), and counts as the document's first whatever the answer, so the next goes through the several-files
+/// question.
 public struct PageDownloadGate: Equatable, Sendable {
     public enum Verdict: Equatable, Sendable {
         case proceed
+        /// The document's first download, on a page nobody has acted on: asks "wants to download a file". The answer is not recorded.
+        case askFirst
         case ask
         case refuse
     }
@@ -82,14 +88,14 @@ public struct PageDownloadGate: Equatable, Sendable {
     public init() {}
 
     /// `current` nil: the page has no document to compare (it closed), so the one counted so far still applies.
-    public mutating func next(navigation current: Int?) -> Verdict {
+    public mutating func next(navigation current: Int?, firstNeedsApproval: Bool = false) -> Verdict {
         if let current, current != navigation {
             navigation = current
             started = 0
             answer = nil
         }
         started += 1
-        if started == 1 { return .proceed }
+        if started == 1 { return firstNeedsApproval ? .askFirst : .proceed }
         switch answer {
         case .allowed: return .proceed
         case .refused: return .refuse
@@ -110,6 +116,14 @@ extension PageText {
         guard let host, let site = SiteHost.normalized(host) else { return "This page wants to download several files" }
         return "\(site) wants to download several files"
     }
+
+    /// "‹host› wants to download a file", for a page Stave reopened by itself that starts a download before the user has touched it.
+    public static func downloadQuestion(host: String?) -> String {
+        guard let host, let site = SiteHost.normalized(host) else { return "This page wants to download a file" }
+        return "\(site) wants to download a file"
+    }
+
+    public static let downloadDetail = "It will be saved to your Downloads folder."
 
     public static let severalDownloadsDetail = "Allow it to keep saving files to your Downloads folder?"
 

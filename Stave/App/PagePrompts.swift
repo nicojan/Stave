@@ -72,6 +72,17 @@ final class PagePrompts {
         return await present(alert, for: tabID) == .alertFirstButtonReturn
     }
 
+    /// "example.com wants to download a file", Allow / Don't Allow, for the first download of a page Stave reopened by itself. A cancelled
+    /// sheet refuses.
+    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+        let alert = NSAlert()
+        alert.messageText = PageText.downloadQuestion(host: host)
+        alert.informativeText = PageText.downloadDetail
+        alert.addButton(withTitle: PageText.allowButton)
+        alert.addButton(withTitle: PageText.dontAllowButton)
+        return await present(alert, for: tabID) == .alertFirstButtonReturn
+    }
+
     /// "example.com wants to download several files", Allow / Don't Allow. A cancelled sheet refuses.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
         let alert = NSAlert()

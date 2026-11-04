@@ -58,6 +58,10 @@ extension BrowserWindowController: PageEvents {
         await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
     }
 
+    func confirmDownload(tabID: UUID, host: String?) async -> Bool {
+        await prompts.confirmDownload(tabID: tabID, host: host)
+    }
+
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
         await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
     }

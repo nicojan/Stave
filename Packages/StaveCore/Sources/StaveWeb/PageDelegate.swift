@@ -18,6 +18,9 @@ import WebKit
     /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
     /// Asked only while the tab is shown; otherwise false.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool
+    /// "‹host› wants to download a file" (Allow / Don't Allow), for the first download of a page Stave reopened by itself, which nobody
+    /// has acted on yet. Asked only while the tab is shown; otherwise false.
+    func confirmDownload(tabID: UUID, host: String?) async -> Bool
     /// "Allow ‹host› to use your camera?". A question that can't be shown yet (the tab isn't shown, another sheet is up) waits until it can
     /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` is
     /// honoured for an Allow only (`mediaDecision`).
@@ -314,12 +317,6 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// `<a download>` link clicked by the user or by script): the document's first proceeds, later ones ask (`PageDownloadGate`). WebKit
     /// cancels a download given no destination.
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
-        // A page Stave reopened by itself downloads nothing until the user acts on it (no question either: nobody asked for this page).
-        // The refused download still counts as the document's first, so its next one asks.
-        if let page, page.awaitsUserAction {
-            _ = downloadGate.next(navigation: page.commitCount)
-            return nil
-        }
         // No owner to file it under: refused.
         guard host != nil, self.events?.downloadOwner(tabID: tabID) != nil else { return nil }
         guard await mayDownload(), let directory = self.events?.downloadsDirectory, let folderCheck = host?.downloadsFolder else { return nil }
@@ -340,13 +337,22 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         return destination
     }
 
-    /// Whether this download may go ahead: the document's first does; a later one asks, one question at a time (a download that arrives
-    /// while one is up is refused), and the answer holds for the rest of the document. A question that can't be asked counts as refused.
+    /// Whether this download may go ahead: the document's first does, unless Stave reopened the page by itself and nobody has acted on it,
+    /// when it asks first ("wants to download a file", as Safari does); a later one asks about several files. One question at a time (a
+    /// download that arrives while one is up is refused). The several-files answer holds for the rest of the document; the first-download
+    /// answer is not kept, but the download counts as the document's first either way. A question that can't be asked counts as refused.
     func mayDownload() async -> Bool {
         let navigation = page.map(\.commitCount)
-        switch downloadGate.next(navigation: navigation) {
+        let untouched = page?.awaitsUserAction ?? false
+        switch downloadGate.next(navigation: navigation, firstNeedsApproval: untouched) {
         case .proceed: return true
         case .refuse: return false
+        case .askFirst:
+            guard !downloadQuestionPending, let events else { return false }
+            downloadQuestionPending = true
+            let allowed = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+            downloadQuestionPending = false
+            return allowed
         case .ask:
             guard !downloadQuestionPending, let events else { return false }
             downloadQuestionPending = true

@@ -145,6 +145,26 @@ struct PageDialogTests {
         #expect(gate.next(navigation: nil) == .ask)
     }
 
+    /// A page nobody has acted on: its first download asks first; later ones follow the several-files rules as usual.
+    @Test func firstDownloadOfAnUntouchedPageAsksFirst() {
+        var gate = PageDownloadGate()
+        #expect(gate.next(navigation: 1, firstNeedsApproval: true) == .askFirst)
+        // Whatever the answer, it counted as the first: the next one asks about several files.
+        #expect(gate.next(navigation: 1, firstNeedsApproval: true) == .ask)
+        gate.answer(allow: true, navigation: 1)
+        #expect(gate.next(navigation: 1, firstNeedsApproval: true) == .proceed)
+        // A new document starts over.
+        #expect(gate.next(navigation: 2, firstNeedsApproval: true) == .askFirst)
+        // A page the user has acted on proceeds as before.
+        #expect(gate.next(navigation: 3, firstNeedsApproval: false) == .proceed)
+    }
+
+    @Test func downloadQuestionNamesTheSite() {
+        #expect(PageText.downloadQuestion(host: "https://files.example.com/x") == "files.example.com wants to download a file")
+        #expect(PageText.downloadQuestion(host: nil) == "This page wants to download a file")
+        #expect(PageText.downloadDetail == "It will be saved to your Downloads folder.")
+    }
+
     @Test func severalDownloadsQuestionNamesTheSite() {
         #expect(PageText.severalDownloadsQuestion(host: "https://files.example.com/x") == "files.example.com wants to download several files")
         #expect(PageText.severalDownloadsQuestion(host: nil) == "This page wants to download several files")

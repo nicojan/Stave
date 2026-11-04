@@ -51,6 +51,77 @@ extension PageDelegateTests {
         host.close(page.tabID)
     }
 
+    /// The page asks, as Safari does, instead of refusing in silence; the answer's download counts as the document's first.
+    @Test func storedPageAsksBeforeItsFirstDownloadAndAllowedOneProceeds() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.downloadAnswer = true
+        let host = makeHost()
+        let page = try await storedPage(host, url: "https://files.example.com/list")
+        #expect(try await startDownload(on: page, named: "first.txt") != nil)
+        #expect(events.downloadQuestions.count == 1)
+        #expect(events.downloadQuestions.first?.tabID == page.tabID)
+        #expect(events.downloadQuestions.first?.host == "files.example.com")
+        #expect(events.downloads.items(for: .profile(page.tabID)).map(\.filename) == ["first.txt"])
+        // Still untouched, and the next one is the several-files question, not this one again.
+        #expect(page.awaitsUserAction)
+        events.severalDownloadsAnswer = false
+        #expect(try await startDownload(on: page, named: "second.txt") == nil)
+        #expect(events.downloadQuestions.count == 1)
+        #expect(events.severalDownloadsQuestions.count == 1)
+        host.close(page.tabID)
+    }
+
+    @Test func storedPageRefusedDownloadStillCountsAsTheFirst() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.downloadAnswer = false
+        events.severalDownloadsAnswer = true
+        let host = makeHost()
+        let page = try await storedPage(host)
+        #expect(try await startDownload(on: page, named: "first.txt") == nil)
+        #expect(events.downloadQuestions.count == 1)
+        #expect(events.downloads.items(for: .profile(page.tabID)).isEmpty)
+        // The next one goes through the several-files question (answered Allow here).
+        #expect(try await startDownload(on: page, named: "second.txt") != nil)
+        #expect(events.severalDownloadsQuestions.count == 1)
+        #expect(events.downloadQuestions.count == 1)
+        host.close(page.tabID)
+    }
+
+    @Test func storedPageAsksOneDownloadQuestionAtATime() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        events.downloadAnswer = true
+        let host = makeHost()
+        let page = try await storedPage(host)
+        var second: URL?? = .none
+        events.whileAskingToDownload = { [self] in
+            // A second download arrives while the first one's question is up.
+            second = .some(try? await startDownload(on: page, named: "second.txt"))
+        }
+        #expect(try await startDownload(on: page, named: "first.txt") != nil)
+        #expect(second == .some(nil))
+        #expect(events.downloadQuestions.count == 1)
+        #expect(events.severalDownloadsQuestions.isEmpty)
+        host.close(page.tabID)
+    }
+
+    @Test func pageTheUserActedOnDownloadsWithoutThisQuestion() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        events.downloadsDirectory = dir
+        let host = makeHost()
+        let page = try await storedPage(host)
+        page.userActed()
+        #expect(try await startDownload(on: page, named: "a.txt") != nil)
+        #expect(events.downloadQuestions.isEmpty)
+        host.close(page.tabID)
+    }
+
     @Test func restoredStateDownloadsNothingUntilTheUserActs() async throws {
         let dir = try tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
