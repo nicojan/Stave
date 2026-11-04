@@ -86,7 +86,11 @@ extension PageDelegate {
 
     // MARK: Camera and microphone
 
-    public func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
+    /// WebKit's camera and microphone question, asked after macOS's own permission check. The async Swift name must be this one
+    /// (`WK_SWIFT_ASYNC_NAME` in `WKUIDelegate.h`): an async method using the selector's labels matches nothing, and WebKit then shows its
+    /// own prompt, which remembers nothing. `origin` is the top page's, so an embedded frame is asked about, and remembered under, the top
+    /// site (as Chrome does for permissions a page delegates); JavaScript dialogs name the frame instead, on purpose.
+    public func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin, initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
         let (camera, microphone) = switch type {
         case .camera: (true, false)
         case .microphone: (false, true)

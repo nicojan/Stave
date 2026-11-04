@@ -76,6 +76,8 @@ struct NavigationRequest {
 
 /// One page's navigation, UI and download delegate. Glue: every rule it applies lives in StaveCore.
 /// The host keeps it alive (WebKit holds delegates weakly), and keeps it while a download it started runs.
+/// WebKit finds these methods by selector and nothing warns about a misnamed one: add each new one to `delegateSelectors` in
+/// `DelegateSelectorTests`.
 @MainActor
 public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     let tabID: UUID
