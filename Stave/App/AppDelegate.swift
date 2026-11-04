@@ -185,9 +185,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The profile a new private window belongs to (its throwaway session is shared with that profile's other private windows): the key
-    /// private window's, else the front browser window's, else the default profile's.
+    /// private window's, a key pop-up's (that of its opener tab's window), else the front browser window's, else the default profile's.
     private func privateWindowProfileID(_ environment: AppEnvironment) -> UUID? {
         if let keyPrivate { return keyPrivate.profileID }
+        if let key = NSApp.keyWindow, let popup = environment.popups.all.first(where: { $0.window === key || $0.window === key.sheetParent }) {
+            if let owner = privateControllers.first(where: { $0.owns(popup.id) }) { return owner.profileID }
+            if let profileID = try? environment.store.profileID(forTab: popup.openerTabID) { return profileID }
+        }
         if let front = frontController { return front.model.snapshot.profile.id }
         do {
             return try environment.store.ensureDefaultProfile().id
