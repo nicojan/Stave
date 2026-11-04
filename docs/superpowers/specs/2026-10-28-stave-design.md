@@ -32,6 +32,7 @@ Browser extensions, cross-device sync, split view, Glance, Boosts (per-site CSS/
 - Telemetry, ads, or anything in the UI that sells something.
 - An opinionated behaviour the user cannot switch off.
 - Non-standard keyboard shortcuts for things Safari and Chrome already have shortcuts for.
+- Common browser behaviour done differently. Anything Stave shares with other browsers (permissions, downloads, link menus, windows, prompts) acts the way Chrome, Safari and Firefox do (Nico, 2026-11-04). Stave's difference is putting workspaces and similar features together in one browser, not new takes on standard behaviour. Where the big browsers disagree, or the workspace model leaves it open, the choice goes to Nico.
 - AI as the point of the product.
 - Breaking or slowing down Chorus by sharing its engine.
 
