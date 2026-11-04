@@ -57,8 +57,8 @@ final class PagePrompts {
         return await present(alert, for: tabID) == .alertFirstButtonReturn
     }
 
-    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). A
-    /// cancelled sheet denies and remembers nothing.
+    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). Only an
+    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). A cancelled sheet denies and remembers nothing.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
         let alert = NSAlert()
         alert.messageText = PageText.mediaQuestion(host: host, camera: camera, microphone: microphone)

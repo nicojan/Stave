@@ -686,6 +686,23 @@ struct PageDelegateTests {
         await removeStore(profile)
     }
 
+    /// Stopgap until a per-site settings panel exists: a Don't Allow is never stored, even with "Remember for this site" ticked.
+    @Test func mediaDontAllowIsNeverRemembered() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let page = host.page(for: request(profile: profile), writer: writer)
+        let delegate = try delegate(of: page)
+        events.mediaAnswer = (false, true)
+        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: true) == .deny)
+        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+        #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == nil)
+        // The next load asks again.
+        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: true) == .deny)
+        #expect(events.mediaQuestions.count == 2)
+        host.close(page.tabID)
+        await removeStore(profile)
+    }
+
     @Test func privateWindowMediaAnswersStayInMemory() async throws {
         let host = makeHost()
         let page = host.page(for: request(), writer: writer)

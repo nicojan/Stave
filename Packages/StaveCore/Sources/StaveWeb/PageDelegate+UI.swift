@@ -99,8 +99,9 @@ extension PageDelegate {
         return await mediaDecision(originHost: origin.host, camera: camera, microphone: microphone)
     }
 
-    /// A remembered answer for every key asked grants; any remembered deny denies; otherwise the app asks,
-    /// and the answer is remembered per key when the user says so (plan 3, decision 11).
+    /// A remembered answer for every key asked grants; any remembered deny denies (rows stored earlier still count); otherwise the app asks.
+    /// Only an Allow is remembered, per key, when the user ticks "Remember for this site" (plan 3, decision 11). A Don't Allow denies this
+    /// time and stores nothing, so the next load asks again: a stopgap until a per-site settings panel lets the user undo a stored deny.
     func mediaDecision(originHost: String, camera: Bool, microphone: Bool) async -> WKPermissionDecision {
         guard let page, !page.isClosed, let host, let events, let site = SiteHost.normalized(originHost) else { return .deny }
         let keys: [SiteSettingKey] = (camera ? [.camera] : []) + (microphone ? [.microphone] : [])
@@ -109,8 +110,8 @@ extension PageDelegate {
         if remembered.contains(.deny) { return .deny }
         if remembered.allSatisfy({ $0 == .allow }) { return .grant }
         let answer = await events.askMedia(tabID: tabID, host: site, camera: camera, microphone: microphone)
-        if answer.remember {
-            for key in keys { host.rememberMedia(answer.allow ? .allow : .deny, for: page, host: site, key: key) }
+        if answer.remember, answer.allow {
+            for key in keys { host.rememberMedia(.allow, for: page, host: site, key: key) }
         }
         return answer.allow && !page.isClosed ? .grant : .deny
     }
