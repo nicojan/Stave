@@ -657,7 +657,35 @@ Nico's answers (2026-11-04): anything Stave shares with other browsers acts the 
 - **A reopened page's downloads:** asked ("‹host› wants to download a file"), as Safari asks per site, instead of refused silently.
 - **Open Link in New Window:** opens a real new window, as every browser does, on the opener tab's workspace, with the link selected there.
 
+Later the same day Nico also approved, again to match Chrome: downloads that arrive while a download question is up wait for its answer (they had been refused with no question), and the private windows of a profile share one session (decision 15, revised above; Safari keeps private tabs apart, Chrome and Firefox share).
+
+Built after the answers (2026-11-04, builder agent, two qa-reviewer passes):
+
+- `e05e019` Remember keeps only Allow. `a56b8e6` a camera question that can't be shown waits. `8619d34` a reopened page asks "‹host› wants to download a file". `90daf65` Open Link in New Window opens a window.
+- First review: two must-fixes in `a56b8e6`. (A) A waiting question outlived its page (hibernation, same-tab navigation, crash and reload), and Allow with Remember could store an allow for the old host. (B) Per-window queues could strand a question for a tab shown in another window. Fixed in `7d8fa7d`: each question is tied to the asking page and its commit count, is dropped on unload, close or a main-frame commit (as Chrome does), and is shown in whichever window shows the tab (one app-wide `MediaQuestionCenter`). `mediaDecision` grants or remembers only if the page is unchanged after the await. A sheet sent back because its tab was hidden is marked by a flag, not the `.cancel` code `quit()` uses. `84d6fd2` takes the new window's workspace from the opener tab's stored record and falls back to a tab rather than dropping the link. `aaa6383` makes a Don't Allow on a reopened page's download stick until the user acts.
+- `5f5c053` downloads wait behind a download question and follow its answer; after a first-download Allow, the waiting ones get one "several files" question; after a Don't Allow they are refused; a navigation or close refuses them.
+- `386466c` private windows of a profile share one non-persistent store and in-memory camera answers while any is open; ⇧⌘N takes the key private window's profile, else the front browser window's, else the default.
+- Second review (of `7d8fa7d`..`386466c`): nothing must-fix; four should-fixes, fixed. `180fe42`: on a main-frame commit the tab's download sheets come down too (a leftover sheet had made the new page's later downloads fail silently); a question that couldn't be asked (`QuestionAnswer.unasked`) is never recorded as Don't Allow; the hand-off after a first-download Allow refuses if the page changed meanwhile; a camera question is denied unless the page's current top site is the asking site, checked on entry and after the answer (closes a gap where a page asking while navigating to another site could get its own host remembered over the new site). `39d8dfc`: ⇧⌘N from a key pop-up uses its opener's profile. `ab0d06f`: a private session's store is asked for only while the session is joined (debug assertion), and leaving the last window drops its in-memory answers through `forgetPrivate`.
+- Package tests 742 (114 + 628), Debug (signed) and Release builds green locally on Swift 6.4.2; pushed `db29b0f..ab0d06f`; CI green on macOS 14 and 15 (Swift 6.0.3) for `ab0d06f` (run 41911120693).
+
+By the session in the rebuilt signed Debug app (accessibility only, no pointer or keys): on `localhost/cam.html`, switching tabs while the camera sheet was up took it down and it came back on returning; Don't Allow with Remember ticked stored nothing and the next load asked again. A relaunched `double.html` asked "127.0.0.1 wants to download a file" and saved nothing until Allow; then its waiting second file got the "several files" question and Allow saved `small2.txt`, quarantined. Open Link in New Window opened a second window with the link; Open Link in New Tab still opens a background tab. A cookie set in a private window was seen by a second private window opened with Open Link in New Window; after both closed, a new private window had none, and a normal window never saw it.
+
+By-hand checks for Nico after the answers:
+
+- [ ] A camera question in a background tab: open a page that asks for the camera with ⌘-click, stay on the opener, then switch to the new tab: Stave's sheet appears then, not before. Also with the tab moved to another window first.
+- [ ] Open Link in New Window from a pop-up, and from a tab in a second workspace: the window opens on that tab's workspace.
+- [ ] Private windows: sign in to a real site in one private window, open a second private window (⇧⌘N): still signed in; close both, open one: signed out. Check the profile it uses when the front window is on a non-default profile.
+- [ ] Quit with a camera sheet up: no sheet comes back, and Stave quits.
+
 ## Carried into later plans
+
+- **From Nico's answers (2026-11-04):**
+  - A per-site camera and microphone panel reached from the address button (Chrome's site settings, Safari's "Settings for This Website"); once it exists, Remember may keep Don't Allow again.
+  - App-only code with no automated test: `MediaQuestionCenter`'s window choice, sending a sheet back and showing it again, the download-sheet takedown on commit, the `unasked` mapping in `PagePrompts`, `AppDelegate.openWindow(forLink:)` and its fallbacks, the ⇧⌘N profile choice. Seen by hand only as listed above.
+  - A camera question for a tab whose window closed while its page stays live (a page playing media isn't hibernated) waits until the tab is shown somewhere.
+  - After an Allow on a reopened page's first-download question, a page that keeps reloading itself is asked again on each load (the Allow isn't kept).
+  - Download rows of private windows are still per window, though the session is shared.
+  - `handoffAfterAFirstDownloadAllowChecksThePageStillMatches` relies on the main actor running queued tasks in order.
 
 - **From the five fixes before merge (2026-11-03):**
   - Camera and microphone: the questions for Nico above (permanent remembered deny with no way to clear it; a question that can't be shown denies and WebKit keeps the deny). The answer is keyed by host only, so one Allow on `localhost:8000` covers every local port. An embedded frame is asked about and remembered under the top page's host (as Chrome does), unlike JavaScript dialogs, which name the frame.
