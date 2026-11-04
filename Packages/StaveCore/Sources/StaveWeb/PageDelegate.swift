@@ -319,10 +319,18 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         }
         // No owner to file it under: refused.
         guard host != nil, self.events?.downloadOwner(tabID: tabID) != nil else { return nil }
-        guard await mayDownload() else { return nil }
-        // The question may have been up for a while: everything is looked up again.
+        guard await mayDownload(), let directory = self.events?.downloadsDirectory, let folderCheck = host?.downloadsFolder else { return nil }
+        // macOS's question about the folder comes now, off the main thread, not inside WebKit on it (`DownloadsFolderCheck`).
+        let access = await folderCheck.access(directory)
+        // The questions may have been up for a while: everything is looked up again.
         guard let host, let events, let owner = events.downloadOwner(tabID: tabID) else { return nil }
-        let destination = Self.destination(for: suggestedFilename, in: events.downloadsDirectory)
+        guard access == .readable else {
+            let rowID = events.downloads.begin(owner: owner, filename: DownloadFilename.sanitized(suggestedFilename), sourceHost: nil)
+            events.downloads.fail(rowID, message: access == .refused ? PageText.downloadsFolderRefused : PageText.downloadsFolderUnavailable)
+            return nil
+        }
+        // The folder that was checked, so no other folder's question can come up on the main thread.
+        let destination = Self.destination(for: suggestedFilename, in: directory)
         let source = Self.quarantineSource(download.originalRequest?.url ?? response.url, pageURL: page?.webView.url ?? page.flatMap { URL(string: $0.status.url) })
         let rowID = events.downloads.begin(owner: owner, filename: destination.lastPathComponent, sourceHost: source?.host)
         host.beginDownload(download, delegate: self, rowID: rowID, list: events.downloads, destination: destination, source: source)

@@ -304,6 +304,9 @@ public final class PageHost {
         activeDownloads.begin(download, delegate: delegate, rowID: rowID, list: list, destination: destination, source: source)
     }
 
+    /// Checked before every download's destination is given to WebKit, off the main thread.
+    @ObservationIgnored let downloadsFolder = DownloadsFolderCheck()
+
     /// Seam for tests: how a download's file is quarantined.
     var markDownload: @MainActor (URL, URL?) throws -> Void {
         get { activeDownloads.mark }

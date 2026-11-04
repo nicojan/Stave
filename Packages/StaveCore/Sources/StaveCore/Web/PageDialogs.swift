@@ -57,6 +57,10 @@ extension PageText {
     public static let allowButton = "Allow"
     public static let dontAllowButton = "Don’t Allow"
     public static let rememberForSite = "Remember for this site"
+    /// A download's row when macOS refuses Stave the downloads folder (the row reads "Failed: " then this, on two lines at most).
+    public static let downloadsFolderRefused = "Allow Downloads for Stave in Privacy & Security ▸ Files and Folders."
+    /// A download's row when the downloads folder is missing or can't be opened for another reason.
+    public static let downloadsFolderUnavailable = "Stave can’t open your Downloads folder."
 }
 
 /// Keeps a page from saving file after file with no click (plan 3 final review). The first download of a document proceeds; the next one
