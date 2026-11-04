@@ -21,14 +21,16 @@ final class DownloadsFolderCheck {
     /// Seam for tests: the check itself, which may block for as long as macOS's question is up.
     var probe: @Sendable (URL) -> FolderAccess = DownloadsFolderCheck.open
     private var inFlight: (directory: URL, task: Task<FolderAccess, Never>)?
-    private static let queue = DispatchQueue(label: "com.nicojan.Stave.downloads-folder")
+    /// Its own queue per check, so one host's blocked question never holds up another's (the app has one host; tests make many).
+    private let queue = DispatchQueue(label: "com.nicojan.Stave.downloads-folder")
 
     func access(_ directory: URL) async -> FolderAccess {
         if let inFlight, inFlight.directory == directory { return await inFlight.task.value }
         let probe = probe
+        let queue = queue
         let task = Task {
             await withCheckedContinuation { (continuation: CheckedContinuation<FolderAccess, Never>) in
-                Self.queue.async { continuation.resume(returning: probe(directory)) }
+                queue.async { continuation.resume(returning: probe(directory)) }
             }
         }
         inFlight = (directory, task)

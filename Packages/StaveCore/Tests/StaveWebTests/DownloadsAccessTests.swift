@@ -17,7 +17,7 @@ final class BlockingProbe: @unchecked Sendable {
     func probe(_ directory: URL) -> FolderAccess {
         lock.withLock { calls.append(Thread.isMainThread) }
         // Bounded, so a check that blocks the main thread fails the test instead of hanging it.
-        _ = gate.wait(timeout: .now() + 10)
+        _ = gate.wait(timeout: .now() + 30)
         return .readable
     }
 
@@ -28,9 +28,16 @@ final class BlockingProbe: @unchecked Sendable {
 /// main thread, the first time Stave touched it (walkthrough fix 3). Stave now touches the folder first, off the main thread.
 extension PageDelegateTests {
     func askForDestination(_ page: LivePage, named name: String) async throws -> URL? {
-        let delegate = try delegate(of: page)
-        let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
-        return await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: name)
+        try await askForDestination(page, download: await newDownload(page), named: name)
+    }
+
+    /// WebKit's download object, made before any timing starts: the first one can take seconds on a loaded CI runner.
+    func newDownload(_ page: LivePage) async -> WKDownload {
+        await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
+    }
+
+    func askForDestination(_ page: LivePage, download: WKDownload, named name: String) async throws -> URL? {
+        try await delegate(of: page).download(download, decideDestinationUsing: URLResponse(), suggestedFilename: name)
     }
 
     @Test func downloadsFolderIsCheckedOffTheMainThreadFirst() async throws {
@@ -43,9 +50,10 @@ extension PageDelegateTests {
         host.downloadsFolder.probe = { probe.probe($0) }
         let page = host.page(for: request(), writer: writer)
 
-        let asking = Task { try await askForDestination(page, named: "a.txt") }
+        let download = await newDownload(page)
+        let asking = Task { try await askForDestination(page, download: download, named: "a.txt") }
         // While the check is blocked (the prompt is up), the main actor keeps running and nothing is handed to WebKit yet.
-        #expect(try await waitUntil(seconds: 5) { probe.ranOnMainThread.count == 1 })
+        #expect(try await waitUntil(seconds: 15) { probe.ranOnMainThread.count == 1 })
         #expect(probe.ranOnMainThread == [false])
         #expect(events.downloads.items(for: .profile(page.tabID)).isEmpty)
         probe.release()
@@ -92,9 +100,10 @@ extension PageDelegateTests {
         // Two pages, so each one's first download goes ahead without the several-files question.
         let first = host.page(for: request(), writer: writer)
         let second = host.page(for: request(), writer: writer)
-        let one = Task { try await askForDestination(first, named: "one.txt") }
-        let two = Task { try await askForDestination(second, named: "two.txt") }
-        #expect(try await waitUntil(seconds: 5) { probe.ranOnMainThread.count == 1 })
+        let (firstDownload, secondDownload) = (await newDownload(first), await newDownload(second))
+        let one = Task { try await askForDestination(first, download: firstDownload, named: "one.txt") }
+        let two = Task { try await askForDestination(second, download: secondDownload, named: "two.txt") }
+        #expect(try await waitUntil(seconds: 15) { probe.ranOnMainThread.count == 1 })
         try await Task.sleep(for: .milliseconds(200))
         #expect(probe.ranOnMainThread.count == 1)
         probe.release()
