@@ -11,10 +11,15 @@ extension PageDelegate {
     /// it carries `window.opener` and the opener's store). The app adopts it while `events` runs, which
     /// gives it its own delegate; a view left unadopted would load ungated, so it is refused instead.
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // Taken first, so a choice is used by the request it was made for whatever happens below. The menu's request is `.other`;
+        // a clicked `target=_blank` link neither takes nor discards it.
+        let fromLinkMenu = navigationAction.navigationType == .other && ((webView as? PageWebView)?.takeNewTabChoice() ?? false)
         guard let page, !page.isClosed, let host, let events else { return nil }
         let url = navigationAction.request.url?.absoluteString ?? ""
+        if fromLinkMenu { return openLinkInNewTab(url, events: events) }
         let route = OpenRoute.route(width: windowFeatures.width?.doubleValue, height: windowFeatures.height?.doubleValue, popupRequested: false)
-        let child = WKWebView(frame: .zero, configuration: configuration)
+        let child = PageWebView(frame: .zero, configuration: configuration)
+        if let pageView = webView as? PageWebView { child.now = pageView.now }
         switch route {
         case .sidebarTab:
             let modifiers = navigationAction.navigationType == .linkActivated ? navigationAction.modifierFlags : []
@@ -26,6 +31,15 @@ extension PageDelegate {
         }
         guard host.isAdopted(child) else { return nil }
         return child
+    }
+
+    /// "Open Link in New Tab" from the link menu opens a background tab the way ⌘-click does: the app makes a fresh page (its own
+    /// content blocking for its site, no `window.opener`), and WebKit gets no view.
+    private func openLinkInNewTab(_ url: String, events: PageEvents) -> WKWebView? {
+        if NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow {
+            _ = events.openLinkedTab(opener: tabID, url: url, select: false, webView: nil)
+        }
+        return nil
     }
 
     public func webViewDidClose(_ webView: WKWebView) {

@@ -74,7 +74,8 @@ public final class PageHost {
             applicationName: applicationName,
             messageHandler: faviconRelay
         )
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = PageWebView(frame: .zero, configuration: configuration)
+        webView.now = now
         let page = LivePage(request: request, webView: webView, writer: writer, isContentBlockingOn: blocking, now: now)
         insert(page)
         // Before `start`: the delegate gates the restore navigation too (ruling R7).

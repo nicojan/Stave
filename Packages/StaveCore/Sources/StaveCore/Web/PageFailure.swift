@@ -48,6 +48,8 @@ public enum PageText {
     public static let okButton = "OK"
     public static let cancelButton = "Cancel"
     public static let openButton = "Open"
+    /// Added to a page's link menu, before WebKit's "Open Link in New Window".
+    public static let openLinkInNewTab = "Open Link in New Tab"
     /// The heading of a blank tab's content area.
     public static let newTabTitle = "New Tab"
 }
