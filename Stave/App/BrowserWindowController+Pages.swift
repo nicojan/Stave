@@ -34,6 +34,7 @@ extension BrowserWindowController: PageLifecycle {
         }
         if let typed { pageHost.loadTyped(typed, in: tab.id) }
         pageHost.markShown(tab.id, true)
+        prompts.mayAskAgain() // a camera or microphone question for this tab may have been waiting for it to be shown
         guard shownTabID != tab.id else { return }
         shownTabID = tab.id
         do {
@@ -198,7 +199,7 @@ extension BrowserWindowController: PageLifecycle {
     /// Keeps a snapshot for "showing in another window" and writes the page's pending state. The page stays shown when another window
     /// took it over.
     func tabDeselected(_ id: UUID) {
-        endPanels { $0.tabID == id }
+        prompts.hide(id)
         pageHost.captureSnapshot(id)
         pageHost.flushAll() // the host flushes every page or none; a flush with nothing pending writes nothing
         if environment.livePages.owner(of: id) == nil { pageHost.markShown(id, false) }

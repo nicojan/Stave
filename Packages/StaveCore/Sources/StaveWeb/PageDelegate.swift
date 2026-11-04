@@ -18,6 +18,9 @@ import WebKit
     /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
     /// Asked only while the tab is shown; otherwise false.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool
+    /// "Allow ‹host› to use your camera?". A question that can't be shown yet (the tab isn't shown, another sheet is up) waits until it can
+    /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` is
+    /// honoured for an Allow only (`mediaDecision`).
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
     /// `origin`: the host of the frame that asked (nil for a frame with no web origin), which the dialog names instead of the top page.
     func alert(tabID: UUID, origin: String?, message: String) async

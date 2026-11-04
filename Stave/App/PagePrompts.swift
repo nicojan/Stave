@@ -6,12 +6,30 @@ import StaveWeb
 struct PagePanel {
     let tabID: UUID
     let end: () -> Void
+    /// Set for a sheet whose question waits again when its tab is hidden (the media question): takes the sheet down without resolving it.
+    var sendBack: (() -> Void)?
+
+    init(tabID: UUID, end: @escaping () -> Void, sendBack: (() -> Void)? = nil) {
+        self.tabID = tabID
+        self.end = end
+        self.sendBack = sendBack
+    }
+}
+
+/// The user's answer to the camera and microphone question.
+struct MediaAnswer: Sendable {
+    let allow: Bool
+    let remember: Bool
 }
 
 /// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download several files", camera
 /// and microphone, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
 /// can't be asked (its tab isn't shown here, another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its
 /// own window, so it never blocks another window.
+///
+/// The camera and microphone question is the exception to "refused at once": when it can't be shown it waits (`WaitingQuestions`) and is shown
+/// when its tab is shown and no sheet is up. Hiding its tab while the sheet is up sends it back to waiting. It is denied, remembering nothing,
+/// when its tab goes away (`forget`) or the window closes.
 @MainActor
 final class PagePrompts {
     private weak var window: NSWindow?
@@ -28,12 +46,19 @@ final class PagePrompts {
         var gate: PageDialogGate
     }
     private var isClosed = false
+    private let mediaQuestions = WaitingQuestions<MediaAnswer>()
+    private var sheetEndObserver: NSObjectProtocol?
 
     init(window: NSWindow, pageHost: PageHost, shows: @escaping (UUID) -> Bool) {
         self.window = window
         self.pageHost = pageHost
         self.shows = shows
+        // Any sheet ending on the window (a page's or the app's own) may free a waiting question.
+        sheetEndObserver = NotificationCenter.default.addObserver(forName: NSWindow.didEndSheetNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.mayAskAgain() }
+        }
     }
+
 
     // MARK: - Questions
 
@@ -58,8 +83,18 @@ final class PagePrompts {
     }
 
     /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). Only an
-    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). A cancelled sheet denies and remembers nothing.
+    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). A question that can't be shown yet waits (see the type's note);
+    /// one that is cancelled denies and remembers nothing.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
+        let answer = await mediaQuestions.ask(tabID: tabID) { [weak self] finish in
+            self?.showMedia(tabID: tabID, host: host, camera: camera, microphone: microphone, finish: finish) ?? false
+        }
+        return (answer?.allow ?? false, answer?.remember ?? false)
+    }
+
+    /// Shows the media sheet if it can be asked now. `finish` hears how it ended: answered, sent back (its tab was hidden), or cancelled.
+    private func showMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool, finish: @escaping (WaitingQuestions<MediaAnswer>.Result) -> Void) -> Bool {
+        guard let window, canAsk(tabID) else { return false }
         let alert = NSAlert()
         alert.messageText = PageText.mediaQuestion(host: host, camera: camera, microphone: microphone)
         alert.addButton(withTitle: PageText.allowButton)
@@ -67,9 +102,30 @@ final class PagePrompts {
         alert.showsSuppressionButton = true
         alert.suppressionButton?.title = PageText.rememberForSite
         alert.suppressionButton?.state = .on
-        let response = await present(alert, for: tabID)
-        guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return (false, false) }
-        return (response == .alertFirstButtonReturn, alert.suppressionButton?.state == .on)
+        let id = UUID()
+        let sheet = alert.window
+        panels[id] = PagePanel(
+            tabID: tabID,
+            end: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                window.endSheet(sheet, returnCode: .abort)
+            },
+            // `.cancel` is a code no button of the alert returns, so it can only mean "sent back".
+            sendBack: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                window.endSheet(sheet, returnCode: .cancel)
+            }
+        )
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.panels[id] = nil
+            switch response {
+            case .alertFirstButtonReturn, .alertSecondButtonReturn:
+                finish(.answered(MediaAnswer(allow: response == .alertFirstButtonReturn, remember: alert.suppressionButton?.state == .on)))
+            case .cancel: finish(.sentBack)
+            default: finish(.cancelled)
+            }
+        }
+        return true
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async {
@@ -124,16 +180,34 @@ final class PagePrompts {
         }
     }
 
+    /// The tab is no longer shown here: its sheets come down. A media question goes back to waiting; every other one is cancelled.
+    func hide(_ tabID: UUID) {
+        for (id, panel) in panels where panel.tabID == tabID {
+            panels[id] = nil
+            (panel.sendBack ?? panel.end)()
+        }
+    }
+
+    /// Something that could have blocked a waiting question changed (a tab is shown, a sheet ended): shows the ones that can be shown now.
+    /// Hops a turn, so a sheet that is still coming down is gone when the check runs.
+    func mayAskAgain() {
+        Task { @MainActor [weak self] in self?.mediaQuestions.drain() }
+    }
+
     /// The window is closing: every sheet ends and later questions resolve at once.
     func close() {
         end { _ in true }
         isClosed = true
         gates = [:]
+        mediaQuestions.close()
+        if let sheetEndObserver { NotificationCenter.default.removeObserver(sheetEndObserver) }
+        sheetEndObserver = nil
     }
 
-    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it.
+    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it, and its waiting media question is denied.
     func forget(_ tabID: UUID) {
         gates[tabID] = nil
+        mediaQuestions.cancel(tabID: tabID)
     }
 
     // MARK: - Internals

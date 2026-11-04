@@ -131,6 +131,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         }
         if let typed { pageHost.loadTyped(typed, in: tab.id) }
         pageHost.markShown(tab.id, true)
+        prompts.mayAskAgain() // a camera or microphone question for this tab may have been waiting for it to be shown
     }
 
     private func request(tabID: UUID, url: String, title: String) -> PageRequest {
@@ -260,7 +261,7 @@ extension PrivateWindowController: PageLifecycle {
 
     /// The page stays live but is no longer shown, so hibernation may unload it later.
     func tabDeselected(_ id: UUID) {
-        prompts.end { $0.tabID == id }
+        prompts.hide(id)
         pageHost.markShown(id, false)
     }
 
