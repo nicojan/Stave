@@ -122,10 +122,14 @@ extension PageDelegate {
         let remembered = keys.map { host.rememberedMedia(for: page, host: site, key: $0) }
         if remembered.contains(.deny) { return .deny }
         if remembered.allSatisfy({ $0 == .allow }) { return .grant }
+        let commits = page.commitCount
         let answer = await events.askMedia(tabID: tabID, host: site, camera: camera, microphone: microphone)
+        // The question may have waited, or been up, while the page navigated, was unloaded or remade: the answer is then for a page that
+        // is gone, so nothing is remembered or granted (an allow must not be stored for the old host).
+        guard !page.isClosed, host.existingPage(tabID) === page, page.commitCount == commits else { return .deny }
         if answer.remember, answer.allow {
             for key in keys { host.rememberMedia(.allow, for: page, host: site, key: key) }
         }
-        return answer.allow && !page.isClosed ? .grant : .deny
+        return answer.allow ? .grant : .deny
     }
 }

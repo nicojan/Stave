@@ -72,7 +72,7 @@ public final class LivePage {
     @ObservationIgnored private var recorder: PageRecorder
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private(set) var isClosed = false
+    @ObservationIgnored public private(set) var isClosed = false
     /// Test hook: the stored `interactionState` was set on the web view instead of loading the URL.
     @ObservationIgnored private(set) var didRestoreState = false
     /// While true, KVO changes are ignored and nothing is written: the restored item was refused or is

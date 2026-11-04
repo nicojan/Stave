@@ -38,6 +38,10 @@ final class FakeEvents: PageEvents {
     var externalAnswer = false
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
+    /// Runs while the camera and microphone question is up.
+    var whileAskingMedia: (() -> Void)?
+    /// The tabs whose waiting questions the page host asked to drop (a main-frame commit, the page closed or unloaded).
+    var cancelledTabs: [UUID] = []
     var alerts: [String] = []
     /// The asking frame's host passed with each alert, confirm and prompt.
     var dialogOrigins: [String?] = []
@@ -62,6 +66,8 @@ final class FakeEvents: PageEvents {
         }
         return id
     }
+
+    func cancelWaitingQuestions(tabID: UUID) { cancelledTabs.append(tabID) }
 
     func openLinkInNewWindow(opener: UUID, url: String) {
         newWindowLinks.append((opener, url))
@@ -97,6 +103,7 @@ final class FakeEvents: PageEvents {
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
         mediaQuestions.append((host, camera, microphone))
+        whileAskingMedia?()
         return mediaAnswer
     }
 
@@ -719,6 +726,39 @@ struct PageDelegateTests {
         #expect(events.mediaQuestions.count == 2)
         host.close(page.tabID)
         await removeStore(profile)
+    }
+
+    /// The page navigated while the question was up: whoever answered, the answer is for a page that is gone. Nothing is remembered (an
+    /// allow stored for the old host must not follow the tab to wherever it went) and nothing is granted.
+    @Test func mediaAnswerAfterANavigationIsDeniedAndNotRemembered() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let page = host.page(for: request(profile: profile), writer: writer)
+        let delegate = try delegate(of: page)
+        events.mediaAnswer = (true, true)
+        events.whileAskingMedia = { page.committed() }
+        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .deny)
+        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+        // A page remade under the same tab is not the page that asked either.
+        events.whileAskingMedia = { host.close(page.tabID); _ = host.page(for: self.request(page.tabID, profile: profile), writer: self.writer) }
+        #expect(await delegate.mediaDecision(originHost: "example.com", camera: true, microphone: false) == .deny)
+        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+        host.close(page.tabID)
+        await removeStore(profile)
+    }
+
+    @Test func pageEndingOrCommittingDropsItsWaitingQuestions() async throws {
+        let host = makeHost()
+        let page = host.page(for: request(), writer: writer)
+        let delegate = try delegate(of: page)
+        delegate.webView(page.webView, didCommit: nil)
+        #expect(events.cancelledTabs == [page.tabID])
+        host.unload(page.tabID)
+        #expect(events.cancelledTabs == [page.tabID, page.tabID])
+        let other = host.page(for: request(), writer: writer)
+        host.close(other.tabID)
+        #expect(events.cancelledTabs.last == other.tabID)
+        #expect(events.cancelledTabs.count == 3)
     }
 
     @Test func privateWindowMediaAnswersStayInMemory() async throws {

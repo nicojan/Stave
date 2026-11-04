@@ -20,7 +20,7 @@ final class PopupWindowController: NSObject, NSWindowDelegate {
     private let onClose: (PopupWindowController) -> Void
     private(set) var isClosed = false
 
-    init(id: UUID, openerTabID: UUID, page: LivePage, features: WKWindowFeatures, near parent: NSWindow?, pageHost: PageHost, onClose: @escaping (PopupWindowController) -> Void) {
+    init(id: UUID, openerTabID: UUID, page: LivePage, features: WKWindowFeatures, near parent: NSWindow?, pageHost: PageHost, mediaQuestions: MediaQuestionCenter, onClose: @escaping (PopupWindowController) -> Void) {
         self.id = id
         self.openerTabID = openerTabID
         self.page = page
@@ -34,7 +34,7 @@ final class PopupWindowController: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false
         )
-        prompts = PagePrompts(window: window, pageHost: pageHost, shows: { [id] tabID in tabID == id })
+        prompts = PagePrompts(window: window, pageHost: pageHost, center: mediaQuestions, shows: { [id] tabID in tabID == id })
         super.init()
         window.isReleasedWhenClosed = false
         window.isRestorable = false
@@ -49,6 +49,7 @@ final class PopupWindowController: NSObject, NSWindowDelegate {
     func show() {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(page.webView)
+        prompts.mayAskAgain() // a question the pop-up's page asked before its window was up
     }
 
     /// Closes the window (and with it the page).
@@ -114,7 +115,7 @@ extension PopupWindowController {
         let popups = environment.popups
         let popup = PopupWindowController(
             id: id, openerTabID: popups.openerTab(of: opener), page: page, features: features, near: parent,
-            pageHost: environment.pageHost, onClose: { closed in popups.remove(closed) }
+            pageHost: environment.pageHost, mediaQuestions: environment.mediaQuestions, onClose: { closed in popups.remove(closed) }
         )
         popups.add(popup)
         popup.show()

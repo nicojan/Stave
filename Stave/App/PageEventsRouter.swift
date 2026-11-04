@@ -117,9 +117,14 @@ final class PageEventsRouter: PageEvents {
         return await prompts.confirmDownload(tabID: tabID, host: host)
     }
 
+    /// Waits in the app-wide queue until the window or pop-up showing the tab can ask; denied when the asking page is gone first.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
-        guard let prompts = prompts(for: tabID) else { return (false, false) }
-        return await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
+        await environment.mediaQuestions.ask(pageHost: environment.pageHost, tabID: tabID, host: host, camera: camera, microphone: microphone)
+    }
+
+    /// The tab's page went away or navigated: its waiting camera and microphone questions are denied.
+    func cancelWaitingQuestions(tabID: UUID) {
+        environment.mediaQuestions.cancel(tabID: tabID)
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async {

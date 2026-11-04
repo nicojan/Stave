@@ -35,6 +35,8 @@ final class AppEnvironment {
     let popupWriter = DiscardingPageWriter()
     /// Every open pop-up window, by opener tab.
     let popups = PopupRegistry()
+    /// The one queue of camera and microphone questions, shown by whichever window shows the asking tab.
+    let mediaQuestions = MediaQuestionCenter()
 
     /// Opens (creating if needed) the database and makes sure a profile exists, then runs the launch maintenance and, when asked, seeds
     /// the sample. Throws `StoreError.newerSchema` without touching the file when the data was written by a newer Stave.

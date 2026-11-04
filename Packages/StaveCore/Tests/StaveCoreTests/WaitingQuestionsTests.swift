@@ -18,6 +18,11 @@ private final class FakeShower {
 }
 
 @MainActor
+private final class Flag {
+    var isSet = false
+}
+
+@MainActor
 @Suite("Waiting questions")
 struct WaitingQuestionsTests {
     private func settle() async { for _ in 0..<5 { await Task.yield() } }
@@ -26,18 +31,62 @@ struct WaitingQuestionsTests {
         let queue = WaitingQuestions<String>()
         let shower = FakeShower()
         let tab = UUID()
-        var answer: String?? = .none
-        let task = Task { @MainActor in answer = .some(await queue.ask(tabID: tab, show: shower.show(tab))) }
+        let resolved = Flag()
+        let task = Task { @MainActor () -> String? in
+            let answer = await queue.ask(tabID: tab, show: shower.show(tab))
+            resolved.isSet = true
+            return answer
+        }
         await settle()
         #expect(shower.shown.isEmpty)
-        #expect(answer == nil)
+        #expect(!resolved.isSet)
 
         shower.canShow = true
         queue.drain()
         #expect(shower.shown.count == 1)
         shower.shown[0].finish(.answered("yes"))
-        await task.value
-        #expect(answer == .some("yes"))
+        #expect(await task.value == "yes")
+        #expect(resolved.isSet)
+    }
+
+    /// A question whose page went away (unloaded, navigated, remade) resolves with nil and is never shown, however it is checked.
+    @Test func aStaleQuestionResolvesNilWithoutBeingShown() async {
+        let queue = WaitingQuestions<String>()
+        let shower = FakeShower()
+        let tab = UUID()
+        let stale = Flag()
+        let task = Task { @MainActor in await queue.ask(tabID: tab, isStale: { stale.isSet }, show: shower.show(tab)) }
+        await settle()
+        stale.isSet = true
+        shower.canShow = true
+        queue.drain()
+        #expect(await task.value == nil)
+        #expect(shower.shown.isEmpty)
+    }
+
+    @Test func aQuestionAlreadyStaleWhenAskedIsNeverShown() async {
+        let queue = WaitingQuestions<String>()
+        let shower = FakeShower()
+        shower.canShow = true
+        let tab = UUID()
+        #expect(await queue.ask(tabID: tab, isStale: { true }, show: shower.show(tab)) == nil)
+        #expect(shower.shown.isEmpty)
+    }
+
+    /// A question sent back is checked again before it is shown the second time.
+    @Test func aQuestionSentBackThenStaleIsNotShownAgain() async {
+        let queue = WaitingQuestions<String>()
+        let shower = FakeShower()
+        shower.canShow = true
+        let tab = UUID()
+        let stale = Flag()
+        let task = Task { @MainActor in await queue.ask(tabID: tab, isStale: { stale.isSet }, show: shower.show(tab)) }
+        await settle()
+        shower.shown[0].finish(.sentBack)
+        stale.isSet = true
+        queue.drain()
+        #expect(await task.value == nil)
+        #expect(shower.shown.count == 1)
     }
 
     @Test func aQuestionThatCanBeShownShowsAtOnce() async {

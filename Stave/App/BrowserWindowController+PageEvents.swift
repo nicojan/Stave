@@ -70,7 +70,11 @@ extension BrowserWindowController: PageEvents {
     }
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
-        await prompts.askMedia(tabID: tabID, host: host, camera: camera, microphone: microphone)
+        await environment.mediaQuestions.ask(pageHost: environment.pageHost, tabID: tabID, host: host, camera: camera, microphone: microphone)
+    }
+
+    func cancelWaitingQuestions(tabID: UUID) {
+        environment.mediaQuestions.cancel(tabID: tabID)
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async {

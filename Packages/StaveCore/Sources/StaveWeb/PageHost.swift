@@ -136,6 +136,7 @@ public final class PageHost {
     /// within `snapshotTimeout` whatever the snapshot does.
     public func unload(_ tabID: UUID) {
         guard let page = pages.removeValue(forKey: tabID) else { return }
+        events?.cancelWaitingQuestions(tabID: tabID)
         page.flush()
         page.close()
         // The delegate stays until the teardown (and while a download it started runs).
@@ -149,6 +150,7 @@ public final class PageHost {
         dropSnapshot(tabID)
         snapshotTokens[tabID] = nil
         guard let page = pages.removeValue(forKey: tabID) else { return }
+        events?.cancelWaitingQuestions(tabID: tabID)
         page.close()
         delegates[tabID] = nil
         Self.tearDown(page)

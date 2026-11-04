@@ -28,6 +28,9 @@ import WebKit
     /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` is
     /// honoured for an Allow only (`mediaDecision`).
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
+    /// The tab's page went away (closed or unloaded) or committed a new main-frame document: the questions still waiting for it, and a media
+    /// sheet up for it, are dropped (denied, remembering nothing). They never appear over a page that did not ask.
+    func cancelWaitingQuestions(tabID: UUID)
     /// `origin`: the host of the frame that asked (nil for a frame with no web origin), which the dialog names instead of the top page.
     func alert(tabID: UUID, origin: String?, message: String) async
     func confirm(tabID: UUID, origin: String?, message: String) async -> Bool
@@ -255,6 +258,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         page?.committed()
+        // As in Chrome, a question waiting for the old document is dropped when a new one commits.
+        events?.cancelWaitingQuestions(tabID: tabID)
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
