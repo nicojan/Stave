@@ -35,6 +35,8 @@ final class FakeEvents: PageEvents {
     var downloadAnswer = false
     /// Runs while a "wants to download a file" question is up.
     var whileAskingToDownload: (() async -> Void)?
+    /// Runs while a "wants to download several files" question is up.
+    var whileAskingSeveral: (() async -> Void)?
     var externalAnswer = false
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
@@ -85,6 +87,7 @@ final class FakeEvents: PageEvents {
 
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> Bool {
         severalDownloadsQuestions.append((tabID, host))
+        await whileAskingSeveral?()
         return severalDownloadsAnswer
     }
 

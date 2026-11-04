@@ -107,7 +107,17 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     private var externalQuietUntil: Date?
     /// Counts the downloads of the page's current document, so a page can't save file after file with no click.
     private var downloadGate = PageDownloadGate()
-    private var downloadQuestionPending = false
+    /// A download question is up for this page. Downloads that arrive meanwhile wait for its answer and follow it (as Chrome queues them
+    /// behind the prompt); a new document or the page closing refuses them. `questionEpoch` changes then, so an answer for the old document
+    /// can't disturb a newer question.
+    private var downloadQuestionUp = false
+    private var questionEpoch = 0
+    private var waitingDownloads: [CheckedContinuation<WaitingDownloadOutcome, Never>] = []
+
+    private enum WaitingDownloadOutcome { case allowed, refused, askSeveral }
+
+    /// How many downloads wait behind a question (for tests).
+    var waitingDownloadCount: Int { waitingDownloads.count }
     /// The user said Don't Allow to this page's "wants to download a file" while nobody had acted on it. A page Stave reopened that keeps
     /// reloading itself would otherwise ask on every load; the refusal holds for as long as the page awaits the user (the question is only
     /// ever asked of such a page, and a page made again gets a new delegate).
@@ -264,6 +274,7 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         page?.committed()
         // As in Chrome, a question waiting for the old document is dropped when a new one commits.
         events?.cancelWaitingQuestions(tabID: tabID)
+        refuseWaitingDownloads()
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -350,9 +361,11 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     }
 
     /// Whether this download may go ahead: the document's first does, unless Stave reopened the page by itself and nobody has acted on it,
-    /// when it asks first ("wants to download a file", as Safari does); a later one asks about several files. One question at a time (a
-    /// download that arrives while one is up is refused). The several-files answer holds for the rest of the document; the first-download
-    /// answer is not kept, but the download counts as the document's first either way. A question that can't be asked counts as refused.
+    /// when it asks first ("wants to download a file", as Safari does); a later one asks about several files. One question at a time:
+    /// downloads that arrive while one is up wait for it and follow its answer. After an Allow on the first-download question the waiting
+    /// ones go on to one several-files question that covers them all (the first of them asks it). The several-files answer holds for the
+    /// rest of the document; the first-download answer is not kept, but the download counts as the document's first either way. A question
+    /// that can't be asked counts as refused.
     func mayDownload() async -> Bool {
         let navigation = page.map(\.commitCount)
         let untouched = page?.awaitsUserAction ?? false
@@ -360,20 +373,74 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         case .proceed: return true
         case .refuse: return false
         case .askFirst:
-            guard !declinedUntouchedDownload, !downloadQuestionPending, let events else { return false }
-            downloadQuestionPending = true
-            let allowed = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
-            downloadQuestionPending = false
-            if !allowed { declinedUntouchedDownload = true }
-            return allowed
+            if declinedUntouchedDownload { return false }
+            return downloadQuestionUp ? await waitForQuestion(navigation) : await askFirstDownload()
         case .ask:
-            guard !downloadQuestionPending, let events else { return false }
-            downloadQuestionPending = true
-            let allowed = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
-            downloadQuestionPending = false
-            downloadGate.answer(allow: allowed, navigation: navigation)
-            return allowed
+            return downloadQuestionUp ? await waitForQuestion(navigation) : await askSeveralDownloads(navigation)
         }
+    }
+
+    private func askFirstDownload() async -> Bool {
+        guard let events else { return false }
+        downloadQuestionUp = true
+        let epoch = questionEpoch
+        let allowed = await events.confirmDownload(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+        if !allowed { declinedUntouchedDownload = true }
+        guard epoch == questionEpoch else { return allowed }
+        if allowed {
+            passQuestionOn()
+        } else {
+            endQuestion(with: .refused)
+        }
+        return allowed
+    }
+
+    private func askSeveralDownloads(_ navigation: Int?) async -> Bool {
+        downloadQuestionUp = true
+        let epoch = questionEpoch
+        guard let events else {
+            endQuestion(with: .refused)
+            return false
+        }
+        let allowed = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
+        downloadGate.answer(allow: allowed, navigation: navigation)
+        if epoch == questionEpoch { endQuestion(with: allowed ? .allowed : .refused) }
+        return allowed
+    }
+
+    /// Waits behind the question that is up. Resumed exactly once, by that question ending (or the document or page going away).
+    private func waitForQuestion(_ navigation: Int?) async -> Bool {
+        let outcome = await withCheckedContinuation { waitingDownloads.append($0) }
+        switch outcome {
+        case .allowed: return true
+        case .refused: return false
+        case .askSeveral: return await askSeveralDownloads(navigation)
+        }
+    }
+
+    /// The question is over: every waiting download follows its answer.
+    private func endQuestion(with outcome: WaitingDownloadOutcome) {
+        downloadQuestionUp = false
+        let waiting = waitingDownloads
+        waitingDownloads = []
+        for continuation in waiting { continuation.resume(returning: outcome) }
+    }
+
+    /// The first-download question was allowed: the first waiting download asks about several files for all of those waiting (the question
+    /// stays "up"); with none waiting, nothing more is asked.
+    private func passQuestionOn() {
+        guard !waitingDownloads.isEmpty else {
+            downloadQuestionUp = false
+            return
+        }
+        waitingDownloads.removeFirst().resume(returning: .askSeveral)
+    }
+
+    /// A new document committed, or the page is going: downloads waiting for the question about the old one are refused, and a question
+    /// still up no longer holds up the new document's.
+    func refuseWaitingDownloads() {
+        questionEpoch += 1
+        endQuestion(with: .refused)
     }
 
     /// The URL the quarantine names as the file's source. A `data:` or `blob:` URL holds the file itself (or names nothing outside the

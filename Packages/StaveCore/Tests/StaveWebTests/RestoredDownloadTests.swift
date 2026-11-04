@@ -117,25 +117,6 @@ extension PageDelegateTests {
         host.close(page.tabID)
     }
 
-    @Test func storedPageAsksOneDownloadQuestionAtATime() async throws {
-        let dir = try tempDirectory()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        events.downloadsDirectory = dir
-        events.downloadAnswer = true
-        let host = makeHost()
-        let page = try await storedPage(host)
-        var second: URL?? = .none
-        events.whileAskingToDownload = { [self] in
-            // A second download arrives while the first one's question is up.
-            second = .some(try? await startDownload(on: page, named: "second.txt"))
-        }
-        #expect(try await startDownload(on: page, named: "first.txt") != nil)
-        #expect(second == .some(nil))
-        #expect(events.downloadQuestions.count == 1)
-        #expect(events.severalDownloadsQuestions.isEmpty)
-        host.close(page.tabID)
-    }
-
     @Test func pageTheUserActedOnDownloadsWithoutThisQuestion() async throws {
         let dir = try tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
