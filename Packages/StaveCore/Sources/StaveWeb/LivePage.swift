@@ -34,8 +34,11 @@ public struct PageRequest: Sendable, Equatable {
     public var title: String
     public var faviconURL: String?
     public var interactionState: Data?
+    /// The user opened this page just now (a ⌘-click or "Open Link in New Tab" link). False for a page Stave reopens by itself (a tab
+    /// restored at launch, a stored tab shown again), which then downloads nothing until the user acts on it.
+    public var openedByUser: Bool
 
-    public init(tabID: UUID, store: DataStoreKey, siteSettingsProfileID: UUID?, url: String, title: String, faviconURL: String?, interactionState: Data?) {
+    public init(tabID: UUID, store: DataStoreKey, siteSettingsProfileID: UUID?, url: String, title: String, faviconURL: String?, interactionState: Data?, openedByUser: Bool = false) {
         self.tabID = tabID
         self.store = store
         self.siteSettingsProfileID = siteSettingsProfileID
@@ -43,6 +46,7 @@ public struct PageRequest: Sendable, Equatable {
         self.title = title
         self.faviconURL = faviconURL
         self.interactionState = interactionState
+        self.openedByUser = openedByUser
     }
 }
 
@@ -84,6 +88,9 @@ public final class LivePage {
     /// How many main-frame commits this page has seen: a new value is a new document (the app's dialog gate resets on it).
     @ObservationIgnored public private(set) var commitCount = 0
     @ObservationIgnored var isShown = false
+    /// Stave loaded this page by itself (a restored tab, or a stored tab shown again), and the user hasn't clicked, typed, reloaded or
+    /// navigated in it since: it may not download (walkthrough fix 2), so a reopened page can't save a file with no click.
+    @ObservationIgnored public private(set) var awaitsUserAction = false
     @ObservationIgnored var lastShownAt: Date
 
     init(request: PageRequest, webView: WKWebView, writer: PageWriter, isContentBlockingOn: Bool, now: @escaping () -> Date) {
@@ -99,10 +106,18 @@ public final class LivePage {
         lastShownAt = now()
         blockingHost = SiteHost.normalized(request.url)
         observe()
+        (webView as? PageWebView)?.onUserAction = { [weak self] in self?.userActed() }
+    }
+
+    /// The user clicked or typed in the page, or reloaded, went back or forward, or typed an address for it. The app calls it for a user
+    /// command that loads the page without `reload()` (Reload after a failed first load).
+    public func userActed() {
+        awaitsUserAction = false
     }
 
     /// Restores the stored back/forward list, or loads the stored URL once the navigation policy allows it.
     func start(_ request: PageRequest) {
+        awaitsUserAction = !request.openedByUser && (request.interactionState != nil || !request.url.isEmpty)
         if let state = request.interactionState, restore(state) { return }
         guard !request.url.isEmpty else { return }
         switch NavigationPolicy.decide(request.url, isMainFrame: true, source: .stored) {

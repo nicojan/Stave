@@ -88,6 +88,12 @@ public final class PageHost {
         pages[tabID]
     }
 
+    /// Whether a linked tab (⌘-click, "Open Link in New Tab") counts as opened by the user, and so may download at once: only when the
+    /// user has acted on its opener. A script can fake a ⌘-click, so a page reopened by itself can't use one to get round the gate.
+    public func linkOpenedByUser(opener: UUID) -> Bool {
+        pages[opener].map { !$0.awaitsUserAction } ?? false
+    }
+
     /// Takes over a web view WebKit created (a linked tab or pop-up), keeping its configuration and opener.
     public func adopt(_ webView: WKWebView, as request: PageRequest, writer: PageWriter) -> LivePage {
         if pages[request.tabID] != nil { close(request.tabID) }
@@ -101,6 +107,7 @@ public final class PageHost {
     /// Opens an address the user typed (normalised by the app first), judged with source `.typed`.
     public func loadTyped(_ address: String, in tabID: UUID) {
         guard let page = pages[tabID], let delegate = delegates[tabID] else { return }
+        page.userActed()
         switch NavigationPolicy.decide(address, isMainFrame: true, source: .typed) {
         case .allow:
             guard let url = URL(string: address) else {
@@ -221,6 +228,7 @@ public final class PageHost {
         }
         page.isContentBlockingOn = on
         attachRuleLists(to: page)
+        // The user asked for this reload (a menu or command-bar action), so it counts as acting on the page.
         page.webView.reload()
     }
 

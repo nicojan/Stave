@@ -311,6 +311,12 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// `<a download>` link clicked by the user or by script): the document's first proceeds, later ones ask (`PageDownloadGate`). WebKit
     /// cancels a download given no destination.
     public func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String) async -> URL? {
+        // A page Stave reopened by itself downloads nothing until the user acts on it (no question either: nobody asked for this page).
+        // The refused download still counts as the document's first, so its next one asks.
+        if let page, page.awaitsUserAction {
+            _ = downloadGate.next(navigation: page.commitCount)
+            return nil
+        }
         // No owner to file it under: refused.
         guard host != nil, self.events?.downloadOwner(tabID: tabID) != nil else { return nil }
         guard await mayDownload() else { return nil }

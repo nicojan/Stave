@@ -135,6 +135,7 @@ extension BrowserWindowController: PageLifecycle {
     /// address stays refused.
     func reloadPage() {
         guard let page = shownPage else { return }
+        page.userActed()
         if page.webView.url != nil {
             page.webView.reload()
         } else if NavigationPolicy.decide(page.status.url, isMainFrame: true, source: .stored) == .allow, let url = URL(string: page.status.url) {

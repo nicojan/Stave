@@ -177,6 +177,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
 
     func reloadPage() {
         guard let page = shownPage else { return }
+        page.userActed()
         if page.webView.url != nil {
             page.webView.reload()
         } else if NavigationPolicy.decide(page.status.url, isMainFrame: true, source: .stored) == .allow, let url = URL(string: page.status.url) {
@@ -196,7 +197,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID? {
         guard NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow else { return nil }
         let id = model.open(url: url, below: opener, select: false)
-        let request = request(tabID: id, url: url, title: "")
+        var request = request(tabID: id, url: url, title: "")
+        request.openedByUser = pageHost.linkOpenedByUser(opener: opener)
         if let webView {
             _ = pageHost.adopt(webView, as: request, writer: self)
         } else {

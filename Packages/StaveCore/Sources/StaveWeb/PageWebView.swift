@@ -13,6 +13,8 @@ public final class PageWebView: WKWebView {
     /// How long a menu choice waits for WebKit's new-view request; after that a new view is the page's own (`window.open`).
     static let newTabChoiceLifetime: TimeInterval = 2
 
+    /// Called on a click or key press in the page, and on reload, back and forward (which the app's commands call): the user acting on it.
+    var onUserAction: (() -> Void)?
     /// The host's clock, so tests can age a choice.
     var now: () -> Date = Date.init
     private var newTabChosenAt: Date?
@@ -39,6 +41,50 @@ public final class PageWebView: WKWebView {
         // WebKit's target reads the item it built (its tag and represented object), so that item is the sender.
         if !NSApplication.shared.sendAction(action, to: newWindow.target, from: newWindow) { newTabChosenAt = nil }
     }
+
+    // MARK: The user acting on the page
+
+    override public func mouseDown(with event: NSEvent) {
+        onUserAction?()
+        super.mouseDown(with: event)
+    }
+
+    override public func rightMouseDown(with event: NSEvent) {
+        onUserAction?()
+        super.rightMouseDown(with: event)
+    }
+
+    override public func otherMouseDown(with event: NSEvent) {
+        onUserAction?()
+        super.otherMouseDown(with: event)
+    }
+
+    override public func keyDown(with event: NSEvent) {
+        onUserAction?()
+        super.keyDown(with: event)
+    }
+
+    @discardableResult override public func reload() -> WKNavigation? {
+        onUserAction?()
+        return super.reload()
+    }
+
+    @discardableResult override public func reloadFromOrigin() -> WKNavigation? {
+        onUserAction?()
+        return super.reloadFromOrigin()
+    }
+
+    @discardableResult override public func goBack() -> WKNavigation? {
+        onUserAction?()
+        return super.goBack()
+    }
+
+    @discardableResult override public func goForward() -> WKNavigation? {
+        onUserAction?()
+        return super.goForward()
+    }
+
+    // MARK: The link menu
 
     /// Whether the new view WebKit is asking for comes from "Open Link in New Tab". True at most once per choice.
     func takeNewTabChoice() -> Bool {

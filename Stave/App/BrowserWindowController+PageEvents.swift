@@ -25,7 +25,8 @@ extension BrowserWindowController: PageEvents {
         let request = PageRequest(
             // The opener page's profile, not the window's: the new page shares the opener's store, so its site settings must match.
             tabID: id, store: .persistent(storeID), siteSettingsProfileID: environment.pageHost.existingPage(opener)?.siteSettingsProfileID ?? model.snapshot.profile.id,
-            url: url, title: "", faviconURL: nil, interactionState: nil
+            url: url, title: "", faviconURL: nil, interactionState: nil,
+            openedByUser: environment.pageHost.linkOpenedByUser(opener: opener)
         )
         if let webView {
             _ = environment.pageHost.adopt(webView, as: request, writer: environment.pageWriter)
