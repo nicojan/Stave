@@ -19,6 +19,8 @@ final class FakeEvents: PageEvents {
     }
 
     var linkedTabs: [LinkedTab] = []
+    /// Each "Open Link in New Window": the opener tab and the link.
+    var newWindowLinks: [(opener: UUID, url: String)] = []
     var popups: [WKWebView] = []
     var closed: [UUID] = []
     var externalQuestions: [(URL, String)] = []
@@ -59,6 +61,10 @@ final class FakeEvents: PageEvents {
             _ = host.adopt(webView, as: PageRequest(tabID: id, store: .privateWindow(UUID()), siteSettingsProfileID: nil, url: url, title: "", faviconURL: nil, interactionState: nil), writer: writer)
         }
         return id
+    }
+
+    func openLinkInNewWindow(opener: UUID, url: String) {
+        newWindowLinks.append((opener, url))
     }
 
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {

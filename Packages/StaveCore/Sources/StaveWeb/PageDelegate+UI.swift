@@ -13,10 +13,14 @@ extension PageDelegate {
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         // Taken first, so a choice is used by the request it was made for whatever happens below. The menu's request is `.other`;
         // a clicked `target=_blank` link neither takes nor discards it.
-        let fromLinkMenu = navigationAction.navigationType == .other && ((webView as? PageWebView)?.takeNewTabChoice() ?? false)
+        let fromLinkMenu = navigationAction.navigationType == .other ? (webView as? PageWebView)?.takeLinkMenuChoice() : nil
         guard let page, !page.isClosed, let host, let events else { return nil }
         let url = navigationAction.request.url?.absoluteString ?? ""
-        if fromLinkMenu { return openLinkInNewTab(url, events: events) }
+        switch fromLinkMenu {
+        case .newTab: return openLinkInNewTab(url, events: events)
+        case .newWindow: return openLinkInNewWindow(url, events: events)
+        case nil: break
+        }
         let route = OpenRoute.route(width: windowFeatures.width?.doubleValue, height: windowFeatures.height?.doubleValue, popupRequested: false)
         let child = PageWebView(frame: .zero, configuration: configuration)
         if let pageView = webView as? PageWebView { child.now = pageView.now }
@@ -38,6 +42,15 @@ extension PageDelegate {
     private func openLinkInNewTab(_ url: String, events: PageEvents) -> WKWebView? {
         if NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow {
             _ = events.openLinkedTab(opener: tabID, url: url, select: false, webView: nil)
+        }
+        return nil
+    }
+
+    /// "Open Link in New Window" from the link menu opens a real window, as in every browser: the app makes it and a fresh page for the link,
+    /// and WebKit gets no view. A `target=_blank` click and `window.open` don't come here.
+    private func openLinkInNewWindow(_ url: String, events: PageEvents) -> WKWebView? {
+        if NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow {
+            events.openLinkInNewWindow(opener: tabID, url: url)
         }
         return nil
     }

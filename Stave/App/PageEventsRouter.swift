@@ -14,11 +14,17 @@ final class PageEventsRouter: PageEvents {
     private let environment: AppEnvironment
     private let controllers: () -> [BrowserWindowController]
     private let privateControllers: () -> [PrivateWindowController]
+    /// Opens a new private window beside the given one, with the link as its selected tab; the tab is the link's opener.
+    private let openPrivateWindowForLink: (PrivateWindowController, UUID, String) -> Void
 
-    init(environment: AppEnvironment, controllers: @escaping () -> [BrowserWindowController], privateControllers: @escaping () -> [PrivateWindowController]) {
+    init(
+        environment: AppEnvironment, controllers: @escaping () -> [BrowserWindowController], privateControllers: @escaping () -> [PrivateWindowController],
+        openPrivateWindowForLink: @escaping (PrivateWindowController, UUID, String) -> Void
+    ) {
         self.environment = environment
         self.controllers = controllers
         self.privateControllers = privateControllers
+        self.openPrivateWindowForLink = openPrivateWindowForLink
     }
 
     /// The private window that owns the page (a tab, or a pop-up opened from one).
@@ -54,6 +60,17 @@ final class PageEventsRouter: PageEvents {
         let tab = popups.openerTab(of: opener)
         if let owner = privateController(for: tab) { return owner.openLinkedTab(opener: tab, url: url, select: select, webView: webView) }
         return controller(for: tab)?.openLinkedTab(opener: tab, url: url, select: select, webView: webView)
+    }
+
+    /// "Open Link in New Window": from a pop-up the opener is its opener tab. A private page's link opens a new private window, never a
+    /// browser window; any other, a new browser window on the opener tab's window's profile and workspace.
+    func openLinkInNewWindow(opener: UUID, url: String) {
+        let tab = popups.openerTab(of: opener)
+        if let owner = privateController(for: tab) {
+            openPrivateWindowForLink(owner, tab, url)
+        } else if let owner = controller(for: tab) {
+            owner.openLinkInNewWindow(opener: tab, url: url)
+        }
     }
 
     /// `opener` may itself be a pop-up; the window of its opener tab makes the new one.

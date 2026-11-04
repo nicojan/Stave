@@ -61,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
             let router = PageEventsRouter(
                 environment: environment, controllers: { [weak self] in self?.controllers ?? [] },
-                privateControllers: { [weak self] in self?.privateControllers ?? [] }
+                privateControllers: { [weak self] in self?.privateControllers ?? [] },
+                openPrivateWindowForLink: { [weak self] source, opener, url in self?.openPrivateWindow(forLink: url, opener: opener, from: source) }
             )
             environment.pageHost.events = router
             pageEvents = router
@@ -119,6 +120,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             NSLog("Stave: could not open a window: \(error)")
         }
+    }
+
+    /// "Open Link in New Window": a window on the opener tab's profile and workspace (that of the window `source` shows it in, not the front
+    /// window's), with the link as its one tab and selected, in the opener's data store like any linked tab. A link the window can't open
+    /// (its opener tab is gone) leaves no empty window behind.
+    private func openWindow(forLink url: String, opener: UUID, from source: BrowserWindowController) {
+        guard let environment, launchCompleted else { return }
+        let base = source.model.windowState
+        let state = WindowState(profileID: base.profileID, workspaceID: base.workspaceID, selectedTabID: nil, frame: source.cascadedFrame, sortIndex: 0)
+        do {
+            let controller = try open(state, environment: environment)
+            if controller.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil { controller.window.close() }
+        } catch {
+            NSLog("Stave: could not open a window for a link: \(error)")
+        }
+    }
+
+    /// "Open Link in New Window" from a private window: a new private window beside it, with the link as its selected tab.
+    private func openPrivateWindow(forLink url: String, opener: UUID, from source: PrivateWindowController) {
+        guard let environment, launchCompleted else { return }
+        let controller = PrivateWindowController(
+            environment: environment, near: source.window,
+            onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
+        )
+        privateControllers = privateControllers + [controller]
+        controller.show()
+        refreshWorkspaceMenu()
+        if controller.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil { controller.window.close() }
     }
 
     /// ⇧⌘N: a private window beside the front window. Opens with an empty tab list; nothing of it is saved.
@@ -419,7 +448,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ?? controllers.first
     }
 
-    private func open(_ state: WindowState, environment: AppEnvironment) throws {
+    @discardableResult
+    private func open(_ state: WindowState, environment: AppEnvironment) throws -> BrowserWindowController {
         let controller = try BrowserWindowController(
             state: state, environment: environment,
             onNewWindow: { [weak self] in self?.newWindow() },
@@ -432,12 +462,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.onChooseAnotherFile = { [weak self] session in self?.importCoordinator?.chooseAnotherFile(for: session) }
         controller.peers = { [weak self] in self?.controllers ?? [] }
+        controller.onOpenLinkInNewWindow = { [weak self] source, opener, url in self?.openWindow(forLink: url, opener: opener, from: source) }
         // A window kept because it was the last to close has no controller; the new window replaces it rather than joining it. Only after the
         // controller exists: a failed init must leave the saved set alone.
         environment.session.discardStates(exceptLive: Set(controllers.map { $0.model.windowID } + [controller.model.windowID]))
         controllers = controllers + [controller]
         controller.show()
         refreshWorkspaceMenu()
+        return controller
     }
 
     private func windowClosed(_ closed: BrowserWindowController) {

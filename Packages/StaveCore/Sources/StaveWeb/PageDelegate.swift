@@ -7,6 +7,9 @@ import WebKit
 @MainActor public protocol PageEvents: AnyObject {
     /// Nil: refused (opener gone). When `webView` is given, the app adopts it (`PageHost.adopt`) before returning.
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID?
+    /// "Open Link in New Window" from the link menu: a new window with the link as its selected tab, on the opener tab's profile and
+    /// workspace (a private opener gets a new private window). The URL is already judged. No web view is made for WebKit.
+    func openLinkInNewWindow(opener: UUID, url: String)
     /// The app adopts `webView` (`PageHost.adopt`) before returning.
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures)
     /// `window.close()` from any page: a pop-up's window closes; a tab closes as with the close shortcut (it goes to the archive, as in

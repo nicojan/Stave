@@ -37,6 +37,13 @@ extension BrowserWindowController: PageEvents {
         return id
     }
 
+    /// "Open Link in New Window": a new window on this window's profile and workspace (the app delegate makes it), with the link as its
+    /// selected tab. The URL is judged as a user-initiated page navigation first, as `openLinkedTab` does.
+    func openLinkInNewWindow(opener: UUID, url: String) {
+        guard NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow else { return }
+        onOpenLinkInNewWindow(self, opener, url)
+    }
+
     /// A sized `window.open`: a pop-up window owned by its opener tab (see `PopupWindowController.open`).
     func openPopup(opener: UUID, webView: WKWebView, features: WKWindowFeatures) {
         PopupWindowController.open(opener: opener, webView: webView, features: features, near: window, environment: environment)

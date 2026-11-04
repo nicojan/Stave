@@ -32,6 +32,9 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     var onChooseAnotherFile: (ArcImportSession) -> Void = { _ in }
     /// Every open browser window (set by the app delegate), so a closed tab's questions end wherever they are up.
     var peers: () -> [BrowserWindowController] = { [] }
+    /// Set by the app delegate: opens a new window on this window's profile and workspace for "Open Link in New Window" (this window, the
+    /// link's opener tab, the link).
+    var onOpenLinkInNewWindow: (BrowserWindowController, UUID, String) -> Void = { _, _, _ in }
     private(set) var isClosed = false
 
     init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onImportFromArc: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {
