@@ -48,7 +48,7 @@ extension OrganizationStore {
             guard var tab = try Tab.fetchOne(db, key: tabID) else { throw StoreError.notFound }
             // A pinned page saved without an icon adopts the first one that arrives while the tab is still on that page; an existing icon is never replaced.
             // Drift is judged on the incoming url (the tab's stored url is about to be replaced).
-            if tab.pinnedURL == url, tab.pinnedFaviconURL == nil, let faviconURL {
+            if let pinnedURL = tab.pinnedURL, Tab.isSamePage(pinnedURL, url), tab.pinnedFaviconURL == nil, let faviconURL {
                 tab.pinnedFaviconURL = faviconURL
             }
             tab.url = url
@@ -169,7 +169,7 @@ extension OrganizationStore {
     /// A pinned tab or Essential that has drifted is about to become regular, which clears its pinned page. Archives that page first (its pinned URL
     /// and title) in the caller's transaction, so moving or unpinning never loses it. A tab on its pinned page loses nothing and archives nothing.
     func archivePinnedPageIfDrifted(slot: Slot, tab: Tab, closedAt: Date, in db: Database) throws {
-        guard let pinnedURL = tab.pinnedURL, pinnedURL != tab.url else { return }
+        guard let pinnedURL = tab.pinnedURL, !Tab.isSamePage(pinnedURL, tab.url) else { return }
         try ArchivedTab(
             profileID: slot.profileID, workspaceID: slot.workspaceID,
             url: pinnedURL, title: tab.pinnedTitle ?? "", faviconURL: tab.pinnedFaviconURL,
@@ -179,7 +179,7 @@ extension OrganizationStore {
 
     /// The archive-row twin of `archivePinnedPageIfDrifted`: a restored row that carries a pinned page different from its url archives that page.
     func archivePinnedPage(of archived: ArchivedTab, closedAt: Date, in db: Database) throws {
-        guard let pinnedURL = archived.pinnedURL, pinnedURL != archived.url else { return }
+        guard let pinnedURL = archived.pinnedURL, !Tab.isSamePage(pinnedURL, archived.url) else { return }
         try ArchivedTab(
             profileID: archived.profileID, workspaceID: archived.workspaceID,
             url: pinnedURL, title: archived.pinnedTitle ?? "", faviconURL: archived.pinnedFaviconURL,

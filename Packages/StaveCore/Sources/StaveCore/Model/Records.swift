@@ -85,8 +85,21 @@ public struct Tab: Codable, FetchableRecord, PersistableRecord, Sendable, Identi
         self.interactionState = interactionState; self.lastActiveAt = lastActiveAt; self.modifiedAt = modifiedAt
     }
 
-    /// True when the tab is pinned and its current page differs from the pinned one. The one home of the drift rule.
-    public var isDrifted: Bool { pinnedURL != nil && url != pinnedURL }
+    /// True when the tab is pinned and its current page differs from the pinned one. The drift rule; it compares pages with `Tab.isSamePage`.
+    public var isDrifted: Bool {
+        guard let pinnedURL else { return false }
+        return !Tab.isSamePage(url, pinnedURL)
+    }
+
+    /// Two addresses name the same page when they match once the fragment (from the first `#`) is removed, so a site that changes only
+    /// its fragment as you move around (hash routing) stays on its pinned page. Plain text comparison otherwise, as before.
+    public static func isSamePage(_ first: String, _ second: String) -> Bool {
+        withoutFragment(first) == withoutFragment(second)
+    }
+
+    private static func withoutFragment(_ address: String) -> Substring {
+        address.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? Substring(address)
+    }
 }
 
 /// Named containers only; throwaway containers are never stored.

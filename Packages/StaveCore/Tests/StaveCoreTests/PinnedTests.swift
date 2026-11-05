@@ -35,6 +35,16 @@ struct PinnedTests {
         #expect(!store.isDrifted(reset))
     }
 
+    @Test func aFragmentOnlyChangeKeepsTheTabOnItsPinnedPage() throws {
+        let (store, _, _, _, ws) = try fixture()
+        let tab = try open(store, "https://a.com/app#home", in: ws)
+        try store.pinTab(tab.id, folderID: nil)
+        try store.updateNavigation(tabID: tab.id, url: "https://a.com/app#settings", title: "Settings", faviconURL: "https://a.com/icon.png", interactionState: nil)
+        guard case .tab(let moved) = try #require(store.pinnedItems(workspaceID: ws.id).first) else { Issue.record("not a tab"); return }
+        #expect(!store.isDrifted(moved))
+        #expect(moved.pinnedFaviconURL == "https://a.com/icon.png")
+    }
+
     @Test func resetRestoresPinnedIcon() throws {
         let (store, _, _, _, ws) = try fixture()
         let tab = try open(store, "https://a.com", in: ws)
