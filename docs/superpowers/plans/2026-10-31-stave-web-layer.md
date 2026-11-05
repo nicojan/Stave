@@ -677,8 +677,13 @@ By-hand checks for Nico after the answers:
 - [ ] Private windows: sign in to a real site in one private window, open a second private window (⇧⌘N): still signed in; close both, open one: signed out. Check the profile it uses when the front window is on a non-default profile.
 - [ ] Quit with a camera sheet up: no sheet comes back, and Stave quits.
 
+Also on this branch, from reading Zen 1.24b's behaviour (2026-11-04 evening; notes in `docs/research/2026-11-04-zen-internals.md`): `742e483` a pinned tab whose address changes only after `#` is not drifted (`Tab.isSamePage`, also used for pinned-icon adoption and the archive-on-unpin checks); `66e592e` the Arc import places an item that names its parent but is in no `childrenIds` list at the end of that folder or space and reports the count, and reports `childrenIds` entries that name no item; `875ea93` the notes, and the spec's drift rule and passkey open check. Package tests 751 (114 + 637), Debug build green locally.
+
+- [ ] Close a window whose live page is shown in another window: the page keeps its back/forward history (Zen admits losing it here).
+
 ## Carried into later plans
 
+- **From reading Zen (2026-11-04):** compact mode in Zen hides only the sidebar by default (toolbar stays); Stave hides both, so Nico decides whether to keep that. A rolling timed copy of the database (Zen keeps up to 20 timed session backups) guards against Stave's own bug writing bad data; candidate for plan 5, not built.
 - **From Nico's answers (2026-11-04):**
   - A per-site camera and microphone panel reached from the address button (Chrome's site settings, Safari's "Settings for This Website"); once it exists, Remember may keep Don't Allow again.
   - App-only code with no automated test: `MediaQuestionCenter`'s window choice, sending a sheet back and showing it again, the download-sheet takedown on commit, the `unasked` mapping in `PagePrompts`, `AppDelegate.openWindow(forLink:)` and its fallbacks, the ⇧⌘N profile choice. Seen by hand only as listed above.
