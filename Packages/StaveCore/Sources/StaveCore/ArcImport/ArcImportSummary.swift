@@ -57,6 +57,8 @@ public struct ArcImportSummary: Equatable, Sendable {
             "The folder “\(folder)” in your Arc Favorites became separate Essentials."
         case .unpinnedFolder(let space, let folder):
             "The unpinned folder “\(folder)” in \(space) became separate tabs."
+        case .unlistedItems(let n):
+            "\(plural(n, "item", "items")) had no place in Arc's order, so \(n == 1 ? "it" : "they") went at the end of \(n == 1 ? "its" : "their") folder or space."
         }
     }
 
@@ -83,6 +85,8 @@ public struct ArcImportSummary: Equatable, Sendable {
             return "\(space) belonged to an Arc profile Stave couldn't identify, so it went into your first profile."
         case .duplicateItem(let count):
             return "\(plural(count, "item", "items")) appeared twice in Arc's file and \(count == 1 ? "was" : "were") imported once."
+        case .missingItem(let count):
+            return "Arc's file listed \(plural(count, "item", "items")) it didn't contain, so there was nothing to import for \(count == 1 ? "it" : "them")."
         case .unrecognizedFavoritesProfile:
             return "Some Arc Favorites belonged to a profile Stave couldn't identify, so they became Essentials in your first profile."
         case .spaceContentsMissing(let space):

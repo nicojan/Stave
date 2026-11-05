@@ -394,4 +394,73 @@ struct ArcSidebarParserTests {
         let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: []))
         #expect(sidebar.unrecognizedFavoritesContainers == 0)
     }
+
+    // MARK: - Items no list places (Zen falls back to parentID; Stave does too, and says so)
+
+    private let pinnedOnly = #""title":"A","profile":{"default":true},"newContainerIDs":[{"pinned":{}},"P",{"unpinned":{}},"U"]"#
+
+    @Test func aFolderWithoutChildrenIdsKeepsItsTabsInFileOrder() throws {
+        let folder = #"{"id":"F","parentID":"P","title":"Docs","data":{"list":{}}}"#
+        let items = [
+            arcSpaceContainerJSON("P", children: ["F"]),
+            arcSpaceContainerJSON("U", children: []),
+            folder,
+            arcTabJSON("T2", parent: "F", url: "https://two.example.com/"),
+            arcTabJSON("T1", parent: "F", url: "https://one.example.com/"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [arcSpaceJSON("S", pinnedOnly)]))
+        #expect(sidebar.spaces[0].pinned == [.folder(title: "Docs", children: [
+            .tab(ArcTab(url: "https://two.example.com/", title: "")),
+            .tab(ArcTab(url: "https://one.example.com/", title: "")),
+        ])])
+        #expect(sidebar.unlistedItems == 2)
+    }
+
+    @Test func anUnlistedChildGoesAtTheEndOfItsParent() throws {
+        let items = [
+            arcTabJSON("B", parent: "P", url: "https://b.example.com/"),
+            arcSpaceContainerJSON("P", children: ["A"]),
+            arcSpaceContainerJSON("U", children: []),
+            arcTabJSON("A", parent: "P", url: "https://a.example.com/"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [arcSpaceJSON("S", pinnedOnly)]))
+        #expect(sidebar.spaces[0].pinned == [
+            .tab(ArcTab(url: "https://a.example.com/", title: "")),
+            .tab(ArcTab(url: "https://b.example.com/", title: "")),
+        ])
+        #expect(sidebar.unlistedItems == 1)
+        #expect(sidebar.missingItems == 0)
+    }
+
+    @Test func aListedItemIsNeverTakenByItsParentID() throws {
+        let items = [
+            arcSpaceContainerJSON("P", children: []),
+            arcSpaceContainerJSON("U", children: ["B"]),
+            arcTabJSON("B", parent: "P", url: "https://b.example.com/"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [arcSpaceJSON("S", pinnedOnly)]))
+        #expect(sidebar.spaces[0].pinned.isEmpty)
+        #expect(sidebar.spaces[0].unpinned == [.tab(ArcTab(url: "https://b.example.com/", title: ""))])
+        #expect(sidebar.unlistedItems == 0)
+        #expect(sidebar.duplicateItems == 0)
+    }
+
+    @Test func aChildIdNamingNoItemIsCounted() throws {
+        let items = [
+            arcSpaceContainerJSON("P", children: ["A", "GHOST"]),
+            arcSpaceContainerJSON("U", children: []),
+            arcTabJSON("A", parent: "P", url: "https://a.example.com/"),
+        ]
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: items, spaces: [arcSpaceJSON("S", pinnedOnly)]))
+        #expect(sidebar.spaces[0].pinned == [.tab(ArcTab(url: "https://a.example.com/", title: ""))])
+        #expect(sidebar.missingItems == 1)
+    }
+
+    @Test func theSampleFilesHaveNoUnlistedOrMissingItems() throws {
+        for name in ["basic", "edge-cases"] {
+            let sidebar = try ArcSidebarParser.parse(try arcFixture(name))
+            #expect(sidebar.unlistedItems == 0, "\(name)")
+            #expect(sidebar.missingItems == 0, "\(name)")
+        }
+    }
 }

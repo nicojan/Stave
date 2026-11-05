@@ -23,5 +23,9 @@ final class AppMenuState {
     var canMoveDown = false
     /// The key browser window has a sheet up (or about to be), so every command `MenuCommandGate` does not allow then is disabled.
     var isBusy = false
+    /// View ▸ Back, Forward, Reload Page and Stop for the key window's shown page.
+    var pageMenu = PageMenuState.disabled
+    /// Debug ▸ Crash Page Process: a page is shown and WebKit has the method.
+    var canCrashPage = false
     func isEnabled(_ command: MenuCommand) -> Bool { MenuCommandGate.isEnabled(command, busy: isBusy) }
 }

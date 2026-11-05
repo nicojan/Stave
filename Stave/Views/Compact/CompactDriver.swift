@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import StaveCore
+import WebKit
 
 /// Connects one window to `CompactReveal`: feeds it the pointer, the hold and the clock, and watches the AppKit signals the hold needs
 /// (menus, sheets, keyboard focus). Holds no rule of its own; the rules are `CompactReveal` and `CompactHold` in StaveCore.
@@ -207,13 +208,26 @@ final class CompactDriver {
     }
 
     /// Tab with a hidden sidebar and focus in the content: where Tab would land cannot be seen from AppKit (SwiftUI focus sits on the hosting
-    /// view), so Tab itself is the way in. It reveals the sidebar, holds it, and asks the list for focus.
+    /// view), so Tab itself is the way in. It reveals the sidebar, holds it, and asks the list for focus. `CompactReveal.shouldInterceptTab`
+    /// decides, so Tab inside a page always stays the page's (decision 14); a text field or a modified Tab is never taken either.
     private func isEnteringSidebar(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown, event.keyCode == Self.tabKeyCode, !isRevealed, !menuOpen, !sheetOpen, !commandBarOpen,
+        guard event.type == .keyDown, event.keyCode == Self.tabKeyCode,
               event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
               !(window?.firstResponder is NSText)
         else { return false }
-        return true
+        return CompactReveal.shouldInterceptTab(
+            focusInPage: isFocusInPage(), isRevealed: isRevealed, menuOpen: menuOpen, sheetOpen: sheetOpen, commandBarOpen: commandBarOpen
+        )
+    }
+
+    /// True when the first responder is a web view or inside one.
+    private func isFocusInPage() -> Bool {
+        var view = window?.firstResponder as? NSView
+        while let current = view {
+            if current is WKWebView { return true }
+            view = current.superview
+        }
+        return false
     }
 
     private func enterSidebarByKeyboard() {

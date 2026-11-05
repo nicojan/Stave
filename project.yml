@@ -21,6 +21,8 @@ targets:
     dependencies:
       - package: StaveCore
         product: StaveCore
+      - package: StaveCore
+        product: StaveWeb
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Stave

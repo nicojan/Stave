@@ -51,6 +51,7 @@ jobs:
             -scheme Stave \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath build/DD \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
 
@@ -63,5 +64,12 @@ jobs:
             -scheme Stave \
             -configuration Release \
             -destination 'platform=macOS' \
+            -derivedDataPath build/DD \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY=""
+
+      - name: Release build carries the engine bundle
+        run: |
+          bundle=build/DD/Build/Products/Release/Stave.app/Contents/Resources/ChorusEngine_ChorusEngine.bundle
+          test -d "$bundle"
+          test -f "$bundle/Contents/Resources/hagezi-light.json"
