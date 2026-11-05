@@ -14,8 +14,9 @@ public enum ArcSidebarParser {
             throw ArcImportError.notJSON
         }
         guard let container = findContainer(in: root) else { throw ArcImportError.noSidebar }
-        let items = itemsByID(container["items"]?.array ?? [])
-        var walk = Walk(items: items)
+        let itemList = container["items"]?.array ?? []
+        let items = itemsByID(itemList)
+        var walk = Walk(items: items, unlistedChildren: unlistedChildren(itemList, items: items))
         // Visit order decides which copy of a repeated item wins: every space's pinned tree, then Favorites, then every space's unpinned tree.
         let pending = (container["spaces"]?.array ?? []).compactMap { $0.object.map(parseSpaceHeader) }
         let pinned = try pending.map { try nodes(inContainer: $0.containers.pinned, walk: &walk) }
@@ -34,15 +35,22 @@ public enum ArcSidebarParser {
         }
         return ArcSidebar(
             spaces: spaces, favorites: favorites.byProfile, duplicateItems: walk.duplicates,
-            unrecognizedFavoritesContainers: favorites.unrecognizedCount
+            unrecognizedFavoritesContainers: favorites.unrecognizedCount,
+            unlistedItems: walk.unlistedPlaced, missingItems: walk.missing
         )
     }
 
     /// State shared by the whole parse: one visited set keeps the walk linear in item count.
     private struct Walk {
         let items: [String: [String: JSONValue]]
+        /// Parent id → ids of the items that name it as `parentID` but that no `childrenIds` list anywhere, in file order.
+        let unlistedChildren: [String: [String]]
         var visited: Set<String> = []
         var duplicates = 0
+        /// Unlisted items placed at the end of their parent.
+        var unlistedPlaced = 0
+        /// `childrenIds` entries that name no item in the file.
+        var missing = 0
     }
 
     // MARK: - Locating data
@@ -64,6 +72,26 @@ public enum ArcSidebarParser {
                 if let id = object["id"]?.string ?? pendingID { result[id] = object }
                 pendingID = nil
             }
+        }
+        return result
+    }
+
+    /// Items that name a parent but appear in no `childrenIds` list (including every child of an item with no `childrenIds` at all).
+    /// An item listed anywhere is placed only by that list, so `parentID` never moves it.
+    private static func unlistedChildren(_ list: [JSONValue], items: [String: [String: JSONValue]]) -> [String: [String]] {
+        let listed = Set(items.values.flatMap { ($0["childrenIds"]?.array ?? []).compactMap(\.string) })
+        var result: [String: [String]] = [:]
+        var seen: Set<String> = []
+        var pendingID: String?
+        for element in list {
+            if let id = element.string {
+                pendingID = id
+                continue
+            }
+            defer { pendingID = nil }
+            guard let object = element.object, let id = object["id"]?.string ?? pendingID,
+                  let parent = object["parentID"]?.string, !listed.contains(id), seen.insert(id).inserted else { continue }
+            result[parent, default: []].append(id)
         }
         return result
     }
@@ -192,30 +220,39 @@ public enum ArcSidebarParser {
 
     private static func nodes(inContainer id: String?, walk: inout Walk) throws -> [ArcNode] {
         guard let id, let container = walk.items[id] else { return [] }
-        return try children(of: container, walk: &walk, depth: 1)
+        return try children(of: container, id: id, walk: &walk, depth: 1)
     }
 
     /// `depth` is the nesting level of the children being read; an item deeper than `maximumDepth` throws.
+    /// `childrenIds` gives the order; items that name `id` as their parent but are listed nowhere follow, in file order.
     private static func children(
         of item: [String: JSONValue],
+        id parentID: String,
         walk: inout Walk,
         depth: Int
     ) throws -> [ArcNode] {
+        let listed = (item["childrenIds"]?.array ?? []).map(\.string)
+        let unlisted = walk.unlistedChildren[parentID] ?? []
         var result: [ArcNode] = []
-        for childID in item["childrenIds"]?.array ?? [] {
-            guard let id = childID.string, let child = walk.items[id] else { continue }
+        for (index, childID) in (listed + unlisted.map(Optional.some)).enumerated() {
+            guard let id = childID, let child = walk.items[id] else {
+                walk.missing += 1
+                continue
+            }
             guard walk.visited.insert(id).inserted else {
                 walk.duplicates += 1
                 continue
             }
             guard depth <= maximumDepth else { throw ArcImportError.tooDeep }
-            result.append(try node(child, walk: &walk, depth: depth))
+            if index >= listed.count { walk.unlistedPlaced += 1 }
+            result.append(try node(child, id: id, walk: &walk, depth: depth))
         }
         return result
     }
 
     private static func node(
         _ item: [String: JSONValue],
+        id: String,
         walk: inout Walk,
         depth: Int
     ) throws -> ArcNode {
@@ -224,18 +261,18 @@ public enum ArcSidebarParser {
             return .tab(arcTab(item, tab))
         }
         if data["list"] != nil {
-            let kids = try children(of: item, walk: &walk, depth: depth + 1)
+            let kids = try children(of: item, id: id, walk: &walk, depth: depth + 1)
             return .folder(title: item["title"]?.string ?? "", children: kids)
         }
         if data["splitView"] != nil {
-            let kids = try children(of: item, walk: &walk, depth: depth + 1)
+            let kids = try children(of: item, id: id, walk: &walk, depth: depth + 1)
             let tabs = kids.compactMap { node -> ArcTab? in
                 if case .tab(let tab) = node { return tab }
                 return nil
             }
             return .split(tabs)
         }
-        let kids = try children(of: item, walk: &walk, depth: depth + 1)
+        let kids = try children(of: item, id: id, walk: &walk, depth: depth + 1)
         return .unsupported(kind: data.keys.sorted().first ?? "", title: item["title"]?.string, children: kids)
     }
 

@@ -74,16 +74,24 @@ public struct ArcSidebar: Equatable, Sendable {
     public var duplicateItems: Int
     /// `topApps` containers that hold at least one item and have a missing or unrecognized profile marker; their tabs are merged into `favorites[.default]`.
     public var unrecognizedFavoritesContainers: Int
+    /// Items that named a parent but appeared in no `childrenIds` list; they were placed at the end of that parent.
+    public var unlistedItems: Int
+    /// `childrenIds` entries that named no item in the file.
+    public var missingItems: Int
 
     public init(
         spaces: [ArcSpace],
         favorites: [ArcProfileKey: [ArcNode]],
         duplicateItems: Int,
-        unrecognizedFavoritesContainers: Int = 0
+        unrecognizedFavoritesContainers: Int = 0,
+        unlistedItems: Int = 0,
+        missingItems: Int = 0
     ) {
         self.spaces = spaces
         self.favorites = favorites
         self.duplicateItems = duplicateItems
         self.unrecognizedFavoritesContainers = unrecognizedFavoritesContainers
+        self.unlistedItems = unlistedItems
+        self.missingItems = missingItems
     }
 }

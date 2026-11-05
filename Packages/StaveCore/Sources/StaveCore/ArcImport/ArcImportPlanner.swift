@@ -74,6 +74,12 @@ public enum ArcImportPlanner {
         if sidebar.duplicateItems > 0 {
             notes.skipped.append(.duplicateItem(count: sidebar.duplicateItems))
         }
+        if sidebar.missingItems > 0 {
+            notes.skipped.append(.missingItem(count: sidebar.missingItems))
+        }
+        if sidebar.unlistedItems > 0 {
+            notes.flattened.append(.unlistedItems(count: sidebar.unlistedItems))
+        }
 
         let profiles: [PlannedProfile] = order.compactMap { id in
             guard let id else {
