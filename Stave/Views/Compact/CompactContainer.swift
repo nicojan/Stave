@@ -3,7 +3,8 @@ import SwiftUI
 import StaveCore
 
 /// Lays out the sidebar and the content. Normally the sidebar sits beside the content; in compact mode (the `compactMode` setting, read by
-/// the window model) the content fills the window and the sidebar slides in over it, driven by `CompactReveal` through `CompactDriver`.
+/// the window model) only the sidebar hides: the content takes the full width below the title bar, where the traffic lights stay, and the
+/// sidebar slides in over it, driven by `CompactReveal` through `CompactDriver`. The rule is `CompactLayout`.
 struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
     let isCompact: Bool
     let sidebarWidth: SidebarWidthModel
@@ -37,7 +38,7 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
     var body: some View {
         ZStack(alignment: .leading) {
             content()
-                .padding(.leading, isCompact ? 0 : sidebarWidth.width + Self.dividerWidth)
+                .padding(.leading, CompactLayout.contentLeading(isCompact: isCompact, sidebarWidth: sidebarWidth.width, dividerWidth: Self.dividerWidth))
             HStack(spacing: 0) {
                 sidebar().frame(width: sidebarWidth.width)
                 if !isCompact { divider().frame(width: Self.dividerWidth) }
@@ -46,7 +47,9 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
             .offset(x: isHidden ? -(sidebarWidth.width + Self.shadowRadius * 2) : 0)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: Self.slideDuration), value: driver.isRevealed)
-        .ignoresSafeArea() // the sidebar runs under the transparent title bar; the hosting view's bounds clip a hidden sidebar
+        // Out of compact mode the sidebar and the content run under the transparent title bar; in compact mode the window keeps a title bar
+        // of its own (`BrowserWindowController`), so there is no inset to ignore. The hosting view's bounds clip a hidden sidebar.
+        .ignoresSafeArea()
         .background { CompactPointerView(driver: driver).ignoresSafeArea() }
         .onChange(of: isCompact, initial: true) { _, compact in
             driver.setSidebarWidth { [sidebarWidth] in sidebarWidth.width }
