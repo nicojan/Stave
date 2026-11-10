@@ -75,7 +75,7 @@ struct SidebarView: View {
             listFocused = false
             Task { @MainActor in listFocused = true }
         }
-        .padding(.top, 28) // clears the traffic lights, which sit over the sidebar
+        .padding(.top, CompactLayout.sidebarTop(isCompact: model.isCompact)) // clears the traffic lights when they sit over the sidebar
         .background { SidebarBackground(tintHex: model.snapshot.workspace.colorHex) }
         .ignoresSafeArea()
         .sheet(item: $prompt) { prompt in

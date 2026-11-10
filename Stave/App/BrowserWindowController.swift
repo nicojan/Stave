@@ -18,6 +18,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     var onCompleteFirstRun: (SearchEngine, Bool) -> Void = { _, _ in }
     var onChooseAnotherFile: (ArcImportSession) -> Void = { _ in }
     private var isClosed = false
+    /// True from the start of entering full screen until leaving it has finished.
+    private var inFullScreen = false
 
     init(state: WindowState, environment: AppEnvironment, onNewWindow: @escaping () -> Void, onImportFromArc: @escaping () -> Void, onClose: @escaping (BrowserWindowController) -> Void) throws {
         let model = try BrowserWindowModel(
@@ -39,6 +41,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         window.title = windowTitle
         reportNow()
         observeModel()
+        observeCompact()
     }
 
     // MARK: - Window
@@ -54,12 +57,54 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         window.contentView = hosting
     }
 
+    /// Applies the title bar for the compact-mode setting, then re-arms itself after each change.
+    private func observeCompact() {
+        applyTitleBar(underTitleBar: CompactLayout.contentUnderTitleBar(isCompact: model.isCompact))
+        withObservationTracking {
+            _ = model.isCompact
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, !self.isClosed else { return }
+                self.observeCompact()
+            }
+        }
+    }
+
+    /// Compact mode keeps a title bar of its own, so the traffic lights never sit over the page; otherwise the content runs under the
+    /// transparent title bar (`CompactLayout`). A style change can resize the window to keep the content size, or leave the content view
+    /// where it was, so the window keeps its frame and the content view is sized for the new style.
+    /// In full screen, and while entering or leaving it, the style waits: full screen has no title bar either way, and
+    /// `windowDidExitFullScreen` applies it.
+    private func applyTitleBar(underTitleBar: Bool) {
+        guard !inFullScreen, window.styleMask.contains(.fullSizeContentView) != underTitleBar else { return }
+        let frame = window.frame
+        if underTitleBar { window.styleMask.insert(.fullSizeContentView) } else { window.styleMask.remove(.fullSizeContentView) }
+        window.setFrame(frame, display: false)
+        window.contentView?.setFrameSize(window.contentRect(forFrameRect: window.frame).size)
+        #if DEBUG
+        if window.frame != frame || window.contentView?.frame.size != window.contentRect(forFrameRect: window.frame).size {
+            NSLog("Stave: the title bar change left the window at \(window.frame) with content \(window.contentView?.frame ?? .zero)")
+        }
+        #endif
+    }
+
+    func windowWillEnterFullScreen(_ notification: Notification) { inFullScreen = true }
+    func windowDidFailToEnterFullScreen(_ window: NSWindow) { leftFullScreen() }
+    func windowWillExitFullScreen(_ notification: Notification) { inFullScreen = true }
+    func windowDidExitFullScreen(_ notification: Notification) { leftFullScreen() }
+
+    private func leftFullScreen() {
+        inFullScreen = false
+        applyTitleBar(underTitleBar: CompactLayout.contentUnderTitleBar(isCompact: model.isCompact))
+    }
+
     /// The saved frame, restored by `WindowFrameRestore` (parse, minimum size, clamp to the screens); the default size, centred, when it is unusable.
     private func place(savedFrame: String) {
         if let rect = WindowFrameRestore.restore(savedFrame, visibleFrames: NSScreen.screens.map(\.visibleFrame)) {
             window.setFrame(rect, display: false)
         } else {
-            window.setContentSize(WindowFrameRestore.defaultSize)
+            // The frame, not the content size: in compact mode the content is shorter than the window by the title bar.
+            window.setFrame(NSRect(origin: window.frame.origin, size: WindowFrameRestore.defaultSize), display: false)
             window.center()
         }
     }
