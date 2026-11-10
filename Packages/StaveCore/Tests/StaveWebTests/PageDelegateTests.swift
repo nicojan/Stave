@@ -366,7 +366,10 @@ struct PageDelegateTests {
         let host = makeHost()
         host.testRuleLists = [try await blockAllRuleList()]
         let page = host.page(for: request(url: "https://example.com/", title: "Stored"), writer: writer)
-        _ = try await waitUntil(seconds: 5) { page.status.failure != nil }
+        // Wait on the failure itself with the helper's full timeout: a 5 s cap ran out once on a loaded macos-26 runner.
+        let failed = try await waitUntil { page.status.failure != nil }
+        #expect(failed)
+        // Then give any late commit callback room to (wrongly) write before checking that nothing was written.
         try await Task.sleep(for: .milliseconds(300))
         #expect(page.status.failure != nil)
         #expect(writer.calls.isEmpty)
@@ -383,8 +386,10 @@ struct PageDelegateTests {
         _ = try await page.webView.evaluateJavaScript("history.pushState({}, '', '/b'); 1")
         let moved = try await waitUntil { page.status.url == "https://example.com/b" }
         #expect(moved)
-        _ = try await waitUntil(seconds: 2) { !writer.calls.isEmpty }
-        #expect(writer.calls.contains(.navigation(tabID: page.tabID, url: "https://example.com/b", title: "T", faviconURL: "https://example.com/favicon.ico")))
+        // Wait for the expected write itself, not just any write, with the helper's full timeout.
+        let expected = FakeWriter.Call.navigation(tabID: page.tabID, url: "https://example.com/b", title: "T", faviconURL: "https://example.com/favicon.ico")
+        let written = try await waitUntil { writer.calls.contains(expected) }
+        #expect(written)
         #expect(!writer.calls.contains { if case .navigation(_, _, "", _) = $0 { true } else { false } })
         host.close(page.tabID)
     }
