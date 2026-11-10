@@ -113,6 +113,21 @@ struct ProfileWorkspaceTests {
         #expect(regularRow.pinnedURL == nil && regularRow.pinnedTitle == nil && regularRow.pinnedFaviconURL == nil)
     }
 
+    @Test func deleteWorkspaceArchivesEqualActivityTabsInRowidOrder() throws {
+        let (store, _, _) = try makeTempStore(now: { Date(timeIntervalSince1970: 1_700_000_000) })
+        let profile = try store.createProfile(name: "P")
+        let doomed = try store.createWorkspace(profileID: profile.id, name: "Doomed", icon: "star", colorHex: "#111111")
+        // Each opens at the top, so sidebar order (c, b, a) runs against creation order (a, b, c); the clock is frozen, so activity ties.
+        let urls = ["https://a.example", "https://b.example", "https://c.example"]
+        for url in urls {
+            _ = try store.openTab(url: url, title: url, workspaceID: doomed.id, origin: .commandBar, containerID: nil, edge: .top)
+        }
+        #expect(try store.regularTabs(workspaceID: doomed.id).map(\.url) == urls.reversed())
+        try store.deleteWorkspace(doomed.id)
+        // Archived in tab rowid order (a, b, c); the archive lists the later-inserted row first.
+        #expect(try store.archivedTabs(profileID: profile.id).map(\.url) == urls.reversed())
+    }
+
     @Test func everyWriteSurvivesReopen() throws {
         let (store, database, file) = try makeTempStore()
         let profile = try store.createProfile(name: "P")
@@ -123,5 +138,23 @@ struct ProfileWorkspaceTests {
         #expect(try reopened.profiles().map(\.id) == [profile.id])
         #expect(try reopened.workspaces(profileID: profile.id).map(\.name) == ["Home", "Extra"])
         #expect(try reopened.workspaces(profileID: profile.id).last?.id == extra.id)
+    }
+
+    @Test func equalSortIndicesKeepInsertionOrder() throws {
+        let (store, database, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        // Ids run backwards against insertion order, so only `rowid` (not the id) can produce the expected order.
+        let workspaces = descendingUUIDs(3).map {
+            Workspace(id: $0, profileID: profile.id, name: "Same", icon: "star", colorHex: "#000000", sortIndex: 50)
+        }
+        let profiles = descendingUUIDs(3).map { Profile(id: $0, name: "Same", sortIndex: 50) }
+        try database.writer.write { db in
+            for workspace in workspaces { try workspace.insert(db) }
+            for profile in profiles { try profile.insert(db) }
+        }
+        let tied = try store.workspaces(profileID: profile.id).filter { $0.sortIndex == 50 }
+        #expect(tied.map(\.id) == workspaces.map(\.id))
+        let tiedProfiles = try store.profiles().filter { $0.sortIndex == 50 }
+        #expect(tiedProfiles.map(\.id) == profiles.map(\.id))
     }
 }

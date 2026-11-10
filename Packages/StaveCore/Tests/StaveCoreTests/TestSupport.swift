@@ -36,3 +36,9 @@ func makeTempStore(now: @escaping @Sendable () -> Date = Date.init) throws -> (O
     let (database, file) = try makeTempDatabase()
     return (OrganizationStore(database: database, now: now), database, file)
 }
+
+/// Fresh ids ordered so that a later one sorts before an earlier one. Rows inserted with them in order break a tie
+/// correctly only by `rowid`: an id fallback (or sorting by id) would reverse them.
+func descendingUUIDs(_ count: Int) -> [UUID] {
+    (0..<count).map { _ in UUID() }.sorted { $0.uuidString > $1.uuidString }
+}

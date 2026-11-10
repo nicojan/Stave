@@ -1,7 +1,8 @@
 name: Test
 
-# Runs on every pull request and on main. macOS 14 is the deployment target and
-# macOS 15 the newer OS; testing only the newest hides OS-specific behaviour.
+# Runs on every pull request and on main. macOS 14 is this branch's deployment
+# target, but GitHub retired the macos-14 runner on 2026-11-02, so CI runs on
+# macOS 15 and 26; testing only the newest hides OS-specific behaviour.
 
 on:
   push:
@@ -18,18 +19,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-15]
+        os: [macos-15, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      # The default Xcode on a runner can be older than the project format
-      # needs, so pick the newest one installed. macos-14 tops out at 16.2.
+      # The default Xcode on a runner can be older than the project needs, so
+      # pick the newest Xcode installed rather than trusting the default.
+      # Betas and release candidates are skipped, so a preview Xcode never
+      # decides a run.
       - name: Use the newest installed Xcode
         run: |
-          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          newest=$(ls -d /Applications/Xcode*.app | grep -viE 'beta|rc|release.candidate' | sort -V | tail -1)
           echo "Selecting $newest"
           sudo xcode-select -s "$newest/Contents/Developer"
           xcodebuild -version

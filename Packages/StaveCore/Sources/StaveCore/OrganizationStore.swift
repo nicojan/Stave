@@ -37,7 +37,7 @@ public final class OrganizationStore: Sendable {
 
     public func profiles() throws -> [Profile] {
         try writer.read { db in
-            try Profile.order(Column("sortIndex"), Column("name")).fetchAll(db)
+            try Profile.order(Column("sortIndex"), Column("name"), Column("rowid")).fetchAll(db)
         }
     }
 
@@ -48,7 +48,7 @@ public final class OrganizationStore: Sendable {
     }
 
     func ensureDefaultProfile(in db: Database) throws -> Profile {
-        if let existing = try Profile.order(Column("sortIndex")).fetchOne(db) { return existing }
+        if let existing = try Profile.order(Column("sortIndex"), Column("name"), Column("rowid")).fetchOne(db) { return existing }
         return try insertProfile(name: Self.defaultProfileName, in: db)
     }
 
@@ -72,6 +72,49 @@ public final class OrganizationStore: Sendable {
         }
     }
 
+    public func updateWorkspace(_ id: UUID, name: String, icon: String, colorHex: String) throws {
+        try writer.write { db in
+            guard var workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }
+            workspace.name = name
+            workspace.icon = icon
+            workspace.colorHex = colorHex
+            workspace.modifiedAt = now()
+            try workspace.update(db)
+        }
+    }
+
+    /// Moves the workspace directly after `previousID` among its profile's workspaces (nil = first).
+    /// A workspace of another profile throws `.crossProfileMove`; an unknown one (or itself) `.notFound`.
+    public func moveWorkspace(_ id: UUID, after previousID: UUID?) throws {
+        try writer.write { db in
+            guard var workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }
+            if let previousID {
+                guard let previous = try Workspace.fetchOne(db, key: previousID) else { throw StoreError.notFound }
+                guard previous.profileID == workspace.profileID else { throw StoreError.crossProfileMove }
+            }
+            let siblings = { try self.workspaces(profileID: workspace.profileID, in: db).filter { $0.id != id } }
+            let index = try uncrowdedIndex(
+                siblings: siblings, sortIndex: \.sortIndex,
+                propose: { list in
+                    guard let previousID else { return self.index(after: nil, among: list.map(\.sortIndex)) }
+                    guard let position = list.firstIndex(where: { $0.id == previousID }) else { throw StoreError.notFound }
+                    return self.index(after: position, among: list.map(\.sortIndex))
+                },
+                renumber: { list in
+                    let stamp = self.now()
+                    for (position, var sibling) in list.enumerated() {
+                        sibling.sortIndex = Double(position)
+                        sibling.modifiedAt = stamp
+                        try sibling.update(db)
+                    }
+                }
+            )
+            workspace.sortIndex = index
+            workspace.modifiedAt = now()
+            try workspace.update(db)
+        }
+    }
+
     public func workspaces(profileID: UUID) throws -> [Workspace] {
         try writer.read { db in try workspaces(profileID: profileID, in: db) }
     }
@@ -79,7 +122,7 @@ public final class OrganizationStore: Sendable {
     func workspaces(profileID: UUID, in db: Database) throws -> [Workspace] {
         try Workspace
             .filter(Column("profileID") == profileID)
-            .order(Column("sortIndex"), Column("name"))
+            .order(Column("sortIndex"), Column("name"), Column("rowid"))
             .fetchAll(db)
     }
 
@@ -94,9 +137,9 @@ public final class OrganizationStore: Sendable {
             let stamp = now()
             let slots = try Slot.filter(Column("workspaceID") == id).fetchAll(db)
             let slotsByID = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
-            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt")).fetchAll(db)
+            let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt"), Column("rowid")).fetchAll(db)
             for tab in tabs {
-                guard let slot = slotsByID[tab.slotID] else { continue }
+                guard let slot = slotsByID[tab.slotID] else { throw StoreError.notFound }
                 try makeArchivedTab(slot: slot, tab: tab, closedAt: stamp).insert(db)
             }
             _ = try workspace.delete(db)

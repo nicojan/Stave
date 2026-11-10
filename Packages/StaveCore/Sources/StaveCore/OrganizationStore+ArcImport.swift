@@ -24,6 +24,7 @@ extension OrganizationStore {
                 }
                 try writeEssentials(planned.essentials, profileID: profile.id, counts: &counts, in: db)
             }
+            try ImportRecord(source: .arc, importedAt: now(), modifiedAt: now()).insert(db)
             return ArcImportReport(imported: counts, flattened: plan.flattened, skipped: plan.skipped)
         }
     }
@@ -77,11 +78,7 @@ extension OrganizationStore {
         _ tabs: [PlannedTab], profileID: UUID, counts: inout ArcImportReport.Counts, in db: Database
     ) throws {
         guard !tabs.isEmpty else { return }
-        let current = try Double.fetchOne(
-            db,
-            Slot.filter(Column("profileID") == profileID && Column("section") == SlotSection.essential.rawValue)
-                .select(max(Column("sortIndex")))
-        )
+        let current = try essentialSlots(profileID: profileID, in: db).map(\.sortIndex).max()
         var next = (current ?? -1) + 1
         for tab in tabs {
             let slot = Slot(profileID: profileID, workspaceID: nil, section: .essential, sortIndex: next, modifiedAt: now())

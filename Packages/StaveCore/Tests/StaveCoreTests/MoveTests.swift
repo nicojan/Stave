@@ -35,7 +35,7 @@ struct MoveTests {
         let a = try open(store, "https://a.com", in: ws)
         let b = try open(store, "https://b.com", in: ws)
         let c = try open(store, "https://c.com", in: ws)
-        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: a.id)
+        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(a.id))
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [a.id, c.id, b.id])
     }
 
@@ -46,7 +46,7 @@ struct MoveTests {
         let c = try open(store, "https://c.com", in: ws)
         try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: nil)
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [c.id, a.id, b.id])
-        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: b.id)
+        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(b.id))
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [a.id, b.id, c.id])
     }
 
@@ -57,7 +57,7 @@ struct MoveTests {
         let b = try open(store, "https://b.com", in: ws)
         let c = try open(store, "https://c.com", in: ws)
         let before = try [a, b, c].map { try slot(of: $0, in: database).sortIndex }
-        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: b.id)
+        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(b.id))
         #expect(try [a, b, c].map { try slot(of: $0, in: database).sortIndex } == before)
     }
 
@@ -72,7 +72,7 @@ struct MoveTests {
             try db.execute(sql: "UPDATE slot SET sortIndex = 1.0000000001 WHERE id = ?", arguments: [try #require(try Tab.fetchOne(db, key: b.id)).slotID])
             try db.execute(sql: "UPDATE slot SET sortIndex = 5 WHERE id = ?", arguments: [try #require(try Tab.fetchOne(db, key: c.id)).slotID])
         }
-        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: a.id)
+        try store.moveTab(c.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(a.id))
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [a.id, c.id, b.id])
         let indices = try [a, b, c].map { try slot(of: $0, in: database).sortIndex }
         #expect(Set(indices).count == 3)
@@ -85,7 +85,7 @@ struct MoveTests {
         let b = try open(store, "https://b.com", in: ws)
         try store.pinTab(a.id, folderID: nil)
         let folder = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "F") // root: a, F
-        try store.moveTab(b.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: a.id) // a, b, F
+        try store.moveTab(b.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: .tab(a.id)) // a, b, F
         let items = try store.pinnedItems(workspaceID: ws.id)
         #expect(items.count == 3)
         guard case .tab(let first) = items[0], case .tab(let second) = items[1], case .folder(let third, _) = items[2] else {
@@ -162,7 +162,7 @@ struct MoveTests {
         let a = try open(store, "https://a.com", in: ws)
         let b = try open(store, "https://b.com", in: ws)
         try store.pinTab(b.id, folderID: nil)
-        try store.moveTab(b.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: a.id)
+        try store.moveTab(b.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(a.id))
         let moved = try tab(b.id, in: database)
         #expect(moved.pinnedURL == nil && moved.pinnedTitle == nil)
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [a.id, b.id])
@@ -184,7 +184,7 @@ struct MoveTests {
         let a = try open(store, "https://a.com", in: ws)
         let b = try open(store, "https://b.com", in: ws)
         try store.makeEssential(b.id)
-        try store.moveTab(b.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: a.id)
+        try store.moveTab(b.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(a.id))
         #expect(try store.essentials(profileID: profile.id).isEmpty)
         #expect(try store.regularTabs(workspaceID: ws.id).map(\.id) == [a.id, b.id])
         let moved = try tab(b.id, in: database)
@@ -209,15 +209,15 @@ struct MoveTests {
         refused { try store.moveTab(UUID(), toWorkspace: ws.id, section: .regular, folderID: nil, after: nil) } // unknown tab
         refused { try store.moveTab(a.id, toWorkspace: UUID(), section: .regular, folderID: nil, after: nil) } // unknown workspace
         refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .pinned, folderID: UUID(), after: nil) } // unknown folder
-        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: UUID()) } // unknown previous
+        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(UUID())) } // unknown previous
         refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .essential, folderID: nil, after: nil) } // essential needs no workspace
         refused { try store.moveTab(a.id, toWorkspace: nil, section: .regular, folderID: nil, after: nil) } // non-essential needs a workspace
         refused { try store.moveTab(a.id, toWorkspace: nil, section: .essential, folderID: folder.id, after: nil) } // essential has no folder
         refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .regular, folderID: folder.id, after: nil) } // folder only with pinned
         refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .pinned, folderID: foreignFolder.id, after: nil) } // folder of another workspace
-        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: a.id) } // after itself
+        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .regular, folderID: nil, after: .tab(a.id)) } // after itself
         // previous must be in the target list: b is regular, the target is pinned root.
-        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: b.id) }
+        refused { try store.moveTab(a.id, toWorkspace: ws.id, section: .pinned, folderID: nil, after: .tab(b.id)) }
         #expect(try [a, b].map { try slot(of: $0, in: database) } == before)
         #expect(try tab(a.id, in: database).pinnedURL == nil)
     }

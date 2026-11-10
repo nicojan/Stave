@@ -44,6 +44,10 @@ extension OrganizationStore {
         }
     }
 
+    public func tabExists(_ id: UUID) throws -> Bool {
+        try database.writer.read { db in try Tab.fetchOne(db, key: id) != nil }
+    }
+
     public func markActive(tabID: UUID) throws {
         try database.writer.write { db in
             guard var tab = try Tab.fetchOne(db, key: tabID) else { throw StoreError.notFound }
@@ -89,6 +93,8 @@ extension OrganizationStore {
             if let containerID = archived.containerID,
                let container = try Container.fetchOne(db, key: containerID),
                container.profileID != workspace.profileID { throw StoreError.crossProfileMove }
+            // Restoring makes a regular tab, which has no pinned page: a drifted row's pinned page is archived first, so it is never lost.
+            try archivePinnedPage(of: archived, closedAt: now(), in: db)
             let tab = try insertRegularTab(
                 url: archived.url, title: archived.title, workspace: workspace, origin: .commandBar,
                 containerID: archived.containerID, edge: .top,
@@ -108,6 +114,11 @@ extension OrganizationStore {
         }
     }
 
+    /// Run once at launch: trims the archive to the last 30 days.
+    public func launchMaintenance() throws {
+        _ = try trimArchive(olderThan: 30)
+    }
+
     // MARK: - Reading
 
     public func regularTabs(workspaceID: UUID) throws -> [Tab] {
@@ -120,11 +131,9 @@ extension OrganizationStore {
         return slots.compactMap { bySlot[$0.id] }
     }
 
-    /// The title, or the URL's host when the title is empty, or the URL itself.
+    /// The title, or the URL's host when the title is empty, or the URL itself, or "New Tab".
     public func displayTitle(for tab: Tab) -> String {
-        guard tab.title.isEmpty else { return tab.title }
-        if let host = URL(string: tab.url)?.host, !host.isEmpty { return host }
-        return tab.url
+        DisplayText.title(for: tab)
     }
 
     // MARK: - Helpers
@@ -141,15 +150,34 @@ extension OrganizationStore {
         )
     }
 
+    /// A pinned tab or Essential that has drifted is about to become regular, which clears its pinned page. Archives that page first (its pinned URL
+    /// and title) in the caller's transaction, so moving or unpinning never loses it. A tab on its pinned page loses nothing and archives nothing.
+    func archivePinnedPageIfDrifted(slot: Slot, tab: Tab, closedAt: Date, in db: Database) throws {
+        guard let pinnedURL = tab.pinnedURL, pinnedURL != tab.url else { return }
+        try ArchivedTab(
+            profileID: slot.profileID, workspaceID: slot.workspaceID,
+            url: pinnedURL, title: tab.pinnedTitle ?? "", faviconURL: tab.pinnedFaviconURL,
+            containerID: tab.containerID, closedAt: closedAt, modifiedAt: closedAt
+        ).insert(db)
+    }
+
+    /// The archive-row twin of `archivePinnedPageIfDrifted`: a restored row that carries a pinned page different from its url archives that page.
+    func archivePinnedPage(of archived: ArchivedTab, closedAt: Date, in db: Database) throws {
+        guard let pinnedURL = archived.pinnedURL, pinnedURL != archived.url else { return }
+        try ArchivedTab(
+            profileID: archived.profileID, workspaceID: archived.workspaceID,
+            url: pinnedURL, title: archived.pinnedTitle ?? "", faviconURL: archived.pinnedFaviconURL,
+            containerID: archived.containerID, closedAt: closedAt, modifiedAt: closedAt
+        ).insert(db)
+    }
+
     /// The sort index for a new regular slot in the workspace by `origin` and `edge`, renumbering first if crowded (R10).
     func regularIndex(workspaceID: UUID, origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
-        var slots = try regularSlots(workspaceID: workspaceID, in: db)
-        var index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        if isCrowded(index, among: slots.map(\.sortIndex)) {
-            slots = try renumber(slots, in: db)
-            index = try placementIndex(slots: slots, origin: origin, edge: edge, in: db)
-        }
-        return index
+        try uncrowdedIndex(
+            siblings: { try regularSlots(workspaceID: workspaceID, in: db).map(Child.slot) },
+            propose: { try placementIndex(slots: $0.compactMap(\.slot), origin: origin, edge: edge, in: db) },
+            in: db
+        )
     }
 
     func regularSlots(workspaceID: UUID, in db: Database) throws -> [Slot] {
@@ -178,12 +206,15 @@ extension OrganizationStore {
         return tab
     }
 
+    /// `TabPlacement` finds the opener by tab id, so the map holds one tab per slot plus the opener itself:
+    /// the opener may be a later tab of a split slot, which stands for the slot's index like its first tab does.
     private func placementIndex(slots: [Slot], origin: NewTabOrigin, edge: NewTabEdge, in db: Database) throws -> Double {
-        let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).fetchAll(db)
         let indexBySlot = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0.sortIndex) })
-        let indices = Dictionary(uniqueKeysWithValues: tabs.compactMap { tab in
-            indexBySlot[tab.slotID].map { (tab.id, $0) }
-        })
+        var tabs = Array(try tabsBySlot(slots, in: db).values)
+        if case .link(let openerID) = origin, let opener = try Tab.fetchOne(db, key: openerID), indexBySlot[opener.slotID] != nil {
+            tabs.append(opener)
+        }
+        let indices = Dictionary(tabs.compactMap { tab in indexBySlot[tab.slotID].map { (tab.id, $0) } }, uniquingKeysWith: { first, _ in first })
         return TabPlacement.sortIndex(origin: origin, regularIndices: indices, edge: edge)
     }
 
@@ -196,16 +227,11 @@ extension OrganizationStore {
         if let above, above - index < Self.minimumIndexGap { return true }
         return !index.isFinite
     }
+}
 
-    /// Rewrites the slots' indices to 0, 1, 2… in their current order.
-    private func renumber(_ slots: [Slot], in db: Database) throws -> [Slot] {
-        let stamp = now()
-        return try slots.enumerated().map { position, slot in
-            var renumbered = slot
-            renumbered.sortIndex = Double(position)
-            renumbered.modifiedAt = stamp
-            try renumbered.update(db)
-            return renumbered
-        }
+extension OrganizationStore {
+    /// True when no tab exists in any section.
+    func isTabless() throws -> Bool {
+        try database.writer.read { db in try Tab.fetchCount(db) == 0 }
     }
 }

@@ -64,7 +64,8 @@ struct ArcImportStoreTests {
             if let f = findFolder("Level 2", in: try store.pinnedItems(workspaceID: w.id)) { level2 = f.0 }
         }
         let l1 = try #require(level1)
-        #expect(try #require(level2).parentFolderID == l1.0.id)
+        let l2 = try #require(level2)
+        #expect(l2.parentFolderID == l1.0.id)
     }
 
     private func findFolder(_ title: String, in items: [PinnedItem]) -> (Folder, [PinnedItem])? {
@@ -196,5 +197,248 @@ struct ArcImportStoreTests {
         let names = try profiles.map { profile in try store.workspaces(profileID: profile.id).map(\.name) }
         #expect(names[0].contains("In Default"))
         #expect(names[1] == ["In X"])
+    }
+
+    // MARK: - Import record and file reading
+
+    private func makeStoreAndClock() throws -> (OrganizationStore, TestClock) {
+        let clock = TestClock()
+        return (try makeTempStore(now: clock.now).0, clock)
+    }
+
+    private func makeTempFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StaveTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    @Test func importWritesRecord() throws {
+        let (store, clock) = try makeStoreAndClock()
+        #expect(try store.lastImport(source: .arc) == nil)
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store)
+        #expect(try store.lastImport(source: .arc) == clock.date)
+    }
+
+    @Test func lastImportIsTheNewest() throws {
+        let (store, clock) = try makeStoreAndClock()
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store)
+        clock.advance(by: 60)
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store)
+        #expect(try store.lastImport(source: .arc) == clock.date)
+    }
+
+    @Test func failedImportWritesNoRecord() throws {
+        let store = try makeStore()
+        let deep = PlannedPinned.folder(title: "a", children: [.folder(title: "b", children: [.folder(title: "c", children: [])])])
+        let workspace = PlannedWorkspace(name: "W", icon: "x", colorHex: "#000000", pinned: [deep], regular: [])
+        let bad = ArcImportPlan(
+            profiles: [PlannedProfile(target: .existingDefault, workspaces: [workspace], essentials: [])],
+            flattened: [], skipped: []
+        )
+        #expect(throws: StoreError.folderTooDeep) { try store.importArc(bad) }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    private func makeSparseFile(at file: URL, size: Int) throws {
+        #expect(FileManager.default.createFile(atPath: file.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.truncate(atOffset: UInt64(size))
+        try handle.close()
+    }
+
+    @Test func oversizedFileRefusedBeforeReading() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("StorableSidebar.json")
+        try makeSparseFile(at: file, size: ArcSidebarParser.maximumFileSize + 1)
+        // Mode 000 makes any read fail with .unreadable, so .fileTooLarge proves the size was checked first.
+        // Root ignores permissions, so there the check below cannot tell the two orders apart and is skipped.
+        let canTellOrder = getuid() != 0
+        if canTellOrder { try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: file.path) }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path) }
+        let store = try makeStore()
+        #expect(throws: ArcImportError.fileTooLarge) {
+            try ArcImporter.run(sidebarFile: file, localStateFile: nil, options: .init(), into: store)
+        }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    @Test func directoryIsUnreadable() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = try makeStore()
+        #expect(throws: ArcImportError.unreadable) {
+            try ArcImporter.run(sidebarFile: folder, localStateFile: nil, options: .init(), into: store)
+        }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    @Test func missingFileIsUnreadable() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = try makeStore()
+        #expect(throws: ArcImportError.unreadable) {
+            try ArcImporter.run(
+                sidebarFile: folder.appendingPathComponent("StorableSidebar.json"), localStateFile: nil, options: .init(), into: store
+            )
+        }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    @Test func symlinkToASidebarFileImports() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let real = folder.appendingPathComponent("real.json")
+        try arcFixture("basic").write(to: real)
+        let home = folder.appendingPathComponent("home", isDirectory: true)
+        let link = ArcImporter.sidebarFile(home: home)
+        try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        #expect(ArcImporter.isAvailable(home: home))
+        let store = try makeStore()
+        let report = try ArcImporter.run(sidebarFile: link, localStateFile: nil, options: .init(), into: store)
+        #expect(report.imported.workspaces == 2)
+    }
+
+    @Test func danglingSymlinkToASidebarFileIsUnreadable() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let home = folder.appendingPathComponent("home", isDirectory: true)
+        let link = ArcImporter.sidebarFile(home: home)
+        try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder.appendingPathComponent("gone.json"))
+        #expect(!ArcImporter.isAvailable(home: home))
+        let store = try makeStore()
+        #expect(throws: ArcImportError.unreadable) {
+            try ArcImporter.run(sidebarFile: link, localStateFile: nil, options: .init(), into: store)
+        }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
+    @Test func symlinkToADeviceIsRefused() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let home = folder.appendingPathComponent("home", isDirectory: true)
+        let link = ArcImporter.sidebarFile(home: home)
+        try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/dev/null"))
+        #expect(!ArcImporter.isAvailable(home: home))
+        let store = try makeStore()
+        #expect(throws: ArcImportError.unreadable) {
+            try ArcImporter.run(sidebarFile: link, localStateFile: nil, options: .init(), into: store)
+        }
+    }
+
+    @Test func localStateBesideAPickedFile() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let sidebarFile = folder.appendingPathComponent("StorableSidebar.json")
+        try arcFixture("edge-cases").write(to: sidebarFile)
+        let localState = ArcImporter.localStateFile(nextTo: sidebarFile)
+        #expect(localState.path == folder.appendingPathComponent("User Data").appendingPathComponent("Local State").path)
+        try FileManager.default.createDirectory(at: localState.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try arcFixture("local-state").write(to: localState)
+
+        let withNames = try makeStore()
+        _ = try ArcImporter.run(sidebarFile: sidebarFile, localStateFile: localState, options: .init(), into: withNames)
+        #expect(try withNames.profiles().map(\.name).contains("Client Work"))
+
+        try FileManager.default.removeItem(at: localState)
+        let without = try makeStore()
+        _ = try ArcImporter.run(sidebarFile: sidebarFile, localStateFile: localState, options: .init(), into: without)
+        let names = try without.profiles().map(\.name)
+        #expect(!names.contains("Client Work"))
+        #expect(names.contains("Profile 1"))
+    }
+
+    /// Imports the edge-cases sidebar with `localState` as the Local State path and returns the profile names.
+    private func profileNames(withLocalState make: (URL) throws -> Void) throws -> [String] {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let sidebarFile = folder.appendingPathComponent("StorableSidebar.json")
+        try arcFixture("edge-cases").write(to: sidebarFile)
+        let localState = ArcImporter.localStateFile(nextTo: sidebarFile)
+        try FileManager.default.createDirectory(at: localState.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try make(localState)
+        let store = try makeStore()
+        _ = try ArcImporter.run(sidebarFile: sidebarFile, localStateFile: localState, options: .init(), into: store)
+        return try store.profiles().map(\.name)
+    }
+
+    @Test func oversizedLocalStateIsTreatedAsAbsent() throws {
+        // Valid Local State padded with trailing whitespace (legal JSON) past the cap: without the cap it would decode and name the profile.
+        let names = try profileNames { url in
+            var data = try arcFixture("local-state")
+            data.append(Data(repeating: UInt8(ascii: " "), count: ArcImporter.maximumLocalStateSize + 1 - data.count))
+            #expect(data.count == ArcImporter.maximumLocalStateSize + 1)
+            try data.write(to: url)
+        }
+        #expect(!names.contains("Client Work"))
+        #expect(names.contains("Profile 1"))
+    }
+
+    @Test func localStateExactlyAtTheCapIsRead() throws {
+        // The same padding as the oversized case, one byte shorter: the cap is inclusive, so the names come through.
+        let names = try profileNames { url in
+            var data = try arcFixture("local-state")
+            data.append(Data(repeating: UInt8(ascii: " "), count: ArcImporter.maximumLocalStateSize - data.count))
+            #expect(data.count == ArcImporter.maximumLocalStateSize)
+            try data.write(to: url)
+        }
+        #expect(names.contains("Client Work"))
+    }
+
+    @Test func danglingSymlinkLocalStateIsTreatedAsAbsent() throws {
+        let names = try profileNames { url in
+            let missing = url.deletingLastPathComponent().appendingPathComponent("gone.json")
+            try FileManager.default.createSymbolicLink(at: url, withDestinationURL: missing)
+        }
+        #expect(!names.contains("Client Work"))
+        #expect(names.contains("Profile 1"))
+    }
+
+    @Test func fifoLocalStateIsTreatedAsAbsentWithoutHanging() throws {
+        let names = try profileNames { url in #expect(mkfifo(url.path, 0o600) == 0) }
+        #expect(names.contains("Profile 1"))
+    }
+
+    @Test func deviceSymlinkLocalStateIsTreatedAsAbsent() throws {
+        let names = try profileNames { url in
+            try FileManager.default.createSymbolicLink(at: url, withDestinationURL: URL(fileURLWithPath: "/dev/null"))
+        }
+        #expect(names.contains("Profile 1"))
+    }
+
+    @Test func symlinkedLocalStateIsRead() throws {
+        let names = try profileNames { url in
+            let real = url.deletingLastPathComponent().appendingPathComponent("real-state.json")
+            try arcFixture("local-state").write(to: real)
+            try FileManager.default.createSymbolicLink(at: url, withDestinationURL: real)
+        }
+        #expect(names.contains("Client Work"))
+    }
+
+    @Test func unreadableLocalStateIsTreatedAsAbsent() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let sidebarFile = folder.appendingPathComponent("StorableSidebar.json")
+        try arcFixture("edge-cases").write(to: sidebarFile)
+        let store = try makeStore()
+        // A directory where Local State should be: unreadable, so profile names fall back.
+        _ = try ArcImporter.run(sidebarFile: sidebarFile, localStateFile: folder, options: .init(), into: store)
+        #expect(try store.profiles().map(\.name).contains("Profile 1"))
+    }
+
+    @Test func availabilityNeedsARegularFile() throws {
+        let home = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: home) }
+        #expect(!ArcImporter.isAvailable(home: home))
+        let file = ArcImporter.sidebarFile(home: home)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        #expect(!ArcImporter.isAvailable(home: home))
+        try FileManager.default.removeItem(at: file)
+        try arcFixture("basic").write(to: file)
+        #expect(ArcImporter.isAvailable(home: home))
     }
 }

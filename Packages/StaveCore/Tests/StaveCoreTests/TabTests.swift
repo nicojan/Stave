@@ -68,6 +68,36 @@ struct TabTests {
         #expect(slots == 0)
     }
 
+    @Test func regularTabsWithEqualSortIndexKeepInsertionOrder() throws {
+        let (store, database, _, profile, ws) = try fixture()
+        let ids = descendingUUIDs(3)
+        try database.writer.write { db in
+            for id in ids {
+                let slot = Slot(id: id, profileID: profile.id, workspaceID: ws.id, section: .regular, sortIndex: 0)
+                try slot.insert(db)
+                try Tab(slotID: slot.id, url: "https://\(id.uuidString).example", title: "t").insert(db)
+            }
+        }
+        #expect(try store.regularTabs(workspaceID: ws.id).map(\.slotID) == ids)
+    }
+
+    @Test func archivedTabsClosedTogetherListLaterInsertedFirst() throws {
+        let (store, database, _, profile, ws) = try fixture() // the clock never moves, so every closedAt ties
+        let tabs = try ["a", "b", "c"].map { try open(store, "https://\($0).example", in: ws) }
+        for tab in tabs { _ = try store.closeTab(tab.id) }
+        let urls = try store.archivedTabs(profileID: profile.id).map(\.url)
+        #expect(urls == ["https://c.example", "https://b.example", "https://a.example"])
+        // Rows inserted with ids that run forwards and backwards both follow insertion, not the id.
+        let stamp = Date(timeIntervalSince1970: 1_700_000_500)
+        let ids = descendingUUIDs(3)
+        try database.writer.write { db in
+            for (index, id) in ids.enumerated() {
+                try ArchivedTab(id: id, profileID: profile.id, url: "https://x\(index).example", title: "x", closedAt: stamp).insert(db)
+            }
+        }
+        #expect(try store.archivedTabs(profileID: profile.id).prefix(3).map(\.id) == ids.reversed())
+    }
+
     @Test func closeUnknownThrowsNotFound() throws {
         let (store, _, _, _, _) = try fixture()
         #expect(throws: StoreError.notFound) { try store.closeTab(UUID()) }

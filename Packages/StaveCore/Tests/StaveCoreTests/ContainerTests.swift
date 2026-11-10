@@ -51,6 +51,19 @@ struct ContainerTests {
         #expect(try store.containers(profileID: profile.id).map(\.id) == [a1.id, a2.id, b.id])
     }
 
+    @Test func equalNamesKeepCreationOrderWhenIdsRunBackwards() throws {
+        let (store, database, _, profile, _) = try fixture()
+        let other = try store.createProfile(name: "Other")
+        let containers = descendingUUIDs(3).map { Container(id: $0, profileID: profile.id, name: "Same", colorHex: "#111111") }
+        try database.writer.write { db in
+            for container in containers { try container.insert(db) }
+        }
+        #expect(try store.containers(profileID: profile.id).map(\.id) == containers.map(\.id))
+        let stores = try store.deleteProfile(profile.id)
+        #expect(stores == [profile.dataStoreID] + containers.map(\.dataStoreID))
+        #expect(try store.profiles().map(\.id) == [other.id])
+    }
+
     @Test func containerTabsCarryContainer() throws {
         let (store, _, _, profile, ws) = try fixture()
         let c = try store.createContainer(profileID: profile.id, name: "Work", colorHex: "#FF0000")
