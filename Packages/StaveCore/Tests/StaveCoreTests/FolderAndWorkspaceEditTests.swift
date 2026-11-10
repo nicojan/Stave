@@ -143,6 +143,35 @@ struct FolderAndWorkspaceEditTests {
         #expect(try rootIDs(store, ws) == [all[0].id, all[1].id, all[2].id])
     }
 
+    @Test func crowdedPinnedRootOfFoldersAndTabsRenumbersTogether() throws {
+        let (store, database, _, _, ws) = try fixture()
+        let a = try open(store, "https://example.com/a", in: ws)
+        let b = try open(store, "https://example.com/b", in: ws)
+        try store.pinTab(a.id, folderID: nil)
+        let first = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "F0")
+        try store.pinTab(b.id, folderID: nil)
+        let last = try store.createFolder(workspaceID: ws.id, parentFolderID: nil, title: "F1")
+        #expect(try rootIDs(store, ws) == [a.id, first.id, b.id, last.id])
+        // Squeeze the first three together (tab, folder, tab) so no midpoint between them is usable.
+        try database.writer.write { db in
+            try db.execute(sql: "UPDATE slot SET sortIndex = 1 WHERE id = ?", arguments: [try #require(try Tab.fetchOne(db, key: a.id)).slotID])
+            try db.execute(sql: "UPDATE folder SET sortIndex = 1.0000000001 WHERE id = ?", arguments: [first.id])
+            try db.execute(sql: "UPDATE slot SET sortIndex = 1.0000000002 WHERE id = ?", arguments: [try #require(try Tab.fetchOne(db, key: b.id)).slotID])
+            try db.execute(sql: "UPDATE folder SET sortIndex = 5 WHERE id = ?", arguments: [last.id])
+        }
+        try store.moveFolder(last.id, toParent: nil, after: .tab(a.id))
+        #expect(try rootIDs(store, ws) == [a.id, last.id, first.id, b.id])
+        // The three squeezed siblings were renumbered 0, 1, 2 across both tables, and the moved folder sits between the first two.
+        let indices = try database.writer.read { db in
+            (a: try Slot.fetchOne(db, key: try #require(try Tab.fetchOne(db, key: a.id)).slotID)?.sortIndex,
+             first: try Folder.fetchOne(db, key: first.id)?.sortIndex,
+             b: try Slot.fetchOne(db, key: try #require(try Tab.fetchOne(db, key: b.id)).slotID)?.sortIndex,
+             last: try Folder.fetchOne(db, key: last.id)?.sortIndex)
+        }
+        #expect(indices.a == 0 && indices.first == 1 && indices.b == 2)
+        #expect(indices.last == 0.5)
+    }
+
     // MARK: - Folder edits
 
     @Test func folderOpenAndRename() throws {

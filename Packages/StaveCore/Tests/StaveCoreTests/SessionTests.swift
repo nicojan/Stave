@@ -114,6 +114,15 @@ struct SessionTests {
         #expect(restored[0].modifiedAt == clock.date)
     }
 
+    @Test func restoreKeepsSavedOrderForEqualSortIndex() throws {
+        let (store, _, profile, ws) = try fixture()
+        let windows = descendingUUIDs(3).map { id in
+            WindowState(id: id, profileID: profile.id, workspaceID: ws.id, frame: "0 0 800 600", sortIndex: 7)
+        }
+        try store.saveWindows(windows)
+        #expect(try store.restoredWindows().map(\.id) == windows.map(\.id))
+    }
+
     @Test func restoreOrdersBySortIndex() throws {
         let (store, _, profile, ws) = try fixture()
         let late = window(profile, ws, index: 5)

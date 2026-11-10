@@ -43,6 +43,37 @@ struct SplitSlotPlacementTests {
         #expect(ordered.count == 2)
         for sql in ordered { #expect(sql.contains("\"rowid\"") && sql.hasSuffix("\"rowid\"")) }
     }
+
+    /// Behaviour alone cannot prove the tie-break (SQLite scans tables in rowid order anyway), so the SQL of every other sorted read is checked too.
+    @Test func everyOtherSortedReadBreaksTiesOnRowid() throws {
+        let statements = StatementLog()
+        let (store, database, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let workspace = try #require(try store.workspaces(profileID: profile.id).first)
+        try database.writer.read { db in db.trace { statements.append($0.description) } }
+        try database.writer.write { db in db.trace { statements.append($0.description) } }
+
+        func orderings(_ read: () throws -> Void) throws -> [String] {
+            statements.reset()
+            try read()
+            return statements.all.filter { $0.contains("ORDER BY") }
+        }
+        let reads: [(String, Int, () throws -> Void)] = [
+            ("containers", 1, { _ = try store.containers(profileID: profile.id) }),
+            ("essentials", 1, { _ = try store.essentials(profileID: profile.id) }),
+            ("regular tabs", 1, { _ = try store.regularTabs(workspaceID: workspace.id) }),
+            ("pinned items", 2, { _ = try store.pinnedItems(workspaceID: workspace.id) }),
+            ("archive", 1, { _ = try store.archivedTabs(profileID: profile.id) }),
+            ("restored windows", 1, { _ = try store.restoredWindows() }),
+        ]
+        for (name, expected, read) in reads {
+            let ordered = try orderings(read)
+            #expect(ordered.count >= expected, "\(name) ran no ordered query")
+            for sql in ordered { #expect(sql.contains("\"rowid\""), "\(name): \(sql)") }
+        }
+        let archive = try orderings { _ = try store.archivedTabs(profileID: profile.id) }
+        #expect(archive.allSatisfy { $0.hasSuffix("\"rowid\" DESC") })
+    }
 }
 
 final class StatementLog: @unchecked Sendable {

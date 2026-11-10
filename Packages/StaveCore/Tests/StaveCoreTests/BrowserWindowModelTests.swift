@@ -109,6 +109,27 @@ struct BrowserWindowModelTests {
         #expect(model.lastSwitchDirection == -1)
     }
 
+    @Test func switchByNumberZeroOrNegativeDoesNothing() throws {
+        let world = try makeWorld()
+        _ = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let model = try world.window()
+        model.select(tab.id)
+        model.switchWorkspace(number: 2)
+        model.switchWorkspace(number: 1)
+        model.select(tab.id) // leaving a workspace dropped the selection
+        let direction = model.lastSwitchDirection
+        let revision = world.revision.value
+        for number in [0, -1, -5] {
+            model.switchWorkspace(number: number)
+            #expect(model.snapshot.workspace.id == world.home.id)
+            #expect(model.selectedTabID == tab.id)
+            #expect(model.lastSwitchDirection == direction)
+            #expect(model.lastError == nil)
+        }
+        #expect(world.revision.value == revision)
+    }
+
     @Test func switchProfileGoesToFirstWorkspace() throws {
         let world = try makeWorld()
         let work = try world.store.createProfile(name: "Work")
@@ -205,6 +226,57 @@ struct BrowserWindowModelTests {
         #expect(model.rows.first?.kind == .pinnedTab(drifted: true))
         model.resetPinned(tab.id)
         #expect(model.rows.first?.kind == .pinnedTab(drifted: false))
+    }
+
+    @Test func removePinnedArchivesAndMovesTheSelectionOn() throws {
+        let world = try makeWorld()
+        let pinned = try world.tab("a"), regular = try world.tab("b")
+        let model = try world.window()
+        model.pin(pinned.id, folderID: nil)
+        model.select(pinned.id)
+        #expect(model.run(.removeFromPinned, on: .tab(pinned.id))) // the menu path applies the selection rule
+        #expect(model.lastError == nil)
+        #expect(!model.rows.contains { $0.id == .tab(pinned.id) })
+        #expect(model.selectedTabID == regular.id)
+        #expect(model.archivedTabs().map(\.url) == ["https://example.com/a"])
+    }
+
+    @Test func removePinnedDirectlyArchivesAndClearsAVanishedSelection() throws {
+        let world = try makeWorld()
+        let pinned = try world.tab("a")
+        let model = try world.window()
+        model.pin(pinned.id, folderID: nil)
+        model.select(pinned.id)
+        model.removePinned(pinned.id)
+        #expect(model.lastError == nil)
+        #expect(model.rows.isEmpty)
+        #expect(model.selectedTabID == nil)
+        #expect(model.archivedTabs().map(\.url) == ["https://example.com/a"])
+    }
+
+    @Test func pinnedOnlyActionsOnARegularTabShowAMessageAndChangeNothing() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let model = try world.window()
+        let message = "Only pinned tabs and Essentials have a pinned page."
+        for act in [{ model.unpin(tab.id) }, { model.removePinned(tab.id) }, { model.removeEssential(tab.id) }] {
+            act()
+            #expect(model.lastError == message)
+            #expect(model.rows.first?.isRegular == true)
+            #expect(model.archivedTabs().isEmpty)
+        }
+    }
+
+    @Test func removeEssentialArchivesIt() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let model = try world.window()
+        model.makeEssential(tab.id)
+        model.select(tab.id)
+        model.removeEssential(tab.id)
+        #expect(model.snapshot.essentials.isEmpty)
+        #expect(model.selectedTabID == nil)
+        #expect(model.archivedTabs().map(\.url) == ["https://example.com/a"])
     }
 
     @Test func restoreArchivedSelectsIt() throws {
@@ -443,6 +515,42 @@ struct BrowserWindowModelTests {
         model.run(.moveDown, on: .tab(c.id))
         #expect(model.snapshot.regular.map(\.id) == [a.id, c.id, b.id])
         #expect(model.selectedTabID == c.id)
+    }
+
+    @Test func updateWorkspaceChangesItsAppearanceOrShowsAMessage() throws {
+        let world = try makeWorld()
+        let two = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let model = try world.window()
+        let before = world.revision.value
+        model.updateWorkspace(two.id, name: "Deux", icon: "🎨", colorHex: "#123456")
+        let updated = try #require(model.workspaces.first { $0.id == two.id })
+        #expect(updated.name == "Deux" && updated.icon == "🎨" && updated.colorHex == "#123456")
+        #expect(model.lastError == nil)
+        #expect(world.revision.value == before + 1)
+        model.updateWorkspace(UUID(), name: "x", icon: "y", colorHex: "#000000")
+        #expect(model.lastError == "That item no longer exists.")
+        #expect(world.revision.value == before + 1)
+        #expect(model.workspaces.map(\.name) == ["Home", "Deux"])
+    }
+
+    @Test func moveWorkspaceReordersOrShowsAMessage() throws {
+        let world = try makeWorld()
+        let two = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let three = try world.store.createWorkspace(profileID: world.profile.id, name: "Three", icon: "", colorHex: "#FFFFFF")
+        let model = try world.window()
+        model.moveWorkspace(three.id, after: nil)
+        #expect(model.workspaces.map(\.id) == [three.id, world.home.id, two.id])
+        model.moveWorkspace(three.id, after: two.id)
+        #expect(model.workspaces.map(\.id) == [world.home.id, two.id, three.id])
+        #expect(model.lastError == nil)
+        let other = try world.store.createProfile(name: "Other")
+        let foreign = try #require(try world.store.workspaces(profileID: other.id).first)
+        let revision = world.revision.value
+        model.moveWorkspace(two.id, after: foreign.id)
+        #expect(model.lastError == "That belongs to another profile. Move it by opening it there.")
+        #expect(model.workspaces.map(\.id) == [world.home.id, two.id, three.id])
+        #expect(world.revision.value == revision)
+        #expect(model.snapshot.workspace.id == world.home.id)
     }
 
     @Test func dropWorkspaceReordersAndKeepsTheOrder() throws {

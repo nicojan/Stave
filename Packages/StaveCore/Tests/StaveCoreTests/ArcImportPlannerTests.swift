@@ -364,6 +364,37 @@ struct ArcImportPlannerTests {
         #expect(plan.profiles[0].workspaces.map(\.name) == ["Work", "Work"])
     }
 
+    private func skippedPlaces(_ names: [String]) -> [ArcImportReport.Place] {
+        let bad = ArcTab(url: "file:///x", title: "Bad")
+        let sidebar = ArcSidebar(spaces: names.map { space($0, pinned: [.tab(bad)]) }, favorites: [:], duplicateItems: 0)
+        let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+        return plan.skipped.compactMap { if case .nonWebURL(let place, _, _) = $0 { place } else { nil } }
+    }
+
+    @Test func nonAdjacentDuplicatesAreNumberedPerName() {
+        #expect(skippedPlaces(["A", "B", "A"]) == [.space("A (1)"), .space("B"), .space("A (2)")])
+    }
+
+    @Test func threeOfAKindCountUpAndTwoNamesCountSeparately() {
+        #expect(skippedPlaces(["A", "A", "A"]) == [.space("A (1)"), .space("A (2)"), .space("A (3)")])
+        #expect(skippedPlaces(["A", "B", "A", "B", "C", "A"])
+            == [.space("A (1)"), .space("B (1)"), .space("A (2)"), .space("B (2)"), .space("C"), .space("A (3)")])
+    }
+
+    @Test func untitledSpaceCollidingWithATitledOneIsNumberedToo() {
+        // The untitled space is "Space 1"; a space really titled "Space 1" makes both labels ambiguous.
+        #expect(skippedPlaces(["Space 1", ""]) == [.space("Space 1 (1)"), .space("Space 1 (2)")])
+    }
+
+    @Test func favoritesUnderAnUnrecognisedProfileMarkerNameNoProfile() throws {
+        let bad = ArcTab(url: "file:///x", title: "F")
+        let sidebar = ArcSidebar(spaces: [], favorites: [.unrecognized: [.tab(bad)]], duplicateItems: 0)
+        let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+        #expect(plan.skipped == [.nonWebURL(place: .favorites(profile: nil), title: "F", scheme: "file")])
+        // Unrecognised favorites are filed with the default profile, like an unrecognised space.
+        #expect(plan.profiles.map(\.target) == [.existingDefault])
+    }
+
     @Test func uniqueNamesStayPlain() {
         let plan = twoSpaces("Work", "Home")
         #expect(plan.skipped == [

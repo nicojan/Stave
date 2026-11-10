@@ -149,6 +149,18 @@ struct ArcImportFlowTests {
         #expect(try store.lastImport(source: .arc) == nil)
     }
 
+    @Test func confirmRepeatBeforeStartWithUnreadableHistoryFailsSafe() async throws {
+        let store = try makeStore()
+        let revision = StoreRevision()
+        let flow = ArcImportFlow(store: store, revision: revision, source: .arcOnThisMac(home: try makeHome()), readLastImport: { _ in throw ReadFailure() })
+        let before = try workspaceCount(store)
+        await flow.confirmRepeat() // no start() first: the unknown history must still block the import
+        #expect(flow.phase == .failed(ArcImportCopy.historyUnreadable))
+        #expect(try workspaceCount(store) == before)
+        #expect(revision.value == 0)
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
     @Test func historyReadableAgainAllowsTheImport() async throws {
         let store = try makeStore()
         let broken = FailSwitch(true)
@@ -217,9 +229,14 @@ struct ArcImportFlowTests {
     @Test func missingFileFails() async throws {
         let store = try makeStore()
         let missing = try tempFolder().appendingPathComponent("nope.json")
-        let flow = ArcImportFlow(store: store, revision: StoreRevision(), source: .pickedFile(missing))
+        let revision = StoreRevision()
+        let flow = ArcImportFlow(store: store, revision: revision, source: .pickedFile(missing))
+        let before = try workspaceCount(store)
         await flow.start()
         #expect(flow.phase == .failed("Stave couldn't read this file."))
+        #expect(revision.value == 0)
+        #expect(try store.lastImport(source: .arc) == nil)
+        #expect(try workspaceCount(store) == before)
     }
 
     @Test func offerRules() async throws {
