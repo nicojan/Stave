@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import StaveCore
 
@@ -112,5 +113,156 @@ struct LivePageRegistryTests {
         #expect(registry.placement(of: tabT, in: a) == .elsewhere(windowID: b))
         registry.release(windowID: b)
         #expect(registry.placement(of: tabT, in: a) == .here)
+    }
+
+    // MARK: Edge cases (carried from plan 4)
+
+    @Test func showingTheSameTabAgainKeepsItsPlaceInLine() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        #expect(registry.show(tabT, in: b) == .elsewhere(windowID: a))
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: c) == .elsewhere(windowID: b))
+    }
+
+    @Test func switchingAwayAndBackGoesToTheBackOfTheLine() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        _ = registry.show(tabU, in: b)
+        _ = registry.show(tabT, in: b)
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: c) == .here)
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: c))
+    }
+
+    @Test func aWaiterThatClosesLeavesTheLine() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.windowClosed(b)
+        #expect(registry.placement(of: tabT, in: c) == .elsewhere(windowID: a))
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: c) == .here)
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: c))
+    }
+
+    @Test func releasingWithNobodyWaitingLeavesThePageUnowned() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.show(tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: a) == .elsewhere(windowID: b))
+    }
+
+    @Test func releasingOrClosingAWindowThatWantsNothingChangesNothing() {
+        let registry = LivePageRegistry()
+        let stranger = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        registry.release(windowID: stranger)
+        registry.windowClosed(stranger)
+        registry.release(windowID: stranger)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: a))
+        registry.release(windowID: a)
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+    }
+
+    @Test func bringHereClaimsATabNobodyOwns() {
+        let registry = LivePageRegistry()
+        registry.bringHere(tabT, to: a)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+        #expect(registry.show(tabT, in: b) == .elsewhere(windowID: a))
+    }
+
+    @Test func bringHereToTheOwnerChangesNothing() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.bringHere(tabT, to: a)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabT, in: c) == .elsewhere(windowID: b))
+    }
+
+    @Test func aWaiterThatBringsThePageKeepsItsPlaceSoTheDisplacedOwnerIsNext() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabT, in: c)
+        registry.bringHere(tabT, to: c)
+        #expect(registry.placement(of: tabT, in: a) == .elsewhere(windowID: c))
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: c))
+        registry.windowClosed(c)
+        #expect(registry.placement(of: tabT, in: a) == .here)
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: a))
+    }
+
+    @Test func removingAWaitedForTabDropsEveryWant() {
+        let registry = LivePageRegistry()
+        let c = UUID()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        _ = registry.show(tabU, in: c)
+        registry.tabRemoved(tabT)
+        // B no longer waits for T, so A and B are free; C keeps U.
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+        #expect(registry.placement(of: tabU, in: c) == .here)
+        #expect(registry.show(tabU, in: b) == .elsewhere(windowID: c))
+        // A tab with the same ID shown again starts fresh.
+        #expect(registry.show(tabT, in: a) == .here)
+    }
+
+    @Test func removingAnUnknownTabChangesNothing() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        registry.tabRemoved(tabU)
+        #expect(registry.placement(of: tabT, in: b) == .elsewhere(windowID: a))
+        registry.release(windowID: a)
+        #expect(registry.placement(of: tabT, in: b) == .here)
+    }
+
+    @Test func oneWindowShowsOneTabAtATime() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabU, in: a)
+        // A let go of T when it moved to U, so B can take T while A keeps U.
+        #expect(registry.show(tabT, in: b) == .here)
+        #expect(registry.placement(of: tabU, in: a) == .here)
+        #expect(registry.show(tabU, in: b) == .elsewhere(windowID: a))
+        #expect(registry.placement(of: tabT, in: a) == .here)
+    }
+
+    @Test func ownershipChangesNotifyObservers() {
+        let registry = LivePageRegistry()
+        _ = registry.show(tabT, in: a)
+        _ = registry.show(tabT, in: b)
+        let changed = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking {
+            _ = registry.placement(of: tabT, in: b)
+        } onChange: {
+            changed.withLock { $0 = true }
+        }
+        registry.release(windowID: a)
+        #expect(changed.withLock { $0 })
+        #expect(registry.placement(of: tabT, in: b) == .here)
     }
 }
