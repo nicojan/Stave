@@ -26,6 +26,11 @@ struct WindowFrameRestoreTests {
         #expect(result == CGRect(x: 270, y: 150, width: 900, height: 600))
     }
 
+    @Test func frameExactlyTheMinimumIsKeptAndOnlyTheSmallSideGrows() {
+        #expect(WindowFrameRestore.restore("{{100, 100}, {800, 500}}", visibleFrames: [screen]) == CGRect(x: 100, y: 100, width: 800, height: 500))
+        #expect(WindowFrameRestore.restore("{{100, 100}, {300, 700}}", visibleFrames: [screen]) == CGRect(x: 100, y: 100, width: 800, height: 700))
+    }
+
     @Test func growthIsClampedToTheScreen() {
         let small = CGRect(x: 0, y: 0, width: 700, height: 450)
         #expect(WindowFrameRestore.restore("{{0, 0}, {300, 200}}", visibleFrames: [small]) == small)

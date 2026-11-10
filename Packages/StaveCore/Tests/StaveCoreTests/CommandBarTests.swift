@@ -549,6 +549,39 @@ struct CommandBarEnginePickerTests {
         #expect(try url(of: b.id, store) == "https://example.com/b")
     }
 
+    @Test func currentTabNavigatesAPinnedTargetAndItDriftsFromItsPinnedPage() throws {
+        let (window, store) = try makeWindow()
+        let (a, b, work) = try twoTabs(window, store)
+        let home = window.snapshot.workspace.id
+        window.pin(a.id, folderID: nil)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: a.url, currentTabID: a.id)
+        window.switchWorkspace(to: work.id)
+        window.select(b.id)
+        bar.query = "https://example.net/new"
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(try url(of: a.id, store) == "https://example.net/new")
+        #expect(try url(of: b.id, store) == "https://example.com/b")
+        let moved = try #require(try store.pinnedItems(workspaceID: home).first)
+        guard case .tab(let pinned) = moved else { Issue.record("not a tab"); return }
+        #expect(pinned.id == a.id && pinned.pinnedURL == "https://example.com/a" && pinned.isDrifted)
+    }
+
+    @Test func currentTabNavigatesAnEssentialTargetAcrossAWorkspaceSwitch() throws {
+        let (window, store) = try makeWindow()
+        let (a, _, work) = try twoTabs(window, store)
+        window.makeEssential(a.id)
+        window.select(a.id)
+        let bar = CommandBarModel(mode: .currentTab, candidates: window.commandCandidates(), currentURL: a.url, currentTabID: a.id)
+        window.switchWorkspace(to: work.id) // an Essential stays selected across workspaces
+        #expect(window.selectedTabID == a.id)
+        bar.query = "https://example.net/new"
+        #expect(bar.activate(in: window) == .close(.done))
+        #expect(window.selectedTabID == a.id)
+        let essential = try #require(window.snapshot.essentials.first)
+        #expect(essential.id == a.id && essential.url == "https://example.net/new" && essential.pinnedURL == "https://example.com/a")
+        #expect(window.snapshot.regular.count == 1 && window.snapshot.workspace.id == work.id) // no new tab was opened
+    }
+
     @Test func chosenEngineInCurrentTabModeNavigatesTheCapturedTab() throws {
         let (window, store) = try makeWindow()
         let (a, b, work) = try twoTabs(window, store)

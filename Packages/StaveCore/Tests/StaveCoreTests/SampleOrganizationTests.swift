@@ -76,6 +76,31 @@ struct SampleOrganizationTests {
         #expect(titles.contains { $0.count == 200 })
     }
 
+    @Test(arguments: [SlotSection.pinned, .essential])
+    func seedLeavesAStoreWhoseOnlyTabIsPinnedOrEssentialAlone(_ section: SlotSection) throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.ensureDefaultProfile()
+        let ws = try #require(try store.workspaces(profileID: profile.id).first)
+        let tab = try store.openTab(url: "https://example.com/", title: "One", workspaceID: ws.id, origin: .commandBar, containerID: nil, edge: .top)
+        if section == .pinned { try store.pinTab(tab.id, folderID: nil) } else { try store.makeEssential(tab.id) }
+        #expect(try SampleOrganization.seed(into: store) == false)
+        #expect(try store.workspaces(profileID: profile.id).count == 1)
+        #expect(try store.containers(profileID: profile.id).isEmpty)
+        #expect(try store.regularTabs(workspaceID: ws.id).isEmpty)
+        #expect(try store.pinnedItems(workspaceID: ws.id).count == (section == .pinned ? 1 : 0))
+        #expect(try store.essentials(profileID: profile.id).count == (section == .essential ? 1 : 0))
+    }
+
+    @Test func seedFillsAStoreWhoseOnlyTabIsArchived() throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.ensureDefaultProfile()
+        let ws = try #require(try store.workspaces(profileID: profile.id).first)
+        let tab = try store.openTab(url: "https://example.com/", title: "One", workspaceID: ws.id, origin: .commandBar, containerID: nil, edge: .top)
+        _ = try store.closeTab(tab.id)
+        #expect(try SampleOrganization.seed(into: store) == true)
+        #expect(try store.workspaces(profileID: profile.id).count == 2)
+    }
+
     @Test func seedLeavesUsedStoreAlone() throws {
         let (store, _, _) = try makeTempStore()
         let profile = try store.ensureDefaultProfile()

@@ -125,6 +125,19 @@ struct SidebarRowsTests {
         #expect(DisplayText.monogram(for: tab()) == "?")
     }
 
+    @Test func monogramOfLowercaseAccentedAndEmojiTitles() {
+        #expect(DisplayText.monogram(for: tab(url: "", title: "élan")) == "É")
+        #expect(DisplayText.monogram(for: tab(url: "", title: "e\u{301}lan")) == "É") // decomposed: one character, accent kept
+        #expect(DisplayText.monogram(for: tab(url: "", title: "🎉 party")) == "🎉")
+        #expect(DisplayText.monogram(for: tab(url: "", title: "👨‍👩‍👧 family")) == "👨‍👩‍👧") // a joined emoji is one character
+        #expect(DisplayText.monogram(for: tab(url: "", title: "日本")) == "日")
+    }
+
+    @Test func monogramPrefersTheHostOverTheTitle() {
+        #expect(DisplayText.monogram(for: tab(url: "https://example.com", title: "Zed")) == "E")
+        #expect(DisplayText.monogram(for: tab(url: "https://www.", title: "tab")) == "T") // nothing left of the host: the title
+    }
+
     @Test func workspaceIcon() {
         #expect(WorkspaceIcon(stored: "💼") == .emoji("💼"))
         #expect(WorkspaceIcon(stored: "house") == .symbol("house"))

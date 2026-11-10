@@ -43,9 +43,40 @@ struct SettingsTests {
     }
 
     @Test func searchEngineCanBeCleared() throws {
-        let (store, _, _) = try makeTempStore()
+        let (store, database, _) = try makeTempStore()
         try store.setSetting(SettingKeys.searchEngine, .kagi)
         try store.setSetting(SettingKeys.searchEngine, nil)
+        #expect(try store.setting(SettingKeys.searchEngine) == nil)
+        // Clearing stores the JSON `null`, not a missing row and not a SQL NULL.
+        let stored = try database.writer.read { db in
+            try Row.fetchAll(db, sql: "SELECT value FROM setting WHERE key = 'searchEngine'")
+        }
+        #expect(stored.count == 1)
+        let text: String? = stored.first?["value"]
+        #expect(text == "null")
+    }
+
+    @Test func storedRowOfTheWrongTypeFallsBackToDefault() throws {
+        let (store, database, _) = try makeTempStore()
+        try database.writer.write { db in
+            for (key, json) in [("sidebarWidth", "\"wide\""), ("compactMode", "\"yes\""), ("newTabEdge", "7"), ("searchEngine", "true")] {
+                try db.execute(sql: "INSERT INTO setting (key, value, modifiedAt) VALUES (?, ?, ?)", arguments: [key, json, Date()])
+            }
+        }
+        #expect(try store.setting(SettingKeys.sidebarWidth) == 260)
+        #expect(try store.setting(SettingKeys.compactMode) == false)
+        #expect(try store.setting(SettingKeys.newTabEdge) == .top)
+        #expect(try store.setting(SettingKeys.searchEngine) == nil)
+    }
+
+    @Test func unknownEnumValueFallsBackToDefault() throws {
+        let (store, database, _) = try makeTempStore()
+        try database.writer.write { db in
+            for (key, json) in [("newTabEdge", "\"sideways\""), ("searchEngine", "\"altavista\"")] {
+                try db.execute(sql: "INSERT INTO setting (key, value, modifiedAt) VALUES (?, ?, ?)", arguments: [key, json, Date()])
+            }
+        }
+        #expect(try store.setting(SettingKeys.newTabEdge) == .top)
         #expect(try store.setting(SettingKeys.searchEngine) == nil)
     }
 

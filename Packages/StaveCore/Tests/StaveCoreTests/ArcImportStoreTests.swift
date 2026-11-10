@@ -301,6 +301,21 @@ struct ArcImportStoreTests {
         #expect(report.imported.workspaces == 2)
     }
 
+    @Test func danglingSymlinkToASidebarFileIsUnreadable() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let home = folder.appendingPathComponent("home", isDirectory: true)
+        let link = ArcImporter.sidebarFile(home: home)
+        try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder.appendingPathComponent("gone.json"))
+        #expect(!ArcImporter.isAvailable(home: home))
+        let store = try makeStore()
+        #expect(throws: ArcImportError.unreadable) {
+            try ArcImporter.run(sidebarFile: link, localStateFile: nil, options: .init(), into: store)
+        }
+        #expect(try store.lastImport(source: .arc) == nil)
+    }
+
     @Test func symlinkToADeviceIsRefused() throws {
         let folder = try makeTempFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -358,6 +373,26 @@ struct ArcImportStoreTests {
             data.append(Data(repeating: UInt8(ascii: " "), count: ArcImporter.maximumLocalStateSize + 1 - data.count))
             #expect(data.count == ArcImporter.maximumLocalStateSize + 1)
             try data.write(to: url)
+        }
+        #expect(!names.contains("Client Work"))
+        #expect(names.contains("Profile 1"))
+    }
+
+    @Test func localStateExactlyAtTheCapIsRead() throws {
+        // The same padding as the oversized case, one byte shorter: the cap is inclusive, so the names come through.
+        let names = try profileNames { url in
+            var data = try arcFixture("local-state")
+            data.append(Data(repeating: UInt8(ascii: " "), count: ArcImporter.maximumLocalStateSize - data.count))
+            #expect(data.count == ArcImporter.maximumLocalStateSize)
+            try data.write(to: url)
+        }
+        #expect(names.contains("Client Work"))
+    }
+
+    @Test func danglingSymlinkLocalStateIsTreatedAsAbsent() throws {
+        let names = try profileNames { url in
+            let missing = url.deletingLastPathComponent().appendingPathComponent("gone.json")
+            try FileManager.default.createSymbolicLink(at: url, withDestinationURL: missing)
         }
         #expect(!names.contains("Client Work"))
         #expect(names.contains("Profile 1"))

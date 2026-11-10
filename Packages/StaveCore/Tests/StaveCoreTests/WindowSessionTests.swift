@@ -35,6 +35,54 @@ struct WindowFrameClampTests {
         let result = WindowFrameClamp.clamp(frame, visibleFrames: [screen])
         #expect(result == CGRect(x: 320, y: 150, width: 800, height: 600))
     }
+
+    @Test func frameFlushWithAnEdgeIsNotMoved() {
+        let right = CGRect(x: 640, y: 100, width: 800, height: 800) // maxX 1440 and maxY 900 touch the screen's edges
+        let left = CGRect(x: 0, y: 0, width: 800, height: 600)
+        #expect(WindowFrameClamp.clamp(right, visibleFrames: [screen]) == right)
+        #expect(WindowFrameClamp.clamp(left, visibleFrames: [screen]) == left)
+    }
+
+    @Test func frameOnlyTouchingAnEdgeOverlapsNothingAndIsCentred() {
+        let frame = CGRect(x: 1440, y: 100, width: 800, height: 600) // starts exactly where the screen ends
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen]) == CGRect(x: 320, y: 150, width: 800, height: 600))
+    }
+
+    @Test func zeroSizeFrameOverlapsNothingAndIsCentredWithZeroSize() {
+        let frame = CGRect(x: 100, y: 100, width: 0, height: 0)
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen]) == CGRect(x: 720, y: 450, width: 0, height: 0))
+    }
+
+    @Test func frameStraddlingTwoScreensGoesToTheOneItOverlapsMore() {
+        let second = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let frame = CGRect(x: 1300, y: 100, width: 800, height: 600) // 140 wide on the first, 660 on the second
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen, second]) == CGRect(x: 1440, y: 100, width: 800, height: 600))
+    }
+
+    @Test func equalOverlapPicksTheFirstScreen() {
+        let second = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let frame = CGRect(x: 1040, y: 100, width: 800, height: 600) // 400 wide on each
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen, second]) == CGRect(x: 640, y: 100, width: 800, height: 600))
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [second, screen]) == CGRect(x: 1440, y: 100, width: 800, height: 600))
+    }
+
+    @Test func screenLeftOfThePrimaryHasNegativeCoordinates() {
+        let left = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
+        let frame = CGRect(x: -2100, y: 50, width: 800, height: 600)
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen, left]) == CGRect(x: -1920, y: 50, width: 800, height: 600))
+    }
+
+    @Test func frameOnNoScreenAmongSeveralIsCentredOnTheFirst() {
+        let second = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let frame = CGRect(x: 9000, y: 9000, width: 800, height: 600)
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen, second]) == CGRect(x: 320, y: 150, width: 800, height: 600))
+    }
+
+    @Test func frameShrinksToTheSmallerScreenItLandsOn() {
+        let small = CGRect(x: 1440, y: 0, width: 1000, height: 700)
+        let frame = CGRect(x: 1500, y: 0, width: 1200, height: 900)
+        #expect(WindowFrameClamp.clamp(frame, visibleFrames: [screen, small]) == small)
+    }
 }
 
 @MainActor
