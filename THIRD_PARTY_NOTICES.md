@@ -4,7 +4,7 @@ Stave is MIT licensed. It depends on the components below, and the app bundle sh
 
 ## ChorusEngine
 
-- Project: [Chorus](https://github.com/nicojan/Chorus), the `ChorusEngine` package, pinned to tag `1.5.32`
+- Project: [Chorus](https://github.com/nicojan/Chorus), the `ChorusEngine` package, pinned to tag `1.5.36`
 - Author: Nico Jan
 - License: MIT
 

@@ -11,7 +11,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
         // Chorus's extracted web engine, pinned to a release tag.
-        .package(url: "https://github.com/nicojan/Chorus.git", exact: "1.5.32"),
+        .package(url: "https://github.com/nicojan/Chorus.git", exact: "1.5.36"),
     ],
     targets: [
         .target(

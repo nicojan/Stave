@@ -1,13 +1,13 @@
 {
-  "originHash" : "57e925ee476c0a1c6b6a2ed08a20b5c342bdff9381efd59f94e2065ee8b3626f",
+  "originHash" : "933a1cf508453a8d47ce665ace30039c2028693086e0f36982f9890acb9167a2",
   "pins" : [
     {
       "identity" : "chorus",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/nicojan/Chorus.git",
       "state" : {
-        "revision" : "c50c8093132d0d7780d91ca83e198313bbf01fe2",
-        "version" : "1.5.32"
+        "revision" : "0f740263496b114c0c30298211e3822c700c8bd0",
+        "version" : "1.5.36"
       }
     },
     {

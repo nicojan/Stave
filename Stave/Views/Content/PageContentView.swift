@@ -59,6 +59,9 @@ struct PageContentView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // No `parking:`. The engine's WebViewParking comes only from its own
+            // WebViewPool, which Stave doesn't use, so a page that leaves this
+            // container leaves the window and WebKit may suspend it.
             WebViewContainer(webView: page.webView)
             if page.status.isLoading {
                 progressBar
