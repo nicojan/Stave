@@ -13,7 +13,7 @@ In development, no release yet. The design is in `docs/superpowers/specs/2026-10
 
 ## Building
 
-Requires macOS 14 or later, Xcode 16.2 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires macOS 15 or later, Xcode 26 or later, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 swift test --package-path Packages/StaveCore   # model, storage and import tests

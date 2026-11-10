@@ -39,11 +39,11 @@ Browser extensions, cross-device sync, split view, Glance, Boosts (per-site CSS/
 ## Constraints
 
 - **Open source under the MIT licence** (Nico's decision), like Chorus. Public repo, public CI, the same release setup as Chorus. Test fixtures never contain anyone's real browsing data. No code is copied from Zen (MPL-2.0) or Ora (GPL-2.0); they are reference for behaviour only. Code from MIT-licensed projects (such as arc-export) may be adapted with attribution in `THIRD_PARTY_NOTICES.md`.
-- **macOS 14 or later** (my call: matches Chorus and the engine; `WKWebsiteDataStore(forIdentifier:)` needs 14).
+- **macOS 15 or later.** It was macOS 14 until 2026-11-09 (my call then: it matched Chorus and the engine, and `WKWebsiteDataStore(forIdentifier:)` needs 14). ChorusEngine 1.5.36 requires macOS 15, so Stave moved with it.
 - **Bundle ID `com.nicojan.Stave`.** This identity is what Apple's Passwords allow-list and the passkey entitlement attach to, so it must never change. Debug builds use `com.nicojan.Stave.debug` and their own data folder, as Chorus does, so a development copy can never touch real data.
 - **Engine:** depends on the `ChorusEngine` product of the Chorus repo by git tag, pinned `exact:`. Stave never edits engine code in its own repo; engine changes go to Chorus and come back through a tag.
 - **Distribution** like Chorus: Developer ID signed, notarized, Sparkle auto-updates, Homebrew cask in `nicojan/tap`. Not sandboxed, not on the Mac App Store (my call: the App Store adds review risk and sandbox limits). This decision is revisited if the passkey entitlement turns out to be available only to App Store apps (see Open checks).
-- **Swift 6, AppKit + SwiftUI**, matching Chorus's conventions, including CI on macOS 14 and 15 with Xcode 16.2's limits.
+- **Swift 6, AppKit + SwiftUI**, matching Chorus's conventions, including CI on macOS 15 and 26 with the newest stable Xcode (26 or later).
 - **Privacy:** nothing leaves the Mac except page traffic, Sparkle's update check and the content blocker's list updates (if any). The update check carries no identifier. Whether it is counted (as Chorus's appcast Worker counts daily checks) is stated plainly in the README (my call: count, anonymously, like Chorus, and say so).
 
 ## The organization model (decided with Nico)

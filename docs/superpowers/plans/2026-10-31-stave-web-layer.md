@@ -681,8 +681,11 @@ Also on this branch, from reading Zen 1.24b's behaviour (2026-11-04 evening; not
 
 - [ ] Close a window whose live page is shown in another window: the page keeps its back/forward history (Zen admits losing it here).
 
+Engine move (2026-11-09, one commit and one green CI run per step): `6fad402` raises the minimum to macOS 15 (package platform, `project.yml`, generated project); `07907df` moves CI to macos-15 and macos-26 with the newest stable Xcode (26.3 and 26.6 on the runners), since GitHub retired macos-14 on 2026-11-02; `e0ae533` drops the GRDB cap (`from: "7.0.0"`, resolves 7.12.0); `22d90cc` pins ChorusEngine `exact: "1.5.36"`. Stave needed no code change: it never called the removed memory watch (`memoryReadings(now:)`, `MemoryReading`, `wouldRebuild`), it doesn't use `UserScriptManager`, so the 1.5.33 storage events don't reach it, and it passes no `parking` (see Carried). Package tests 751 (114 + 637), Debug and Release builds green locally on Xcode 27.2. The constraints above that say macOS 14, Swift 6.0.3 or Xcode 16.2 describe the plan as it was built; they no longer apply.
+
 ## Carried into later plans
 
+- **Engine parking (from the 1.5.36 move):** WebKit suspends a page that is out of a window within seconds, and a page caught mid-write can lose IndexedDB data (Chorus measured this). ChorusEngine 1.5.35 added `WebViewParking` to keep chosen pages running off screen, but an instance comes only from the engine's `WebViewPool`, and which pages it keeps is internal. Stave has its own pool, so its background tabs are suspended as before. Using parking needs a public way to make one and choose the pages, which is a Chorus change and a new tag.
 - **From reading Zen (2026-11-04):** compact mode in Zen hides only the sidebar by default (toolbar stays); Stave hides both, so Nico decides whether to keep that. A rolling timed copy of the database (Zen keeps up to 20 timed session backups) guards against Stave's own bug writing bad data; candidate for plan 5, not built.
 - **From Nico's answers (2026-11-04):**
   - A per-site camera and microphone panel reached from the address button (Chrome's site settings, Safari's "Settings for This Website"); once it exists, Remember may keep Don't Allow again.

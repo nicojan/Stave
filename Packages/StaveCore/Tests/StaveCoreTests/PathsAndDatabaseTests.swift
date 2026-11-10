@@ -42,7 +42,7 @@ struct PathsAndDatabaseTests {
             ("unknown section", nil, "'bogus', 'tab'"),
             ("unknown kind", nil, "'regular', 'bogus'"),
         ]
-        // do/catch rather than `let error = #expect(throws:)`, which needs Swift 6.1; CI's macOS 14 runner has Swift 6.0.
+        // do/catch rather than `let error = #expect(throws:)`: written when CI still had Swift 6.0, which lacks that form.
         for (label, slot, rawSectionKind) in invalid {
             do {
                 try database.writer.write { db in
