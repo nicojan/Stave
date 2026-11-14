@@ -224,11 +224,16 @@ public final class BrowserWindowModel: CommandBarWindow {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
         }
-        let current = workspaces.firstIndex { $0.id == snapshot.workspace.id } ?? target
-        lastSwitchDirection = target > current ? 1 : (target < current ? -1 : 0)
-        workspaceID = id
+        aim(at: target)
         dropSelectionUnlessEssential()
         reload()
+    }
+
+    /// Points the window at `workspaces[index]` for the next `reload()`, and sets the slide direction. The selection is the caller's.
+    private func aim(at index: Int) {
+        let current = workspaces.firstIndex { $0.id == snapshot.workspace.id } ?? index
+        lastSwitchDirection = index > current ? 1 : (index < current ? -1 : 0)
+        workspaceID = workspaces[index].id
     }
 
     /// 1-based. A number with no workspace does nothing. `number >= 1` is checked first so `Int.min` can't overflow.
@@ -271,8 +276,9 @@ public final class BrowserWindowModel: CommandBarWindow {
         perform { try store.updateWorkspace(id, name: name, icon: icon, colorHex: colorHex) }
     }
 
-    /// Deleting the current workspace first moves to its neighbour (next, else previous). The tabs it archives are read first, so each
-    /// one's page hears `tabGone`; when that read fails, the failure shows and nothing is deleted or switched.
+    /// Deleting the current workspace moves the window to its neighbour (next, else previous), only once the delete has succeeded: a
+    /// refused delete leaves the window, and its selection, where they were. The tabs it archives are read first, so each one's page hears
+    /// `tabGone`; when that read fails, the failure shows and nothing is deleted or switched.
     public func deleteWorkspace(_ id: UUID) {
         let archivedIDs: [UUID]
         do {
@@ -284,12 +290,24 @@ public final class BrowserWindowModel: CommandBarWindow {
             lastError = message
             return
         }
-        if id == snapshot.workspace.id, let index = workspaces.firstIndex(where: { $0.id == id }) {
-            let neighbour = workspaces.indices.contains(index + 1) ? workspaces[index + 1] : (index > 0 ? workspaces[index - 1] : nil)
-            if let neighbour { switchWorkspace(to: neighbour.id) }
+        let neighbour = id == snapshot.workspace.id ? neighbourIndex(ofWorkspace: id) : nil
+        let deleted: Void? = perform {
+            try store.deleteWorkspace(id)
+            // Inside the write's success path, so `perform`'s re-read lands on the neighbour.
+            if let neighbour {
+                aim(at: neighbour)
+                dropSelectionUnlessEssential()
+            }
         }
-        guard perform({ try store.deleteWorkspace(id) }) != nil else { return }
+        guard deleted != nil else { return }
         for id in archivedIDs { tabGone(id) }
+    }
+
+    /// The index of the workspace after `id`, else the one before; nil when `id` is alone or unknown.
+    private func neighbourIndex(ofWorkspace id: UUID) -> Int? {
+        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return nil }
+        if workspaces.indices.contains(index + 1) { return index + 1 }
+        return index > 0 ? index - 1 : nil
     }
 
     public func moveWorkspace(_ id: UUID, after previousID: UUID?) {
@@ -421,13 +439,19 @@ public final class BrowserWindowModel: CommandBarWindow {
 
     // MARK: - Moving
 
-    /// Writes a planned move. The tab or folder keeps its identity, so selection and highlight survive; one that leaves this workspace
-    /// is gone from the snapshot after the re-read, and `reload()` clears the selection as for any vanished tab.
+    /// Writes a planned move. The tab or folder keeps its identity, so selection and highlight survive. The selected tab moved to another
+    /// workspace takes the window with it (decision 30): the window switches there and the tab stays selected, its page untouched. Any other
+    /// tab that leaves this workspace simply goes, and the window stays.
     public func apply(_ move: SidebarMove) {
         perform {
             switch move {
             case .tab(let id, let workspaceID, let section, let folderID, let after):
                 try store.moveTab(id, toWorkspace: workspaceID, section: section, folderID: folderID, after: after)
+                // Inside the write's success path, so `perform`'s re-read lands on the target with the tab still selected.
+                if id == selectedTabID, let workspaceID, workspaceID != snapshot.workspace.id,
+                   let target = workspaces.firstIndex(where: { $0.id == workspaceID }) {
+                    aim(at: target)
+                }
             case .folder(let id, let parentID, let after):
                 try store.moveFolder(id, toParent: parentID, after: after)
             }
@@ -447,6 +471,18 @@ public final class BrowserWindowModel: CommandBarWindow {
         guard let move = plannedMove(dragging: item, onto: target) else { return false }
         apply(move)
         return true
+    }
+
+    /// Tab ▸ Move to Workspace and the row's Move to Workspace submenu: exactly the drop on that workspace's icon, so it refuses what the
+    /// drop refuses (and returns false, writing nothing).
+    @discardableResult
+    public func run(_ target: TabMoveTarget, on item: SidebarItemID) -> Bool {
+        drop(item, onto: .workspace(target.workspaceID))
+    }
+
+    /// The Move to Workspace targets the menus offer for `item` in this window: none where the drop would refuse.
+    public func moveTargets(for item: SidebarItemID?) -> [TabMoveTarget] {
+        SidebarMenus.moveTargets(highlight: item, snapshot: snapshot, workspaces: workspaces)
     }
 
     /// One step up (-1) or down (+1) in the item's own list; nothing at either end.

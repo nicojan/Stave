@@ -194,6 +194,12 @@ public final class PageHost {
         now()
     }
 
+    /// The tabs whose live pages belong to browser windows (a profile or container store), not to a private session. When the last browser
+    /// window closes and Stave stays open, the app unloads these, so no page plays audio or holds a camera with no window to reach it.
+    public var persistentTabIDs: [UUID] {
+        pages.values.filter { if case .persistent = $0.store { true } else { false } }.map(\.tabID)
+    }
+
     public func flushAll() {
         for page in pages.values { page.flush() }
     }

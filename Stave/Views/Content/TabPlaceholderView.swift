@@ -27,7 +27,7 @@ struct TabPlaceholderView: View {
             .accessibilityElement(children: .combine)
         case .empty:
             VStack(spacing: 12) {
-                Text("No tab selected").font(.title2).foregroundStyle(.secondary)
+                Text(PageChromeText.noSelection).font(.title2).foregroundStyle(.secondary)
                 Button(PageText.newTabTitle, action: newTab)
                     .accessibilityLabel(PageText.newTabTitle)
             }

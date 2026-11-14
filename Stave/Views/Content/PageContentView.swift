@@ -81,8 +81,8 @@ struct PageContentView: View {
         }
         .frame(height: Self.barHeight)
         .accessibilityElement()
-        .accessibilityLabel("Loading")
-        .accessibilityValue("\(Int(page.status.progress * 100)) percent")
+        .accessibilityLabel(PageChromeText.loadingLabel)
+        .accessibilityValue(PageChromeText.progressValue(page.status.progress))
     }
 }
 

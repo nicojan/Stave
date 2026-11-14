@@ -377,6 +377,26 @@ struct PageHostTests {
         host.close(page.tabID)
     }
 
+    /// When the last browser window closes, Stave stays open (decision 31) and unloads every browser-window page, so a background tab's
+    /// audio, camera or microphone stops as it does in Safari, Chrome and Firefox. Private pages are left to their own windows.
+    @Test func persistentTabIDsNameOnlyBrowserWindowPages() async {
+        let profile = UUID()
+        let host = makeHost()
+        let normal = host.page(for: PageRequest(tabID: UUID(), store: .persistent(profile), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        let privatePage = host.page(for: request(url: ""), writer: writer)
+        #expect(host.persistentTabIDs == [normal.tabID])
+        normal.record(.stateChanged)
+        normal.record(.stateChanged)
+        writer.calls.removeAll()
+        for id in host.persistentTabIDs { host.unload(id) }
+        #expect(writer.stateWrites == 1)
+        #expect(host.existingPage(normal.tabID) == nil)
+        #expect(host.existingPage(privatePage.tabID) === privatePage)
+        #expect(host.persistentTabIDs.isEmpty)
+        host.close(privatePage.tabID)
+        await removePersistentStores([profile])
+    }
+
     // MARK: Snapshot memory
 
     /// Snapshots are kept for at most `snapshotLimit` tabs, the least recently taken dropped first.

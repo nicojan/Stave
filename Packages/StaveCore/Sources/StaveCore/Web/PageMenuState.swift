@@ -26,6 +26,13 @@ public struct PageMenuState: Equatable, Sendable {
 
     public static let disabled = PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil)
 
+    /// Whether View ▸ Content Blocking on This Site applies to a page at `url`: only a web page with a host (http or https). A blank tab,
+    /// `about:blank`, a file, `data:` and other schemes have no site to remember the choice for.
+    public static func contentBlockingEnabled(url: String) -> Bool { URLScheme.hasWebAuthority(url) }
+
+    /// The blocking toggle's state for a page at `url` whose blocking is `isOn`: nil (disabled) where blocking does not apply.
+    public static func blockingState(url: String, isOn: Bool) -> Bool? { contentBlockingEnabled(url: url) ? isOn : nil }
+
     /// No page, or a sheet over the window, disables everything.
     public static func from(status: PageStatusSummary?, sheetOpen: Bool) -> PageMenuState {
         guard let status, status.hasPage, !sheetOpen else { return .disabled }

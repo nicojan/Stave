@@ -156,6 +156,8 @@ struct PageLifecycleTests {
         #expect(empty == none)
     }
 
+    /// Moved away by something else (another window's drop): this window's selection vanishes and the page hears only a deselect. A move
+    /// this window makes of its own selected tab follows the tab instead (decision 30, `BrowserWindowModelTests.selectedTabMovedToWorkspaceIsFollowed`).
     @Test func movingSelectedTabAwayReportsDeselectedOnly() throws {
         let world = try makeWorld()
         let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
@@ -163,7 +165,8 @@ struct PageLifecycleTests {
         let window = try world.window(selected: tab.id)
         let pages = FakePages()
         window.pages = pages
-        window.apply(.tab(tab.id, workspaceID: other.id, section: .regular, folderID: nil, after: nil))
+        try world.store.moveTab(tab.id, toWorkspace: other.id, section: .regular, folderID: nil, after: nil)
+        window.reload()
         #expect(window.selectedTabID == nil)
         #expect(pages.closed.isEmpty)
         #expect(pages.unloaded.isEmpty)

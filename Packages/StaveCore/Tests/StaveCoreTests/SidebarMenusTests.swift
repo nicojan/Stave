@@ -32,6 +32,40 @@ struct SidebarMenusTests {
         #expect(SidebarMenus.pinnedHeaderActions == [.newFolder])
     }
 
+    @Test func moveTargetsListTheOtherWorkspaces() {
+        let profile = Profile(name: "P", sortIndex: 0)
+        let first = Workspace(profileID: profile.id, name: "Home", icon: "house", colorHex: "#FFFFFF", sortIndex: 0)
+        let second = Workspace(profileID: profile.id, name: "Work", icon: "briefcase", colorHex: "#FFFFFF", sortIndex: 1)
+        let third = Workspace(profileID: profile.id, name: "Play", icon: "gamecontroller", colorHex: "#FFFFFF", sortIndex: 2)
+        let tab = SidebarItemID.tab(UUID())
+        let targets = SidebarMenus.moveTargets(for: tab, currentWorkspaceID: second.id, workspaces: [first, second, third])
+        #expect(targets == [
+            TabMoveTarget(workspaceID: first.id, title: "Move to Home"),
+            TabMoveTarget(workspaceID: third.id, title: "Move to Play"),
+        ])
+        #expect(!targets.contains { $0.workspaceID == second.id })
+        #expect(SidebarMenus.moveTargets(for: .folder(UUID()), currentWorkspaceID: second.id, workspaces: [first, second, third]).isEmpty)
+        #expect(SidebarMenus.moveTargets(for: tab, currentWorkspaceID: first.id, workspaces: [first]).isEmpty)
+    }
+
+    /// The menus never list a move the drop would refuse: an Essential (profile-wide), a highlight whose tab is not in this workspace, or nothing.
+    @Test func moveTargetsHiddenWhereTheDropRefuses() {
+        let profile = Profile(name: "P", sortIndex: 0)
+        let home = Workspace(profileID: profile.id, name: "Home", icon: "house", colorHex: "#FFFFFF", sortIndex: 0)
+        let work = Workspace(profileID: profile.id, name: "Work", icon: "briefcase", colorHex: "#FFFFFF", sortIndex: 1)
+        let essential = Tab(slotID: UUID(), pinnedURL: "https://example.com/", url: "https://example.com/", title: "E")
+        let pinned = Tab(slotID: UUID(), pinnedURL: "https://example.org/", url: "https://example.org/", title: "P")
+        let regular = Tab(slotID: UUID(), url: "https://example.net/", title: "R")
+        let snapshot = SidebarSnapshot(profile: profile, workspace: home, essentials: [essential], pinned: [.tab(pinned)], regular: [regular])
+        let workspaces = [home, work]
+        let toWork = [TabMoveTarget(workspaceID: work.id, title: "Move to Work")]
+        #expect(SidebarMenus.moveTargets(highlight: .tab(regular.id), snapshot: snapshot, workspaces: workspaces) == toWork)
+        #expect(SidebarMenus.moveTargets(highlight: .tab(pinned.id), snapshot: snapshot, workspaces: workspaces) == toWork)
+        #expect(SidebarMenus.moveTargets(highlight: .tab(essential.id), snapshot: snapshot, workspaces: workspaces).isEmpty)
+        #expect(SidebarMenus.moveTargets(highlight: .tab(UUID()), snapshot: snapshot, workspaces: workspaces).isEmpty)
+        #expect(SidebarMenus.moveTargets(highlight: nil, snapshot: snapshot, workspaces: workspaces).isEmpty)
+    }
+
     @Test func everyActionHasATitleAndSymbol() {
         for action in SidebarAction.allCases {
             #expect(!action.title.isEmpty)

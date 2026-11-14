@@ -64,6 +64,19 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
     }
 }
 
+/// Move to Workspace for one tab: a command apart from `SidebarAction`, whose cases carry no payload and whose titles can't name a workspace.
+/// The menu shows `title`; its symbol is the target workspace's `icon`.
+public struct TabMoveTarget: Hashable, Sendable {
+    public let workspaceID: UUID
+    /// "Move to ‹workspace name›".
+    public let title: String
+
+    public init(workspaceID: UUID, title: String) {
+        self.workspaceID = workspaceID
+        self.title = title
+    }
+}
+
 public enum SidebarMenus {
     /// The actions for a pinned-tree or regular row, in menu order.
     public static func actions(for row: SidebarRow) -> [SidebarAction] {
@@ -123,6 +136,35 @@ public enum SidebarMenus {
         guard let highlight else { return false }
         return SidebarDropPlanner.keyboardMove(highlight, by: delta, snapshot: snapshot) != nil
     }
+
+    /// Move to Workspace for `item`: one target per other workspace of the current one's profile, in `workspaces` (switcher) order. A folder
+    /// gets none, and so does a profile with one workspace.
+    public static func moveTargets(for item: SidebarItemID, currentWorkspaceID: UUID, workspaces: [Workspace]) -> [TabMoveTarget] {
+        guard case .tab = item, let current = workspaces.first(where: { $0.id == currentWorkspaceID }) else { return [] }
+        return workspaces
+            .filter { $0.id != currentWorkspaceID && $0.profileID == current.profileID }
+            .map { TabMoveTarget(workspaceID: $0.id, title: moveTargetTitle($0.name)) }
+    }
+
+    /// The targets the menus offer for the highlighted (or right-clicked) item: only those the workspace drop accepts, so an Essential, a
+    /// stale highlight or nothing gets none.
+    public static func moveTargets(highlight: SidebarItemID?, snapshot: SidebarSnapshot, workspaces: [Workspace]) -> [TabMoveTarget] {
+        guard let item = highlight else { return [] }
+        return moveTargets(for: item, currentWorkspaceID: snapshot.workspace.id, workspaces: workspaces).filter {
+            SidebarDropPlanner.move(dragging: item, onto: .workspace($0.workspaceID), snapshot: snapshot) != nil
+        }
+    }
+
+    /// The SF Symbol a Move to Workspace item shows: its workspace's symbol icon (the fallback symbol for none), or nil for an emoji icon,
+    /// which a menu image can't show, or a workspace that is gone.
+    public static func moveTargetSymbol(_ target: TabMoveTarget, workspaces: [Workspace]) -> String? {
+        guard let workspace = workspaces.first(where: { $0.id == target.workspaceID }) else { return nil }
+        if case .symbol(let name) = WorkspaceIcon(stored: workspace.icon) { return name }
+        return nil
+    }
+
+    /// "Move to ‹name›".
+    public static func moveTargetTitle(_ workspaceName: String) -> String { "Move to \(workspaceName)" }
 
     /// The actions for the "Pinned" header.
     public static let pinnedHeaderActions: [SidebarAction] = [.newFolder]

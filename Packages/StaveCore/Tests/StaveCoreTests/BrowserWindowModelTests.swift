@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import StaveCore
 
@@ -6,6 +7,7 @@ import Testing
 struct BrowserWindowModelTests {
     @MainActor private struct World {
         let store: OrganizationStore
+        let database: StaveDatabase
         let revision = StoreRevision()
         let livePages = LivePageRegistry()
         let clock: TestClock
@@ -30,10 +32,10 @@ struct BrowserWindowModelTests {
 
     private func makeWorld() throws -> World {
         let clock = TestClock()
-        let (store, _, _) = try makeTempStore(now: clock.now)
+        let (store, database, _) = try makeTempStore(now: clock.now)
         let profile = try store.ensureDefaultProfile()
         let home = try #require(try store.workspaces(profileID: profile.id).first)
-        return World(store: store, clock: clock, profile: profile, home: home)
+        return World(store: store, database: database, clock: clock, profile: profile, home: home)
     }
 
     // MARK: - Start and state
@@ -187,6 +189,58 @@ struct BrowserWindowModelTests {
     }
 
     // MARK: - Tabs
+
+    /// A delete the store refuses leaves the window where it was, with its selection, and says why.
+    @Test func failedDeleteKeepsTheWorkspace() throws {
+        let world = try makeWorld()
+        let second = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a", in: second)
+        let model = try world.window(workspace: second, selected: tab.id)
+        try world.database.writer.write { db in
+            try db.execute(sql: "CREATE TRIGGER refuseWorkspaceDelete BEFORE DELETE ON workspace BEGIN SELECT RAISE(ABORT, 'refused by the test'); END")
+        }
+        model.deleteWorkspace(second.id)
+        #expect(model.snapshot.workspace.id == second.id)
+        #expect(model.selectedTabID == tab.id)
+        #expect(model.lastError == StoreErrorText.fallback)
+        #expect(model.workspaces.map(\.id) == [world.home.id, second.id])
+    }
+
+    /// Decision 30: the selected tab sent to another workspace (dropped on its icon, or Move to Workspace) takes the window with it, keeps its
+    /// selection and its page; a non-selected tab sent away leaves the window where it is.
+    @Test func selectedTabMovedToWorkspaceIsFollowed() throws {
+        let world = try makeWorld()
+        let work = try world.store.createWorkspace(profileID: world.profile.id, name: "Work", icon: "briefcase", colorHex: "#FFFFFF")
+        let moving = try world.tab("moving")
+        let staying = try world.tab("staying")
+        let model = try world.window(selected: moving.id)
+        let pages = SpyPages()
+        model.pages = pages
+
+        #expect(model.drop(.tab(moving.id), onto: .workspace(work.id)))
+        #expect(model.snapshot.workspace.id == work.id)
+        #expect(model.selectedTabID == moving.id)
+        #expect(model.lastSwitchDirection == 1)
+        #expect(world.livePages.owner(of: moving.id) == model.windowID)
+        #expect(pages.calls.isEmpty)
+
+        let target = try #require(SidebarMenus.moveTargets(
+            for: .tab(moving.id), currentWorkspaceID: model.snapshot.workspace.id, workspaces: model.workspaces
+        ).first)
+        #expect(target.workspaceID == world.home.id)
+        #expect(model.run(target, on: .tab(moving.id)))
+        #expect(model.snapshot.workspace.id == world.home.id)
+        #expect(model.selectedTabID == moving.id)
+        #expect(world.livePages.owner(of: moving.id) == model.windowID)
+        #expect(pages.calls.isEmpty)
+
+        // Control: a tab that is not selected goes alone.
+        #expect(model.drop(.tab(staying.id), onto: .workspace(work.id)))
+        #expect(model.snapshot.workspace.id == world.home.id)
+        #expect(model.selectedTabID == moving.id)
+        #expect(try world.store.sidebarSnapshot(workspaceID: work.id).regular.map(\.id) == [staying.id])
+        #expect(pages.calls.isEmpty)
+    }
 
     @Test func openTabHonoursEdgeSetting() throws {
         let world = try makeWorld()
@@ -574,4 +628,14 @@ struct BrowserWindowModelTests {
         #expect(StoreErrorText.message(for: StoreError.containerInUse) == "Something went wrong saving that change.")
         #expect(StoreErrorText.message(for: CocoaError(.fileNoSuchFile)) == "Something went wrong saving that change.")
     }
+}
+
+/// Records every page-lifecycle call, so a test can show a moved tab's page was never deselected, unloaded, reloaded or closed.
+@MainActor
+private final class SpyPages: PageLifecycle {
+    private(set) var calls: [String] = []
+    func tabClosed(_ id: UUID) { calls = calls + ["closed \(id)"] }
+    func tabUnloaded(_ id: UUID) { calls = calls + ["unloaded \(id)"] }
+    func tabDeselected(_ id: UUID) { calls = calls + ["deselected \(id)"] }
+    func tabNavigated(_ id: UUID) { calls = calls + ["navigated \(id)"] }
 }

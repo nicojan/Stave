@@ -34,7 +34,7 @@ struct SettingsView: View {
                 .accessibilityLabel(SearchEngineSetting.title)
             }
             if shortcuts == nil && compactMode == nil && searchEngine == nil {
-                Text("Stave's data is not open.").foregroundStyle(.secondary)
+                Text(PageChromeText.dataNotOpen).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

@@ -144,6 +144,24 @@ struct WindowSessionTests {
         #expect(try store.restoredWindows().map(\.id) == [a.id])
     }
 
+    /// Stave stays open with no windows (decision 31): the last window closed is kept, so a quit then restores it; once a new window opens
+    /// (the app calls `discardStates(exceptLive:)` from `open`), the kept one leaves and only the new window is saved.
+    @Test func keptLastWindowSurvivesStayingOpen() throws {
+        let (store, profile, ws) = try fixture()
+        let session = WindowSession(store: store)
+        session.enableSaving()
+        let a = state(profile, ws)
+        session.update(a)
+        session.windowClosed(a.id, isLast: true)
+        try session.saveNow()
+        #expect(try store.restoredWindows().map(\.id) == [a.id])
+        session.discardStates(exceptLive: [])
+        let b = state(profile, ws)
+        session.update(b)
+        try session.saveNow()
+        #expect(try store.restoredWindows().map(\.id) == [b.id])
+    }
+
     @Test func launchMaintenanceTrims() throws {
         let clock = TestClock()
         let (store, profile, ws) = try fixture(clock: clock)

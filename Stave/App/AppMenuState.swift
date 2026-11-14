@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 import StaveCore
 
@@ -18,6 +19,9 @@ final class AppMenuState {
     var workspaceActions: [WorkspaceMenuItem] = []
     /// Tab ▸ the actions for the highlighted sidebar row or Essential, then New Folder (`SidebarMenus.menuActions`).
     var tabActions: [SidebarAction] = []
+    /// Tab ▸ Move to Workspace for the highlighted tab (`SidebarMenus.moveTargets`), and each target's symbol where its icon is one.
+    var moveTargets: [TabMoveTarget] = []
+    var moveSymbols: [UUID: String] = [:]
     /// Whether ⌥⌘↑ and ⌥⌘↓ have somewhere to move the highlighted item.
     var canMoveUp = false
     var canMoveDown = false

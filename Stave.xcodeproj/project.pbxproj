@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		019C68D69E15CA6023935959 /* SidebarRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD86DD835E09A6113A128904 /* SidebarRowView.swift */; };
 		07822072500F13D3409A9E41 /* BrowserWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */; };
+		081DCB873719179C85209EA5 /* AppDelegate+Menus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0D6DB917EEE0EB7FA619D6 /* AppDelegate+Menus.swift */; };
 		0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8BC787394FE59027F03DE4 /* PageFailureView.swift */; };
 		0A72401CB50855852A482D81 /* PageContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0514FA8A157CC9EE49809FB /* PageContentView.swift */; };
 		0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */; };
@@ -37,11 +38,13 @@
 		984B8D0F42BC2319E1F111F5 /* WorkspaceSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */; };
 		99CB40616081101643172E0F /* CompactContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */; };
 		A0F26111A32BA92309611D15 /* MediaQuestionCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */; };
+		A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */; };
 		A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */; };
 		ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */; };
 		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
 		B207D8F4B94BD9461B0FAC74 /* PageEventsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */; };
 		BA73175DC44727176C4A6AAA /* WorkspaceEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */; };
+		BA7DF77FC8649611C87D872A /* AppDelegate+Private.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECA69864B612986E62E0EF5 /* AppDelegate+Private.swift */; };
 		BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF9003316572911593E1DFEE /* ArchivePopover.swift */; };
 		BF70579095B7404A5E926D85 /* NamePromptSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC23353CB79C824619134179 /* NamePromptSheet.swift */; };
 		C1ADFBA6FC7E8101D32464F9 /* AppMenuState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 995508A5262708F8EE5364E3 /* AppMenuState.swift */; };
@@ -57,6 +60,7 @@
 		0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageEventsRouter.swift; sourceTree = "<group>"; };
 		18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarRowDrop.swift; sourceTree = "<group>"; };
 		1942EB2B034830D345E030ED /* BrowserWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowController.swift; sourceTree = "<group>"; };
+		1A0D6DB917EEE0EB7FA619D6 /* AppDelegate+Menus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Menus.swift"; sourceTree = "<group>"; };
 		1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactContainer.swift; sourceTree = "<group>"; };
 		21580A0E3C81A87C49AE021C /* ArcImportSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcImportSession.swift; sourceTree = "<group>"; };
 		35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceEditor.swift; sourceTree = "<group>"; };
@@ -83,11 +87,13 @@
 		C7C0F9B1806E7F1C7A10F109 /* PrivateWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateWindowView.swift; sourceTree = "<group>"; };
 		C81BBB8D6BF636D5428804CE /* FirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunView.swift; sourceTree = "<group>"; };
 		CC23353CB79C824619134179 /* NamePromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamePromptSheet.swift; sourceTree = "<group>"; };
+		D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Launch.swift"; sourceTree = "<group>"; };
 		D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactDriver.swift; sourceTree = "<group>"; };
 		DB1ED1C2442C79A2AE0927F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarActions.swift; sourceTree = "<group>"; };
 		DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentialsGrid.swift; sourceTree = "<group>"; };
 		DD86DD835E09A6113A128904 /* SidebarRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarRowView.swift; sourceTree = "<group>"; };
+		DECA69864B612986E62E0EF5 /* AppDelegate+Private.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Private.swift"; sourceTree = "<group>"; };
 		DF4BAC5AFA0C792A5B1E4A20 /* StaveCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StaveCore; path = Packages/StaveCore; sourceTree = SOURCE_ROOT; };
 		E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunchOptions.swift; sourceTree = "<group>"; };
 		E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -152,6 +158,9 @@
 			isa = PBXGroup;
 			children = (
 				E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */,
+				D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */,
+				1A0D6DB917EEE0EB7FA619D6 /* AppDelegate+Menus.swift */,
+				DECA69864B612986E62E0EF5 /* AppDelegate+Private.swift */,
 				65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */,
 				995508A5262708F8EE5364E3 /* AppMenuState.swift */,
 				21580A0E3C81A87C49AE021C /* ArcImportSession.swift */,
@@ -322,6 +331,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				4980113BEC7EF77EB2BA1F9E /* AddressField.swift in Sources */,
+				A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */,
+				081DCB873719179C85209EA5 /* AppDelegate+Menus.swift in Sources */,
+				BA7DF77FC8649611C87D872A /* AppDelegate+Private.swift in Sources */,
 				0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */,
 				91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */,
 				C1ADFBA6FC7E8101D32464F9 /* AppMenuState.swift in Sources */,

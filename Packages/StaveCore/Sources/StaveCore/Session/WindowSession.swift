@@ -56,7 +56,8 @@ public final class WindowSession {
         }
     }
 
-    /// A window that is not the last leaves the saved set; the last one stays, so the next launch restores it.
+    /// A window that is not the last leaves the saved set. The last one stays: Stave keeps running with no windows (decision 31), and a quit
+    /// before another browser window opens restores it. When one does open, the app calls `discardStates(exceptLive:)`, which drops it.
     public func windowClosed(_ id: UUID, isLast: Bool) {
         guard !isLast else { return }
         states = states.filter { $0.id != id }

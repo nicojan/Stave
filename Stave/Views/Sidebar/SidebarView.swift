@@ -138,7 +138,7 @@ struct SidebarView: View {
 
     private func rowView(_ row: SidebarRow) -> some View {
         SidebarRowView(
-            row: row, actions: SidebarMenus.actions(for: row, in: model.snapshot),
+            row: row, actions: SidebarMenus.actions(for: row, in: model.snapshot), moves: moveMenu(for: row.id),
             setFolderOpen: { model.setFolderOpen($0, $1) }, perform: { request($0, on: $1) }
         )
         .tag(row.id)
@@ -231,6 +231,15 @@ struct SidebarView: View {
     }
 
     /// Runs the action, or asks for a name first when it needs one.
+    /// The row's Move to Workspace submenu: the same targets as Tab ▸ Move to Workspace, run through the workspace drop.
+    private func moveMenu(for item: SidebarItemID) -> MoveToWorkspaceMenu {
+        MoveToWorkspaceMenu(
+            targets: model.moveTargets(for: item),
+            symbol: { [workspaces = model.workspaces] in SidebarMenus.moveTargetSymbol($0, workspaces: workspaces) },
+            perform: { [model] in _ = model.run($0, on: item) }
+        )
+    }
+
     private func request(_ action: SidebarAction, on item: SidebarItemID?) {
         guard action.needsTitle else {
             if let item { model.run(action, on: item) }

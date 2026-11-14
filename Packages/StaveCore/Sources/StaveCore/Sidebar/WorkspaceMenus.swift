@@ -114,6 +114,10 @@ public enum WorkspaceMenus {
     // MARK: - Profiles
 
     public static let profileMenu = "Profile"
+    /// The profile menu button's tooltip: "Profile: ‹name›".
+    public static func profileMenuHelp(profileName: String) -> String { "\(profileMenu): \(profileName)" }
+    /// The profile menu button's VoiceOver label: "Profile, ‹name›".
+    public static func profileMenuLabel(profileName: String) -> String { "\(profileMenu), \(profileName)" }
     public static let newProfileItem = "New Profile…"
     public static let newProfilePrompt = "New Profile"
     public static let createProfileButton = "Create"

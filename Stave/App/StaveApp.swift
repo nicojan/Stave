@@ -12,14 +12,14 @@ struct StaveApp: App {
         Settings { SettingsView(shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine) }
             .commands {
                 CommandGroup(replacing: .appTermination) {
-                    Button("Quit Stave") { delegate.quit() }
+                    Button(PageChromeText.quitMenuItem) { delegate.quit() }
                         .keyboardShortcut("q", modifiers: .command)
                 }
                 CommandGroup(replacing: .newItem) {
                     Button(CommandBarText.newTabMenuItem) { delegate.newTab() }
                         .keyboardShortcut("t", modifiers: .command)
                         .disabled(!state.isEnabled(.newTab))
-                    Button("New Window") { delegate.newWindow() }
+                    Button(PageChromeText.newWindowMenuItem) { delegate.newWindow() }
                         .keyboardShortcut("n", modifiers: .command)
                         .disabled(!state.isEnabled(.newWindow))
                     Button(PrivateWindowText.menuItem) { delegate.newPrivateWindow() }
@@ -35,10 +35,10 @@ struct StaveApp: App {
                         .disabled(!state.isEnabled(.importFromArc))
                 }
                 CommandGroup(replacing: .saveItem) {
-                    Button("Close Tab") { delegate.closeSelectedTab() }
+                    Button(PageChromeText.closeTabMenuItem) { delegate.closeSelectedTab() }
                         .keyboardShortcut("w", modifiers: .command)
                         .disabled(!state.isEnabled(.closeTab))
-                    Button("Close Window") { delegate.closeWindow() }
+                    Button(PageChromeText.closeWindowMenuItem) { delegate.closeWindow() }
                         .keyboardShortcut("w", modifiers: [.command, .shift])
                         .disabled(!state.isEnabled(.closeWindow))
                 }
@@ -70,11 +70,17 @@ struct StaveApp: App {
                         .disabled(!state.canCrashPage)
                 }
                 #endif
-                CommandMenu("Tab") {
+                CommandMenu(PageChromeText.tabMenu) {
                     // The keyboard route to the row and Essentials context menus: the same SidebarMenus lists, on the highlighted item.
                     ForEach(delegate.menuState.tabActions, id: \.self) { action in
                         Button(action.menuTitle) { delegate.performSidebarAction(action) }
                             .disabled(!state.isEnabled(.sidebarAction))
+                    }
+                    // The same targets as the row's context menu, for the highlighted tab; absent where the drop would refuse.
+                    if !state.moveTargets.isEmpty {
+                        Menu(PageChromeText.moveToWorkspaceMenu) {
+                            MoveToWorkspaceItems(menu: tabMoveMenu, isDisabled: !state.isEnabled(.sidebarAction))
+                        }
                     }
                     Divider()
                     Button(SidebarAction.moveUp.title) { delegate.moveHighlightedRow(by: -1) }
@@ -98,6 +104,14 @@ struct StaveApp: App {
                     }
                 }
             }
+    }
+
+    /// Tab ▸ Move to Workspace's items, from the menu state the app delegate keeps.
+    private var tabMoveMenu: MoveToWorkspaceMenu {
+        MoveToWorkspaceMenu(
+            targets: state.moveTargets, symbol: { [state] in state.moveSymbols[$0.workspaceID] },
+            perform: { [delegate] in delegate.moveHighlightedTab(to: $0) }
+        )
     }
 
     /// One switch item; a checkmark marks the current workspace, and ⌃digit is attached only when the item has a digit.

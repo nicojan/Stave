@@ -3,20 +3,22 @@ import Observation
 import StaveCore
 
 /// Opens the store, restores one window per saved `WindowState`, and saves the set as it changes and on quit. Menu commands call into it.
+/// Private windows are in `AppDelegate+Private.swift`, the menu bar's state in `AppDelegate+Menus.swift`; the members those files use are
+/// internal rather than private for that reason only.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var environment: AppEnvironment?
-    private var controllers: [BrowserWindowController] = []
+    private(set) var environment: AppEnvironment?
+    private(set) var controllers: [BrowserWindowController] = []
     /// Open private windows. Never in `WindowSession`, never saved, never restored.
-    private var privateControllers: [PrivateWindowController] = []
+    var privateControllers: [PrivateWindowController] = []
     private var isTerminating = false
     /// True once every saved window is open. A launch that fails part-way must not save its partial set over the user's windows.
-    private var launchCompleted = false
+    private(set) var launchCompleted = false
     /// What the Workspaces menu and Settings show; refreshed when the key window, its workspaces or the ⌃1–9 setting change.
     let menuState = AppMenuState()
-    private var menuGeneration = 0
-    private var keyObservers: [NSObjectProtocol] = []
-    private var importCoordinator: ImportCoordinator?
+    var menuGeneration = 0
+    var keyObservers: [NSObjectProtocol] = []
+    private(set) var importCoordinator: ImportCoordinator?
     /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
     private var pageEvents: PageEventsRouter?
 
@@ -83,8 +85,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// Closing the last window quits, and the kept-last window state is what the next launch restores.
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Stave stays open with no windows, as Safari, Chrome and Firefox do (decision 31). The last window closed stays in the saved set until
+    /// another browser window opens (`open` drops it), so a quit with no window open restores it and a quit after ⌘N restores only the new one.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// A Dock click with no browser window open, normal or private, opens one through the ⌘N path (Settings alone doesn't count). With only
+    /// private windows open it brings the newest forward. With browser windows open, AppKit's usual handling applies.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard launchCompleted, controllers.isEmpty else { return true }
+        if let privateWindow = privateControllers.last {
+            privateWindow.show()
+        } else {
+            newWindow()
+        }
+        return false
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
@@ -104,10 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu commands
 
     /// ⌘N: a window on the front browser window's profile and workspace, with no tab selected. With no browser window open it starts from the
-    /// last state the session knows, else from the saved windows.
+    /// last state the session knows, else from the saved windows. Nothing while a sheet (or a sheet on a sheet) is up on the key window.
     func newWindow() {
-        guard let environment, launchCompleted else { return }
-        if let key = keyController, !allowed(.newWindow, on: key) { return }
+        guard let environment, launchCompleted, !keyWindowIsBusy(for: .newWindow) else { return }
         let front = frontController
         let base = front?.model.windowState ?? environment.session.states.last ?? (try? environment.store.restoredWindows().first) ?? nil
         guard let base else { return }
@@ -156,60 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if source.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil {
             NSLog("Stave: could not open a link from a tab that is gone")
         }
-    }
-
-    /// "Open Link in New Window" from a private window: a new private window beside it, with the link as its selected tab.
-    private func openPrivateWindow(forLink url: String, opener: UUID, from source: PrivateWindowController) {
-        guard let environment, launchCompleted else { return }
-        let controller = PrivateWindowController(
-            environment: environment, profileID: source.profileID, near: source.window,
-            onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
-        )
-        privateControllers = privateControllers + [controller]
-        controller.show()
-        refreshWorkspaceMenu()
-        if controller.openLinkedTab(opener: opener, url: url, select: true, webView: nil) == nil { controller.window.close() }
-    }
-
-    /// ⇧⌘N: a private window beside the front window. Opens with an empty tab list; nothing of it is saved.
-    func newPrivateWindow() {
-        guard let environment, launchCompleted, let profileID = privateWindowProfileID(environment) else { return }
-        let controller = PrivateWindowController(
-            environment: environment, profileID: profileID, near: NSApp.keyWindow ?? frontController?.window,
-            onClose: { [weak self] closed in self?.privateWindowClosed(closed) }
-        )
-        privateControllers = privateControllers + [controller]
-        controller.show()
-        controller.openCommandBar(.newTab)
-        refreshWorkspaceMenu()
-    }
-
-    /// The profile a new private window belongs to (its throwaway session is shared with that profile's other private windows): the key
-    /// private window's, a key pop-up's (that of its opener tab's window), else the front browser window's, else the default profile's.
-    private func privateWindowProfileID(_ environment: AppEnvironment) -> UUID? {
-        if let keyPrivate { return keyPrivate.profileID }
-        if let key = NSApp.keyWindow, let popup = environment.popups.all.first(where: { $0.window === key || $0.window === key.sheetParent }) {
-            if let owner = privateControllers.first(where: { $0.owns(popup.id) }) { return owner.profileID }
-            if let profileID = try? environment.store.profileID(forTab: popup.openerTabID) { return profileID }
-        }
-        if let front = frontController { return front.model.snapshot.profile.id }
-        do {
-            return try environment.store.ensureDefaultProfile().id
-        } catch {
-            NSLog("Stave: could not find a profile for a private window: \(error)")
-            return nil
-        }
-    }
-
-    private func privateWindowClosed(_ closed: PrivateWindowController) {
-        privateControllers = privateControllers.filter { $0 !== closed }
-        refreshWorkspaceMenu()
-    }
-
-    /// The private window that is key, or the one a key sheet is attached to.
-    private var keyPrivate: PrivateWindowController? {
-        guard let key = NSApp.keyWindow else { return nil }
-        return privateControllers.first { $0.window === key || $0.window === key.sheetParent }
     }
 
     /// ⌘T: the command bar on the key browser window, for a new tab.
@@ -265,6 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.sidebarPresenter.requestSidebarAction(action, on: controller.model.sidebarHighlight)
     }
 
+    /// Tab ▸ Move to Workspace: sends the key browser window's highlighted tab to another workspace, as dropping it on that workspace's icon
+    /// does. The selected tab takes the window with it.
+    func moveHighlightedTab(to target: TabMoveTarget) {
+        guard let controller = keyController, allowed(.sidebarAction, on: controller), let item = controller.model.sidebarHighlight else { return }
+        controller.model.run(target, on: item)
+    }
+
     /// View ▸ Show Archive: the archive sheet on the key browser window.
     func showArchive() {
         guard let controller = keyController, allowed(.showArchive, on: controller) else { return }
@@ -298,54 +265,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         run(controller)
     }
 
-    /// The same page commands on the key private window.
-    private func privatePageCommand(_ run: (PrivateWindowController) -> Void) -> Bool {
-        guard let keyPrivate else { return false }
-        if keyPrivate.window.attachedSheet == nil { run(keyPrivate) }
-        return true
-    }
-
-    // MARK: - First run
-
-    /// Shows the first-run sheet on the first window of this launch, once, while the setting says it has not been completed.
-    private func presentFirstRunIfNeeded(_ environment: AppEnvironment) {
-        guard let first = controllers.first else { return }
-        do {
-            guard try environment.store.setting(SettingKeys.firstRunCompleted) == false else { return }
-        } catch {
-            NSLog("Stave: could not read the first-run setting: \(error)")
-            return
-        }
-        let offers: Bool
-        do {
-            offers = try ArcImportFlow.shouldOfferOnFirstRun(arcHome: environment.arcHome, store: environment.store)
-        } catch {
-            NSLog("Stave: could not check whether to offer the Arc import: \(error)")
-            offers = false
-        }
-        first.sidebarPresenter.sheet = .firstRun(FirstRunRequest(offersArcImport: offers))
-    }
-
-    private func completeFirstRun(on controller: BrowserWindowController, engine: SearchEngine, importFromArc: Bool) {
-        guard let environment else { return }
-        do {
-            try environment.store.completeFirstRun(engine: engine)
-        } catch {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Stave couldn't save your choice."
-            alert.informativeText = StoreErrorText.message(for: error)
-            alert.addButton(withTitle: "OK")
-            // The first-run sheet is still attached and cannot be dismissed, so the alert goes on top of it.
-            alert.beginSheetModal(for: controller.window.attachedSheet ?? controller.window)
-            return
-        }
-        environment.revision.bump()
-        controller.sidebarPresenter.sheet = nil
-        // The first-run sheet is still leaving, so the window is not "busy" for this hand-over.
-        if importFromArc { importCoordinator?.open(on: controller, windowIsBusy: false) }
-    }
-
     /// View ▸ Compact Mode (⌃⌘S): flips the setting through the store, so every window follows. Works with Settings key too.
     func toggleCompactMode() { environment?.compactMode.toggle() }
 
@@ -364,7 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// True while a sheet is attached to the window, a file picker is open, or a sheet (first run, import, workspace editor, new profile) is about to show.
-    private func isBusy(_ controller: BrowserWindowController) -> Bool {
+    func isBusy(_ controller: BrowserWindowController) -> Bool {
         let presenter = controller.sidebarPresenter
         return MenuCommandGate.isBusy(
             hasAttachedSheet: controller.window.attachedSheet != nil,
@@ -379,108 +298,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         !isBusy(controller) || MenuCommandGate.allowedWhileSheetUp(command)
     }
 
-    /// Rebuilds the menu's items from the key window's workspaces and the setting, and re-arms itself for the next change to either.
-    /// The key window is not observable, so window notifications call this too; a generation number retires the older trackers.
-    private func refreshWorkspaceMenu() {
-        menuGeneration += 1
-        let generation = menuGeneration
-        let menu: MenuSnapshot = withObservationTracking {
-            // With no browser window key (Settings in front) the checkmark follows the setting itself.
-            if let keyPrivate { return Self.privateMenu(keyPrivate, compact: environment?.compactMode.isEnabled ?? false) }
-            guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else {
-                return MenuSnapshot(compact: environment?.compactMode.isEnabled ?? false)
-            }
-            let model = controller.model
-            let workspaces = model.workspaces
-            let index = workspaces.firstIndex { $0.id == model.snapshot.workspace.id }
-            let busy = isBusy(controller)
-            let page = controller.shownPage
-            let summary = page.map {
-                PageStatusSummary(
-                    isLoading: $0.status.isLoading, canGoBack: $0.status.canGoBack, canGoForward: $0.status.canGoForward,
-                    hasPage: true, blockingOn: $0.isContentBlockingOn
-                )
-            }
-            #if DEBUG
-            let canCrash = !busy && controller.canCrashPage
-            #else
-            let canCrash = false
-            #endif
-            return MenuSnapshot(
-                items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
-                compact: model.isCompact,
-                workspaceActions: index.map { WorkspaceMenus.menuItems(index: $0, count: workspaces.count) } ?? [],
-                tabActions: SidebarMenus.menuActions(highlight: model.sidebarHighlight, rows: model.rows, snapshot: model.snapshot),
-                canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
-                canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot),
-                busy: busy,
-                pageMenu: PageMenuState.from(status: summary, sheetOpen: busy),
-                canCrashPage: canCrash
-            )
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self, self.menuGeneration == generation else { return }
-                self.refreshWorkspaceMenu()
-            }
-        }
-        if menuState.workspaceItems != menu.items { menuState.workspaceItems = menu.items }
-        if menuState.isCompact != menu.compact { menuState.isCompact = menu.compact }
-        if menuState.workspaceActions != menu.workspaceActions { menuState.workspaceActions = menu.workspaceActions }
-        if menuState.tabActions != menu.tabActions { menuState.tabActions = menu.tabActions }
-        if menuState.canMoveUp != menu.canMoveUp { menuState.canMoveUp = menu.canMoveUp }
-        if menuState.canMoveDown != menu.canMoveDown { menuState.canMoveDown = menu.canMoveDown }
-        if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
-        if menuState.pageMenu != menu.pageMenu { menuState.pageMenu = menu.pageMenu }
-        if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
-    }
-
-    /// The menus for a key private window: only the page commands; no workspaces, tab actions or moves.
-    private static func privateMenu(_ controller: PrivateWindowController, compact: Bool) -> MenuSnapshot {
-        let busy = controller.window.attachedSheet != nil
-        let summary = controller.shownPage.map {
-            PageStatusSummary(
-                isLoading: $0.status.isLoading, canGoBack: $0.status.canGoBack, canGoForward: $0.status.canGoForward,
-                hasPage: true, blockingOn: $0.isContentBlockingOn
-            )
-        }
-        return MenuSnapshot(compact: compact, busy: busy, pageMenu: PageMenuState.from(status: summary, sheetOpen: busy))
-    }
-
-    /// Everything the menus show for the key window, read in one observation pass.
-    private struct MenuSnapshot {
-        var items: [WorkspaceSwitchItem] = []
-        var compact = false
-        var workspaceActions: [WorkspaceMenuItem] = []
-        var tabActions: [SidebarAction] = []
-        var canMoveUp = false
-        var canMoveDown = false
-        var busy = false
-        var pageMenu = PageMenuState.disabled
-        var canCrashPage = false
-    }
-
-    private func observeKeyWindow() {
-        let center = NotificationCenter.default
-        keyObservers = [
-            NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
-            NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification,
-        ].map { name in
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Deferred: during a resign, `NSApp.keyWindow` still names the old window.
-                Task { @MainActor in self?.refreshWorkspaceMenu() }
-            }
-        }
+    /// Whether `command` must wait because the key window, browser or private, has a sheet up. False with no such window key (Settings).
+    func keyWindowIsBusy(for command: MenuCommand) -> Bool {
+        if let keyPrivate { return keyPrivate.window.attachedSheet != nil && !MenuCommandGate.allowedWhileSheetUp(command) }
+        if let controller = keyController { return !allowed(command, on: controller) }
+        return false
     }
 
     // MARK: - Windows
 
-    /// The browser window that is key, or the one a key sheet is attached to. Nil when the key window is something else (Settings).
-    private var keyController: BrowserWindowController? {
+    /// The browser window that is key, or the one a key sheet is attached to, however deep the sheets nest (an alert over the archive sheet
+    /// still names its window, so the sheet gate holds). Nil when the key window is something else (Settings).
+    var keyController: BrowserWindowController? {
         guard let key = NSApp.keyWindow else { return nil }
-        return controllers.first { $0.window === key || $0.window === key.sheetParent }
+        let root = Self.rootWindow(of: key)
+        return controllers.first { $0.window === root }
     }
 
-    private var frontController: BrowserWindowController? {
+    /// The window at the bottom of `window`'s sheet chain: itself when it is not a sheet.
+    static func rootWindow(of window: NSWindow) -> NSWindow {
+        window.sheetParent.map(rootWindow(of:)) ?? window
+    }
+
+    var frontController: BrowserWindowController? {
         keyController
             ?? controllers.first { $0.window === NSApp.mainWindow }
             ?? controllers.first
@@ -517,38 +357,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             environment.session.windowClosed(closed.model.windowID, isLast: isLast)
             if !isLast {
                 do { try environment.session.saveNow() } catch { NSLog("Stave: could not save window state: \(error)") }
+            } else {
+                // Stave stays open with no browser window (decision 31). Every browser-window page is unloaded (flushed first), its
+                // questions ended and its pop-ups closed, so a background tab's audio, camera or microphone stops as in Safari, Chrome and
+                // Firefox. Private pages belong to their own windows, which close them.
+                for id in environment.pageHost.persistentTabIDs { closed.tabUnloaded(id) }
             }
         }
         controllers = controllers.filter { $0 !== closed }
         refreshWorkspaceMenu()
-    }
-
-    // MARK: - Failure
-
-    private func presentLaunchArgumentFailure(_ failure: LaunchArguments.Failure) {
-        guard case .unusable(let flag) = failure else { return }
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = "Stave did not start: \(flag) needs an absolute path."
-        alert.informativeText = "The flag was given with no value, a value starting with \"-\", or a relative path. Fix it or remove it; Stave will not fall back to your real folders."
-        alert.addButton(withTitle: "Quit")
-        alert.runModal()
-        NSApp.terminate(nil)
-    }
-
-    private func presentOpenFailure(_ error: Error) {
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        if let storeError = error as? StoreError, storeError == .newerSchema {
-            alert.messageText = "This copy of Stave is older than the one that last used your data. Install the newest Stave to open it."
-        } else if let storeError = error as? StoreError, storeError == .backupFailed {
-            alert.messageText = StoreErrorText.message(for: storeError)
-        } else {
-            alert.messageText = "Stave could not open its data."
-            alert.informativeText = "\(error)"
-        }
-        alert.addButton(withTitle: "Quit")
-        alert.runModal()
-        NSApp.terminate(nil)
     }
 }

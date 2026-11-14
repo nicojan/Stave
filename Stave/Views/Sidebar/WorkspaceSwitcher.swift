@@ -206,7 +206,7 @@ struct ProfileMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("\(WorkspaceMenus.profileMenu): \(model.snapshot.profile.name)")
-        .accessibilityLabel("\(WorkspaceMenus.profileMenu), \(model.snapshot.profile.name)")
+        .help(WorkspaceMenus.profileMenuHelp(profileName: model.snapshot.profile.name))
+        .accessibilityLabel(WorkspaceMenus.profileMenuLabel(profileName: model.snapshot.profile.name))
     }
 }

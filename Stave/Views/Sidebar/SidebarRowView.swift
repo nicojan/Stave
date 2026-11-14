@@ -6,6 +6,8 @@ struct SidebarRowView: View {
     let row: SidebarRow
     /// From `SidebarMenus`, including Move Up and Move Down where they apply.
     let actions: [SidebarAction]
+    /// Move to Workspace for a tab row (`BrowserWindowModel.moveTargets`); none for a folder.
+    var moves: MoveToWorkspaceMenu = .none
     let setFolderOpen: (UUID, Bool) -> Void
     let perform: (SidebarAction, SidebarItemID) -> Void
 
@@ -22,7 +24,7 @@ struct SidebarRowView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(row.accessibilityLabel)
-            .sidebarAccessibilityActions(actions) { perform($0, row.id) }
+            .sidebarAccessibilityActions(actions, moves: moves) { perform($0, row.id) }
             if case .pinnedTab(drifted: true) = row.kind {
                 Button { perform(.backToPinnedPage, row.id) } label: {
                     Image(systemName: "arrow.uturn.backward").font(.caption)
@@ -35,7 +37,7 @@ struct SidebarRowView: View {
         .padding(.leading, CGFloat(row.depth) * 14)
         .accessibilityElement(children: .contain)
         .contentShape(Rectangle())
-        .sidebarContextMenu(actions) { perform($0, row.id) }
+        .sidebarContextMenu(actions, moves: moves) { perform($0, row.id) }
     }
 
     @ViewBuilder

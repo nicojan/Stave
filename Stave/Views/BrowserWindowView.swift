@@ -94,10 +94,10 @@ struct BrowserWindowView: View {
                 Slider(
                     value: Binding(get: { sidebarWidth.width }, set: { sidebarWidth.set($0) }),
                     in: SidebarWidthModel.range, step: SidebarWidthModel.step
-                ) { Text("Sidebar width") }
+                ) { Text(PageChromeText.sidebarWidth) }
                 .labelsHidden()
-                .accessibilityLabel("Sidebar width")
-                .accessibilityValue("\(Int(sidebarWidth.width)) points")
+                .accessibilityLabel(PageChromeText.sidebarWidth)
+                .accessibilityValue(PageChromeText.sidebarWidthValue(sidebarWidth.width))
             }
     }
 }
