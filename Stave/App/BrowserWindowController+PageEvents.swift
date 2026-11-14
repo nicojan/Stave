@@ -37,6 +37,30 @@ extension BrowserWindowController: PageEvents {
         return id
     }
 
+    /// A clicked file link inside an opened file's grant that opens a new tab (decision 6; the delegate checked the grant): a tab below the
+    /// opener, loaded through the opened-file path. A background tab gets its page now, as a background ⌘-click tab does.
+    func openLinkedFile(opener: UUID, file: URL, select: Bool) {
+        guard let id = model.openLinkedTab(url: "", opener: opener, select: select) else { return }
+        if select {
+            load(.file(file), in: id)
+            focusPage(id)
+            return
+        }
+        let storeID: UUID
+        do {
+            storeID = try environment.store.dataStoreID(forTab: id)
+        } catch {
+            NSLog("Stave: could not find a linked file tab's data store: \(error)")
+            return
+        }
+        let request = PageRequest(
+            tabID: id, store: .persistent(storeID), siteSettingsProfileID: environment.pageHost.existingPage(opener)?.siteSettingsProfileID ?? model.snapshot.profile.id,
+            url: "", title: "", faviconURL: nil, interactionState: nil, openedByUser: true
+        )
+        _ = environment.pageHost.page(for: request, writer: environment.pageWriter)
+        environment.pageHost.loadFile(file, in: id)
+    }
+
     /// "Open Link in New Window": a new window on this window's profile and workspace (the app delegate makes it), with the link as its
     /// selected tab. The URL is judged as a user-initiated page navigation first, as `openLinkedTab` does.
     func openLinkInNewWindow(opener: UUID, url: String) {

@@ -1,13 +1,17 @@
 import SwiftUI
 import StaveCore
 
-/// The native panel over a page that failed, was refused or crashed (decision 13): plain words from `PageText`, Reload, and Back when the
-/// page has somewhere to go back to. It never reloads by itself.
+/// The native panel over a page that failed, was refused or crashed (decision 13): plain words from `PageText`, Reload (Open Again for a
+/// stored file tab, nothing for a refused address in a tab with nothing loaded), and Back when the page has somewhere to go back to. It
+/// never reloads by itself.
 struct PageFailureView: View {
     let failure: PageFailure
     let canGoBack: Bool
+    /// The page has a document loaded (`webView.url` isn't nil), so Reload has something to reload.
+    let hasDocument: Bool
     let reload: () -> Void
     let back: () -> Void
+    let openAgain: () -> Void
 
     var body: some View {
         let detail = PageText.detail(failure)
@@ -26,7 +30,11 @@ struct PageFailureView: View {
                     .accessibilityRepresentation { Text(detail) }
                 HStack(spacing: 10) {
                     if canGoBack { Button(PageText.backButton, action: back) }
-                    Button(PageText.reloadButton, action: reload).keyboardShortcut(.defaultAction)
+                    if PageText.offersOpenAgain(failure) {
+                        Button(PageText.openAgainButton, action: openAgain).keyboardShortcut(.defaultAction)
+                    } else if PageText.offersReload(failure, hasDocument: hasDocument) {
+                        Button(PageText.reloadButton, action: reload).keyboardShortcut(.defaultAction)
+                    }
                 }
                 .padding(.top, 4)
             }

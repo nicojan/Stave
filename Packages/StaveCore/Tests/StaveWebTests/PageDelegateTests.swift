@@ -74,6 +74,13 @@ final class FakeEvents: PageEvents {
 
     func cancelWaitingQuestions(tabID: UUID) { cancelledTabs.append(tabID) }
 
+    /// Each clicked file link inside an opened file's grant that opens a new tab.
+    var linkedFiles: [(opener: UUID, file: URL, select: Bool)] = []
+
+    func openLinkedFile(opener: UUID, file: URL, select: Bool) {
+        linkedFiles.append((opener, file, select))
+    }
+
     func openLinkInNewWindow(opener: UUID, url: String) {
         newWindowLinks.append((opener, url))
     }

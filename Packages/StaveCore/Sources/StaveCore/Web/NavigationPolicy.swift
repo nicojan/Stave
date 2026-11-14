@@ -1,6 +1,11 @@
 /// Where a navigation came from, which decides how hostile its URL may be.
 public enum NavigationSource: Sendable, Equatable {
-    case stored, restored, typed, page(userGesture: Bool)
+    case stored, restored, typed
+    /// A navigation the page makes. `grantedFolder` is the tab's opened-file grant (`OpenedFile.readAccessURL`'s path), kept in memory only:
+    /// a user-clicked main-frame `file:` link inside it opens.
+    case page(userGesture: Bool, grantedFolder: String? = nil)
+    /// The HTML file the user opened (Finder, a drop, File ▸ Open File…), with the folder (or the file alone) WebKit may read (decision 6).
+    case openedFile(grantedFolder: String)
 }
 
 public enum NavigationDecision: Sendable, Equatable {
@@ -22,17 +27,33 @@ public enum NavigationPolicy {
             return .refuse(nil)
         }
         if URLScheme.hasWebAuthority(url) { return .allow }
+        if scheme == "file" { return decideFile(url, source: source) }
         if scheme == "about", url.lowercased() == "about:blank" { return .allow }
         if scheme == "blob", case .page = source { return .allow }
         if let scheme, !handledSchemes.contains(scheme) {
             switch source {
-            case .typed, .page(userGesture: true): return .askToOpenExternally(url)
-            case .page(userGesture: false): return .refuse(nil)
-            case .stored, .restored: break
+            case .typed, .page(true, _): return .askToOpenExternally(url)
+            case .page(false, _): return .refuse(nil)
+            case .stored, .restored, .openedFile: break
             }
         }
         if case .page = source { return .refuse(nil) }
         return .refuse(.refused(url: url))
+    }
+
+    /// A main-frame `file:` URL (decision 6, question 13): the opened file, or a clicked link inside the tab's grant. A stored or restored
+    /// one waits for "Open Again"; a script-started one is refused silently; one typed or clicked outside the grant shows the refused panel.
+    private static func decideFile(_ url: String, source: NavigationSource) -> NavigationDecision {
+        switch source {
+        case .openedFile(let folder), .page(true, let folder?):
+            return OpenedFile.isInside(url, grantedFolder: folder) ? .allow : .refuse(.refused(url: url))
+        case .page:
+            return .refuse(nil)
+        case .stored, .restored:
+            return .refuse(.fileNotReopened(url: url))
+        case .typed:
+            return .refuse(.refused(url: url))
+        }
     }
 }
 

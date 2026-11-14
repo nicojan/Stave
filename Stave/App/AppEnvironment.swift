@@ -20,6 +20,8 @@ final class AppEnvironment {
     let compactMode: CompactModeSetting
     /// The search-engine setting for Settings; writing it bumps `revision`.
     let searchEngine: SearchEngineSetting
+    /// "Open links from other apps in", for Settings; writing it bumps `revision`.
+    let externalLinks: ExternalLinkSetting
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
     /// Every page's website data store; never `WKWebsiteDataStore.default()`.
@@ -75,6 +77,9 @@ final class AppEnvironment {
         let engine = SearchEngineSetting(store: store, revision: revision)
         engine.onSaveError = { NSLog("Stave: could not save the search engine: \($0)") }
         self.searchEngine = engine
+        let externalLinks = ExternalLinkSetting(store: store, revision: revision)
+        externalLinks.onSaveError = { NSLog("Stave: could not save where links from other apps open: \($0)") }
+        self.externalLinks = externalLinks
         let writer = StorePageWriter(store: store, revision: revision)
         self.pageWriter = writer
         self.downloads = DownloadList()

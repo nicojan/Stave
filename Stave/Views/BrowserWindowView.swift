@@ -31,6 +31,7 @@ struct BrowserWindowView: View {
             divider: { divider },
             content: { PageArea(model: model, pageHost: pageHost, state: pageViewState, actions: pageActions) }
         )
+        .fileDrop(pageActions.openDroppedFile)
         .overlay { commandBarLayer }
         .sheet(item: Binding(get: { presenter.sheet }, set: { presenter.sheet = $0 })) { sheet in
             switch sheet {

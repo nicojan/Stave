@@ -50,7 +50,8 @@ extension AppDelegate {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = text.message
-        alert.informativeText = text.detail
+        alert.informativeText = [text.detail, ExternalOpenText.unopenedLinks(pendingLinks.failAll().map(\.absoluteString))]
+            .compactMap { $0 }.joined(separator: "\n\n")
         alert.addButton(withTitle: PageChromeText.quitButton)
         alert.runModal()
         NSApp.terminate(nil)
@@ -61,7 +62,10 @@ extension AppDelegate {
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = text.message
-        if let detail = text.detail { alert.informativeText = detail }
+        // Links from other apps that were waiting for the launch are named here, never dropped (decision 7).
+        let unopened = ExternalOpenText.unopenedLinks(pendingLinks.failAll().map(\.absoluteString))
+        let detail = [text.detail, unopened].compactMap { $0 }.joined(separator: "\n\n")
+        if !detail.isEmpty { alert.informativeText = detail }
         alert.addButton(withTitle: PageChromeText.quitButton)
         alert.runModal()
         NSApp.terminate(nil)

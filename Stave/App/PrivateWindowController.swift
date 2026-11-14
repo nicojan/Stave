@@ -18,8 +18,9 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     let prompts: PagePrompts
     private let environment: AppEnvironment
     private let onClose: (PrivateWindowController) -> Void
-    /// Addresses typed for a tab whose page did not exist yet; the page is made empty and given the address as a typed load.
-    private var pendingTyped: [UUID: String] = [:]
+    /// What to load in a tab whose page did not exist yet (a typed address, an opened file); the page is made empty and given it as its
+    /// first load.
+    private var pendingLoads: [UUID: PendingLoad] = [:]
     private var focusTask: Task<Void, Never>?
     private(set) var isClosed = false
 
@@ -77,7 +78,10 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         window.minSize = WindowFrameRestore.minimumSize
         window.delegate = self
         window.title = PrivateWindowText.windowTitle(selected: nil)
-        let actions = PageAreaActions(reload: { [weak self] in self?.reloadPage() }, back: { [weak self] in self?.goBack() })
+        let actions = PageAreaActions(
+            reload: { [weak self] in self?.reloadPage() }, back: { [weak self] in self?.goBack() },
+            openAgain: { [weak self] in self?.openAgain() }, openDroppedFile: { [weak self] file in self?.openFile(file) }
+        )
         let hosting = NSHostingView(rootView: PrivateWindowView(
             model: model, presenter: presenter, pageHost: environment.pageHost, downloads: environment.downloads,
             sidebarWidth: environment.sidebarWidth.width, actions: actions
@@ -131,29 +135,48 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     private func showSelected() {
         window.title = PrivateWindowText.windowTitle(selected: model.selectedTab)
         guard !isClosed, let tab = model.selectedTab else { return }
-        let typed = pendingTyped.removeValue(forKey: tab.id)
+        let pending = pendingLoads.removeValue(forKey: tab.id)
         if pageHost.existingPage(tab.id) == nil {
-            guard typed != nil || !tab.url.isEmpty else { return }
-            _ = pageHost.page(for: request(tabID: tab.id, url: typed == nil ? tab.url : "", title: typed == nil ? tab.title : ""), writer: self)
+            guard pending != nil || !tab.url.isEmpty else { return }
+            let fresh = pending != nil
+            _ = pageHost.page(for: request(tabID: tab.id, url: fresh ? "" : tab.url, title: fresh ? "" : tab.title, openedByUser: fresh), writer: self)
         }
-        if let typed { pageHost.loadTyped(typed, in: tab.id) }
+        if let pending { pending.run(in: tab.id, host: pageHost) }
         pageHost.markShown(tab.id, true)
         prompts.mayAskAgain() // a camera or microphone question for this tab may have been waiting for it to be shown
     }
 
-    private func request(tabID: UUID, url: String, title: String) -> PageRequest {
+    private func request(tabID: UUID, url: String, title: String, openedByUser: Bool) -> PageRequest {
         PageRequest(
             tabID: tabID, store: .privateSession(sessionID), siteSettingsProfileID: nil,
-            url: url, title: title, faviconURL: nil, interactionState: nil
+            url: url, title: title, faviconURL: nil, interactionState: nil, openedByUser: openedByUser
         )
     }
 
     /// The model's `loadTyped`; as in a browser window, focus then moves into the page.
     private func loadTyped(_ url: String, in tabID: UUID) -> Bool {
+        load(.typed(url), in: tabID)
+    }
+
+    /// File ▸ Open File… or a drop in this window: a new selected private tab, loaded through `.openedFile` (decision 6).
+    func openFile(_ file: URL) {
+        let tabID = model.open(url: "", below: nil, select: true)
+        load(.file(file), in: tabID)
+    }
+
+    /// "Open Again" on a file tab (a file page hibernation unloaded comes back as one): reloads it through the opened-file path.
+    func openAgain() {
+        guard let page = shownPage, case .fileNotReopened(let address)? = page.status.failure,
+              let file = URL(string: address), file.isFileURL else { return }
+        pageHost.loadFile(file, in: page.tabID)
+    }
+
+    @discardableResult
+    private func load(_ pending: PendingLoad, in tabID: UUID) -> Bool {
         if pageHost.existingPage(tabID) != nil {
-            pageHost.loadTyped(url, in: tabID)
+            pending.run(in: tabID, host: pageHost)
         } else if model.selectedTabID == tabID {
-            pendingTyped[tabID] = url
+            pendingLoads[tabID] = pending
             showSelected()
         } else {
             return false
@@ -205,8 +228,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID? {
         guard NavigationPolicy.decide(url, isMainFrame: true, source: .page(userGesture: true)) == .allow else { return nil }
         let id = model.open(url: url, below: opener, select: false)
-        var request = request(tabID: id, url: url, title: "")
-        request.openedByUser = pageHost.linkOpenedByUser(opener: opener)
+        let request = request(tabID: id, url: url, title: "", openedByUser: pageHost.linkOpenedByUser(opener: opener))
         if let webView {
             _ = pageHost.adopt(webView, as: request, writer: self)
         } else {
@@ -214,6 +236,15 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         }
         if select { model.select(id) }
         return id
+    }
+
+    /// A clicked file link inside an opened file's grant that opens a new tab (decision 6): a private tab below the opener, loaded through the
+    /// opened-file path.
+    func openLinkedFile(opener: UUID, file: URL, select: Bool) {
+        let id = model.open(url: "", below: opener, select: false)
+        _ = pageHost.page(for: request(tabID: id, url: "", title: "", openedByUser: true), writer: self)
+        pageHost.loadFile(file, in: id)
+        if select { model.select(id) }
     }
 
     /// A sized `window.open`: a pop-up owned by the opener tab, which closes with it (and with this window).
@@ -237,7 +268,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
             environment.popups.closeAll(openedBy: tab.id)
             pageHost.close(tab.id)
         }
-        pendingTyped = [:]
+        pendingLoads = [:]
         // `close` also drops each page's snapshot, kept even for a page hibernation unloaded. The session's store and media answers go with
         // the last private window of the profile; while another is open they stay.
         pageHost.leavePrivateSession(profileID: profileID)
@@ -260,7 +291,7 @@ extension PrivateWindowController: PageLifecycle {
         prompts.end { $0.tabID == id }
         prompts.forget(id)
         environment.popups.closeAll(openedBy: id)
-        pendingTyped[id] = nil
+        pendingLoads[id] = nil
         pageHost.close(id)
     }
 

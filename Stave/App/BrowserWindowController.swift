@@ -20,8 +20,9 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     let pageViewState = PageViewState()
     /// The tab whose page this window last showed, so `markActive` is written once per showing.
     var shownTabID: UUID?
-    /// Addresses typed for a tab whose page did not exist yet; the page is made empty and given the address as a typed load.
-    var pendingTyped: [UUID: String] = [:]
+    /// What to load in a tab whose page did not exist yet (a typed address, an opened file, a refused link); the page is made empty and
+    /// given it as its first load.
+    var pendingLoads: [UUID: PendingLoad] = [:]
     /// Moves focus into the page once its web view is in this window.
     var focusTask: Task<Void, Never>?
     var snapshotTask: Task<Void, Never>?
@@ -84,8 +85,11 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         let pageActions = PageAreaActions(
             reload: { [weak self] in self?.reloadPage() },
-            back: { [weak self] in self?.goBack() }
+            back: { [weak self] in self?.goBack() },
+            openAgain: { [weak self] in self?.openAgain() },
+            openDroppedFile: { [weak self] file in self?.openFile(file, origin: .commandBar) }
         )
+        sidebarPresenter.drag.openDroppedFile = pageActions.openDroppedFile
         let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, pageHost: environment.pageHost, downloads: environment.downloads, pageViewState: pageViewState, pageActions: pageActions, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }))
         hosting.sizingOptions = [] // the window decides its size, not the SwiftUI content
         window.contentView = hosting

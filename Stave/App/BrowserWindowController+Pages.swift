@@ -27,12 +27,12 @@ extension BrowserWindowController: PageLifecycle {
             refreshSnapshotSoon()
             return
         }
-        let typed = pendingTyped.removeValue(forKey: tab.id)
+        let pending = pendingLoads.removeValue(forKey: tab.id)
         if pageHost.existingPage(tab.id) == nil {
-            guard typed != nil || !tab.url.isEmpty, let request = request(for: tab, typed: typed != nil) else { return }
+            guard pending != nil || !tab.url.isEmpty, let request = request(for: tab, typed: pending != nil) else { return }
             _ = pageHost.page(for: request, writer: environment.pageWriter)
         }
-        if let typed { pageHost.loadTyped(typed, in: tab.id) }
+        if let pending { pending.run(in: tab.id, host: pageHost) }
         pageHost.markShown(tab.id, true)
         prompts.mayAskAgain() // a camera or microphone question for this tab may have been waiting for it to be shown
         guard shownTabID != tab.id else { return }
@@ -45,7 +45,8 @@ extension BrowserWindowController: PageLifecycle {
     }
 
     /// The request for a tab's page: its container's or profile's persistent store, and the window's profile for site settings. A page made
-    /// for a typed address starts empty (no stored address, no state), so the typed load is its first navigation.
+    /// for a typed address (or an opened file, or a refused link) starts empty (no stored address, no state), so that load is its first, and
+    /// the user opened it.
     private func request(for tab: StaveCore.Tab, typed: Bool) -> PageRequest? {
         let storeID: UUID
         do {
@@ -57,7 +58,7 @@ extension BrowserWindowController: PageLifecycle {
         return PageRequest(
             tabID: tab.id, store: .persistent(storeID), siteSettingsProfileID: model.snapshot.profile.id,
             url: typed ? "" : tab.url, title: typed ? "" : tab.title, faviconURL: typed ? nil : tab.faviconURL,
-            interactionState: typed ? nil : tab.interactionState
+            interactionState: typed ? nil : tab.interactionState, openedByUser: typed
         )
     }
 
@@ -79,10 +80,16 @@ extension BrowserWindowController: PageLifecycle {
     /// as a typed navigation, and focus moves into the page (decision 14). A tab with no page yet that this window shows gets one made for
     /// the address. False when neither applies, so the model stores the address instead.
     func loadTyped(_ url: String, in tabID: UUID) -> Bool {
+        load(.typed(url), in: tabID)
+    }
+
+    /// Loads into the tab's live page, or makes the page for it when this window shows the tab. False when neither applies.
+    @discardableResult
+    func load(_ pending: PendingLoad, in tabID: UUID) -> Bool {
         if pageHost.existingPage(tabID) != nil {
-            pageHost.loadTyped(url, in: tabID)
+            pending.run(in: tabID, host: pageHost)
         } else if model.selectedTabID == tabID, model.placement == .here {
-            pendingTyped[tabID] = url
+            pendingLoads[tabID] = pending
             showSelected()
         } else {
             return false
@@ -105,6 +112,29 @@ extension BrowserWindowController: PageLifecycle {
                 }
             }
         }
+    }
+
+    // MARK: - Links and files from elsewhere (decisions 6 and 7)
+
+    /// A new selected tab, placed as `origin` says, that loads `pending` as its first load; focus then moves into its page. False when the
+    /// tab couldn't be made.
+    @discardableResult
+    func openInNewTab(_ pending: PendingLoad, origin: NewTabOrigin) -> Bool {
+        guard let tabID = model.openTab(url: "", origin: origin), load(pending, in: tabID) else { return false }
+        focusPage(tabID)
+        return true
+    }
+
+    /// An HTML file the user opened (a drop, File ▸ Open File…): a new selected tab, loaded through `.openedFile`.
+    func openFile(_ file: URL, origin: NewTabOrigin) {
+        openInNewTab(.file(file), origin: origin)
+    }
+
+    /// The failure panel's "Open Again" on a stored or restored file tab: reloads it through the opened-file path.
+    func openAgain() {
+        guard let page = shownPage, case .fileNotReopened(let address)? = page.status.failure,
+              let file = URL(string: address), file.isFileURL else { return }
+        pageHost.loadFile(file, in: page.tabID)
     }
 
     // MARK: - Page commands (View menu, failure panel)
@@ -172,7 +202,7 @@ extension BrowserWindowController: PageLifecycle {
 
     func tabClosed(_ id: UUID) {
         endQuestionsEverywhere(for: id)
-        pendingTyped[id] = nil
+        pendingLoads[id] = nil
         pageHost.close(id)
     }
 
@@ -204,5 +234,24 @@ extension BrowserWindowController: PageLifecycle {
         pageHost.flushAll() // the host flushes every page or none; a flush with nothing pending writes nothing
         if environment.livePages.owner(of: id) == nil { pageHost.markShown(id, false) }
         if shownTabID == id { shownTabID = nil }
+    }
+}
+
+/// A first load for a tab whose page is made for it.
+enum PendingLoad {
+    /// An address the user typed or a link from another app, judged as `.typed`.
+    case typed(String)
+    /// An HTML file the user opened, loaded through `.openedFile`.
+    case file(URL)
+    /// A link refused before the policy (over the length cap): the refused panel, nothing loaded.
+    case refused(String)
+
+    @MainActor
+    func run(in tabID: UUID, host: PageHost) {
+        switch self {
+        case .typed(let address): host.loadTyped(address, in: tabID)
+        case .file(let file): host.loadFile(file, in: tabID)
+        case .refused(let shown): host.showRefused(shown, in: tabID)
+        }
     }
 }

@@ -13,6 +13,10 @@ final class AppMenuState {
     var compactMode: CompactModeSetting?
     /// Nil until the store is open.
     var searchEngine: SearchEngineSetting?
+    /// Nil until the store is open.
+    var externalLinks: ExternalLinkSetting?
+    /// Whether macOS opens `http` links with this build; read when Settings appears and when Stave becomes active.
+    var isDefaultBrowser = false
     /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.
     var isCompact = false
     /// Workspaces ▸ Edit / Move / Delete for the key window's current workspace; empty with no browser window key.

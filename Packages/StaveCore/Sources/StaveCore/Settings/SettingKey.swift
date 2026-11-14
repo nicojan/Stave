@@ -18,5 +18,7 @@ public enum SettingKeys {
     public static let firstRunCompleted = SettingKey<Bool>(name: "firstRunCompleted", defaultValue: false)
     public static let searchEngine = SettingKey<SearchEngine?>(name: "searchEngine", defaultValue: nil)
     public static let newTabEdge = SettingKey<NewTabEdge>(name: "newTabEdge", defaultValue: .top)
+    /// Where a link from another app opens (decision 7, question 14).
+    public static let externalLinkTarget = SettingKey<ExternalLinkTarget>(name: "externalLinkTarget", defaultValue: .lastUsed)
     public static let sidebarWidth = SettingKey<Double>(name: "sidebarWidth", defaultValue: 260)
 }

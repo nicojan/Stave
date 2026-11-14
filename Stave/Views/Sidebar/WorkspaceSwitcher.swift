@@ -125,9 +125,10 @@ private struct WorkspaceDropDelegate: DropDelegate {
     let workspace: Workspace
     let width: CGFloat
 
-    func validateDrop(info: DropInfo) -> Bool { drag.livePayload != nil }
+    func validateDrop(info: DropInfo) -> Bool { drag.isFileDrop(info) || drag.livePayload != nil }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        if drag.isFileDrop(info) { return DropProposal(operation: .copy) }
         let owner = AnyHashable(workspace.id)
         switch drag.livePayload {
         case .workspace(let dragged)?:
@@ -147,6 +148,7 @@ private struct WorkspaceDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(workspace.id)) }
 
     func performDrop(info: DropInfo) -> Bool {
+        if drag.isFileDrop(info) { return drag.openFileDrop(info) }
         switch drag.livePayload {
         case .workspace(let dragged)?:
             let side: DropPosition = info.location.x < width / 2 ? .before : .after

@@ -9,7 +9,13 @@ struct StaveApp: App {
 
     // Windows are AppKit-managed (see AppDelegate); SwiftUI only needs a scene, which also hosts the menu commands.
     var body: some Scene {
-        Settings { SettingsView(shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine) }
+        Settings {
+            SettingsView(
+                shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine,
+                externalLinks: delegate.menuState.externalLinks, isDefaultBrowser: delegate.menuState.isDefaultBrowser,
+                makeDefaultBrowser: { delegate.makeDefaultBrowser() }, refreshDefaultBrowser: { delegate.refreshDefaultBrowser() }
+            )
+        }
             .commands {
                 CommandGroup(replacing: .appTermination) {
                     Button(PageChromeText.quitMenuItem) { delegate.quit() }
@@ -27,6 +33,9 @@ struct StaveApp: App {
                         .disabled(!state.isEnabled(.newWindow))
                 }
                 CommandGroup(after: .newItem) {
+                    Button(ExternalOpenText.openFileMenuItem) { delegate.openFile() }
+                        .keyboardShortcut("o", modifiers: .command)
+                        .disabled(!state.isEnabled(.newWindow))
                     Button(CommandBarText.openLocationMenuItem) { delegate.openLocation() }
                         .keyboardShortcut("l", modifiers: .command)
                         .disabled(!state.isEnabled(.openLocation))

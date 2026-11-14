@@ -25,6 +25,7 @@ public final class PageHost {
     @ObservationIgnored private let applicationName: String
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private lazy var faviconRelay = FaviconRelay(host: self)
+    @ObservationIgnored private lazy var fileLinkRelay = FileLinkRelay(host: self)
     /// In memory only (decision 16), at most `snapshotLimit`, least recently taken dropped first (`snapshotOrder`, oldest first).
     @ObservationIgnored private var snapshots: [UUID: NSImage] = [:]
     @ObservationIgnored private var snapshotOrder: [UUID] = []
@@ -72,7 +73,8 @@ public final class PageHost {
             store: stores.store(for: request.store),
             ruleLists: (blocking ? contentBlocker.enabledLists() : []) + testRuleLists,
             applicationName: applicationName,
-            messageHandler: faviconRelay
+            messageHandler: faviconRelay,
+            fileLinkHandler: fileLinkRelay
         )
         let webView = PageWebView(frame: .zero, configuration: configuration)
         webView.now = now
@@ -120,6 +122,40 @@ public final class PageHost {
         case .askToOpenExternally(let external):
             delegate.startExternal(external, typed: true)
         }
+    }
+
+    /// The home folder an opened file's grant is checked against (`OpenedFile.readAccessURL`). Tests set a synthetic one.
+    @ObservationIgnored public var homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+    /// Seam for tests: hands the file and its read-access URL to WebKit.
+    @ObservationIgnored var fileLoader: @MainActor (WKWebView, URL, URL) -> Void = { webView, file, access in
+        webView.loadFileURL(file, allowingReadAccessTo: access)
+    }
+
+    /// Opens an HTML file the user chose (Finder, a drop, File ▸ Open File…, Open Again) through `.openedFile` (decision 6): WebKit may read
+    /// its folder, or the file alone when that folder is `/` or home. The grant is the tab's, in memory only. The user opened it, so it counts
+    /// as the user acting on the page.
+    public func loadFile(_ file: URL, in tabID: UUID) {
+        guard let page = pages[tabID] else { return }
+        page.userActed()
+        let resolvedFile = OpenedFile.resolved(file)
+        let access = OpenedFile.readAccessURL(for: resolvedFile, home: homeDirectory)
+        let folder = access.path
+        guard OpenedFile.isHTML(resolvedFile),
+              NavigationPolicy.decide(resolvedFile.absoluteString, isMainFrame: true, source: .openedFile(grantedFolder: folder)) == .allow else {
+            page.status.failure = .refused(url: file.absoluteString)
+            return
+        }
+        page.grantedFolder = folder
+        page.pendingOpenedFile = resolvedFile.path
+        page.restorePending = false
+        page.status.failure = nil
+        fileLoader(page.webView, resolvedFile, access)
+    }
+
+    /// Shows the refused panel for an address refused before the policy (a link from another app over the length cap); loads nothing.
+    public func showRefused(_ address: String, in tabID: UUID) {
+        guard let page = pages[tabID] else { return }
+        page.status.failure = .refused(url: address)
     }
 
     func isAdopted(_ webView: WKWebView) -> Bool {
@@ -363,6 +399,16 @@ public final class PageHost {
         page.record(.favicon(href))
     }
 
+    /// The user's plain click on a `file:` link in an opened file's page (`PageConfiguration.fileLinkScript`). Outside the tab's grant, WebKit
+    /// drops the navigation without asking the delegate, so the policy's refused panel is shown from here; inside it, WebKit asks the
+    /// delegate as usual and nothing happens here. A page with no grant gets nothing.
+    func receivedFileLinkClick(_ href: String, from webView: WKWebView?) {
+        guard let webView, let page = pages.values.first(where: { $0.webView === webView }), !page.isClosed, let folder = page.grantedFolder,
+              case .refuse(let failure?) = NavigationPolicy.decide(href, isMainFrame: true, source: .page(userGesture: true, grantedFolder: folder))
+        else { return }
+        page.status.failure = failure
+    }
+
     private func installDelegate(on page: LivePage) {
         let delegate = PageDelegate(page: page, host: self, events: nil)
         delegates[page.tabID] = delegate
@@ -474,5 +520,21 @@ final class FaviconRelay: NSObject, WKScriptMessageHandler {
         // Only a web address is kept; a `data:` icon would put a page's bytes into the store.
         guard let href = message.body as? String, href.count <= Self.maxLength, URLScheme.hasWebAuthority(href) else { return }
         host?.receivedFavicon(href, from: message.webView)
+    }
+}
+
+/// Receives the user's clicks on `file:` links from the isolated `StaveFileLink` world, routed by web view like `FaviconRelay`.
+@MainActor
+final class FileLinkRelay: NSObject, WKScriptMessageHandler {
+    private weak var host: PageHost?
+
+    init(host: PageHost) {
+        self.host = host
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, let href = message.body as? String, href.utf8.count <= ExternalOpen.maximumURLLength,
+              URLScheme.scheme(of: href) == "file" else { return }
+        host?.receivedFileLinkClick(href, from: message.webView)
     }
 }

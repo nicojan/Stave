@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var importCoordinator: ImportCoordinator?
     /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
     private var pageEvents: PageEventsRouter?
+    /// Links and files from other apps that arrived before launch completed (decision 7); see `AppDelegate+Links.swift`.
+    let pendingLinks = PendingLinks()
 
     /// The default quit handler would refuse with a sheet up, and the first-run sheet cannot be dismissed, so ours ends the sheets first.
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -60,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.shortcuts = environment.workspaceShortcuts
             menuState.compactMode = environment.compactMode
             menuState.searchEngine = environment.searchEngine
+            menuState.externalLinks = environment.externalLinks
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
             let router = PageEventsRouter(
                 environment: environment, controllers: { [weak self] in self?.controllers ?? [] },
@@ -83,6 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controllers.first?.show()
         NSApp.activate(ignoringOtherApps: true)
+        observeDefaultBrowser()
+        openPendingLinks()
     }
 
     /// Stave stays open with no windows, as Safari, Chrome and Firefox do (decision 31). The last window closed stays in the saved set until
@@ -327,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    private func open(_ state: WindowState, environment: AppEnvironment) throws -> BrowserWindowController {
+    func open(_ state: WindowState, environment: AppEnvironment) throws -> BrowserWindowController {
         let controller = try BrowserWindowController(
             state: state, environment: environment,
             onNewWindow: { [weak self] in self?.newWindow() },

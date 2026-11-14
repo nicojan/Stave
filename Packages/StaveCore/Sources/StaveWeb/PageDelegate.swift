@@ -13,6 +13,9 @@ public enum QuestionAnswer: Sendable {
 @MainActor public protocol PageEvents: AnyObject {
     /// Nil: refused (opener gone). When `webView` is given, the app adopts it (`PageHost.adopt`) before returning.
     func openLinkedTab(opener: UUID, url: String, select: Bool, webView: WKWebView?) -> UUID?
+    /// A clicked `file:` link inside the opener tab's opened-file grant that opens a new tab (⌘-click, `target=_blank`; decision 6): a new tab
+    /// below the opener loads `file` through the opened-file path (`PageHost.loadFile`). The delegate has already checked the grant.
+    func openLinkedFile(opener: UUID, file: URL, select: Bool)
     /// "Open Link in New Window" from the link menu: a new window with the link as its selected tab, on the opener tab's profile and
     /// workspace (a private opener gets a new private window). The URL is already judged. No web view is made for WebKit.
     func openLinkInNewWindow(opener: UUID, url: String)
@@ -104,6 +107,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     private weak var ownEvents: PageEvents?
     /// The URL of the main-frame navigation last allowed, for failures whose error names no URL.
     private var pendingURL: URL?
+    /// Every load failure WebKit delivered, shown or not. Tests wait on it to know a late failure has arrived before checking for silence.
+    private(set) var deliveredLoadFailures: [NSError] = []
     /// The latest external-app hand-off, kept so tests can wait for it.
     var externalTask: Task<Void, Never>?
     /// One external-app question at a time: a page clicking a `mailto:` link by script in a loop would
@@ -150,9 +155,11 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     /// The policy decision and link disposition for a navigation a page makes. A link that opens a new
     /// tab is judged as a main frame, whatever frame it was clicked in.
-    static func decision(for url: String, isMainFrame: Bool, userGesture: Bool, modifiers: NSEvent.ModifierFlags, targetsNewWindow: Bool) -> (NavigationDecision, LinkDisposition) {
+    /// `grantedFolder` is the tab's opened-file grant; it applies only to a link that opens in this tab (the grant is the tab's own).
+    static func decision(for url: String, isMainFrame: Bool, userGesture: Bool, modifiers: NSEvent.ModifierFlags, targetsNewWindow: Bool, grantedFolder: String? = nil) -> (NavigationDecision, LinkDisposition) {
         let disposition = LinkDisposition.decide(command: modifiers.contains(.command), shift: modifiers.contains(.shift), targetsNewWindow: targetsNewWindow)
-        let decision = NavigationPolicy.decide(url, isMainFrame: isMainFrame || disposition != .current, source: .page(userGesture: userGesture))
+        let grant = disposition == .current && !targetsNewWindow ? grantedFolder : nil
+        let decision = NavigationPolicy.decide(url, isMainFrame: isMainFrame || disposition != .current, source: .page(userGesture: userGesture, grantedFolder: grant))
         return (decision, disposition)
     }
 
@@ -189,6 +196,16 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         return .loadFailed(host: host, message: error.localizedDescription)
     }
 
+    /// WebKit's failure for a main-frame load outside the web process's read access ("Ignoring request to load this main resource because it
+    /// is outside the sandbox"), seen on macOS 27 as domain `WebKitInternal`, code 0, with no URL.
+    /// Matched only while a file page is committed (`currentURL` is a file URL) in a tab with a grant, and only for an error that names no
+    /// failing URL: `WebKitInternal`/0 is WebKit's generic internal error, so on a web page, or naming a URL, it still shows its panel.
+    static func isOutsideReadAccess(_ error: Error, grantedFolder: String?, currentURL: URL?) -> Bool {
+        let error = error as NSError
+        guard grantedFolder != nil, currentURL?.isFileURL == true, error.domain == "WebKitInternal", error.code == 0 else { return false }
+        return error.userInfo[NSURLErrorFailingURLErrorKey] == nil && error.userInfo[NSURLErrorFailingURLStringErrorKey] == nil
+    }
+
     /// A safe, unused file name in `directory`. Check-then-use: if a file appears there before WebKit
     /// writes, WebKit fails the download rather than overwriting it.
     static func destination(for suggestedFilename: String, in directory: URL) -> URL {
@@ -212,6 +229,16 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         if opensHere, page.restorePending {
             return decideRestore(url, page: page)
         }
+        if opensHere, let pending = page.pendingOpenedFile {
+            page.pendingOpenedFile = nil
+            if OpenedFile.path(ofFileURL: url) == pending { return decideOpenedFile(url, page: page) }
+        }
+        if opensHere, let dropped = droppedFile(url, page: page) {
+            // WebKit's own navigation to a file dropped on the page: it loads through the opened-file path instead (decision 6).
+            Task { @MainActor [weak host, tabID] in host?.loadFile(dropped, in: tabID) }
+            return .cancel
+        }
+        if let linked = decideNewTabFileLink(navigation, page: page) { return linked }
 
         // Ruling R11: a `data:` link marked as a download is saved, never rendered, so the policy's
         // refusal of a data: page doesn't apply. Without the flag, data: stays refused.
@@ -222,7 +249,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             isMainFrame: navigation.isMainFrame,
             userGesture: Self.hasUserGesture(navigation.type),
             modifiers: navigation.type == .linkActivated ? navigation.modifiers : [],
-            targetsNewWindow: targetsNewWindow
+            targetsNewWindow: targetsNewWindow,
+            grantedFolder: page.grantedFolder
         )
         switch decision {
         case .refuse(let failure):
@@ -247,12 +275,46 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// The navigation a restored `interactionState` starts is judged as restored (ruling R7).
     private func decideRestore(_ url: String, page: LivePage) -> WKNavigationActionPolicy {
         page.restorePending = false
-        guard NavigationPolicy.decide(url, isMainFrame: true, source: .restored) == .allow else {
+        if case .refuse(let failure) = NavigationPolicy.decide(url, isMainFrame: true, source: .restored) {
+            page.status.failure = failure ?? .refused(url: url)
+            return .cancel
+        }
+        allowMainFrame(url, page: page)
+        return .allow
+    }
+
+    /// The navigation `PageHost.loadFile` started, judged as the opened file against the tab's grant.
+    private func decideOpenedFile(_ url: String, page: LivePage) -> WKNavigationActionPolicy {
+        guard let folder = page.grantedFolder, NavigationPolicy.decide(url, isMainFrame: true, source: .openedFile(grantedFolder: folder)) == .allow else {
             page.status.failure = .refused(url: url)
             return .cancel
         }
         allowMainFrame(url, page: page)
         return .allow
+    }
+
+    /// A clicked `file:` link that opens a new tab (⌘-click, ⇧⌘-click, `target=_blank`) from a tab with an opened-file grant (decision 6):
+    /// inside the grant the new tab opens it through the opened-file path, as a same-tab click opens in place; outside it this tab shows the
+    /// refused panel, as a same-tab click does. Nil for anything else (no grant, not a click, not `file:`, opens here), which the policy judges.
+    private func decideNewTabFileLink(_ navigation: NavigationRequest, page: LivePage) -> WKNavigationActionPolicy? {
+        guard navigation.type == .linkActivated, let folder = page.grantedFolder, URLScheme.scheme(of: navigation.url) == "file" else { return nil }
+        let modifiers = navigation.modifiers
+        let disposition = LinkDisposition.decide(command: modifiers.contains(.command), shift: modifiers.contains(.shift), targetsNewWindow: navigation.targetsNewWindow)
+        guard case .newTab(let select) = disposition else { return nil }
+        guard OpenedFile.isInside(navigation.url, grantedFolder: folder), let file = URL(string: navigation.url) else {
+            page.status.failure = .refused(url: navigation.url)
+            return .cancel
+        }
+        events?.openLinkedFile(opener: tabID, file: file, select: select)
+        return .cancel
+    }
+
+    /// The HTML file just dropped on this page, when `url` is WebKit's navigation to it; nil otherwise (a script's `file:` navigation, a
+    /// drop the page handled itself, a file that isn't HTML).
+    private func droppedFile(_ url: String, page: LivePage) -> URL? {
+        guard URLScheme.scheme(of: url) == "file", let webView = page.webView as? PageWebView,
+              let dropped = webView.takeDroppedFile(matching: url), OpenedFile.isHTML(dropped) else { return nil }
+        return dropped
     }
 
     /// Content blocking follows the site being opened, before its load starts (ruling R6).
@@ -298,7 +360,12 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     }
 
     private func loadFailed(_ error: Error) {
-        guard let page, !page.isClosed, let failure = Self.failure(for: error, fallbackURL: pendingURL) else { return }
+        deliveredLoadFailures.append(error as NSError)
+        guard let page, !page.isClosed else { return }
+        // WebKit's own drop of a `file:` navigation outside the opened file's read access, which names no URL and never reached `decide`. A
+        // user's click on such a link already shows the refused panel (`PageHost.receivedFileLinkClick`); anything else stays silent.
+        if Self.isOutsideReadAccess(error, grantedFolder: page.grantedFolder, currentURL: page.webView.url) { return }
+        guard let failure = Self.failure(for: error, fallbackURL: pendingURL) else { return }
         page.status.failure = failure
     }
 

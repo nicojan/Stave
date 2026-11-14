@@ -62,6 +62,16 @@ final class PageEventsRouter: PageEvents {
         return controller(for: tab)?.openLinkedTab(opener: tab, url: url, select: select, webView: webView)
     }
 
+    /// A file link from an opened file (decision 6): the window that owns the opener tab, private or not, opens it below that tab.
+    func openLinkedFile(opener: UUID, file: URL, select: Bool) {
+        let tab = popups.openerTab(of: opener)
+        if let owner = privateController(for: tab) {
+            owner.openLinkedFile(opener: tab, file: file, select: select)
+        } else {
+            controller(for: tab)?.openLinkedFile(opener: tab, file: file, select: select)
+        }
+    }
+
     /// "Open Link in New Window": from a pop-up the opener is its opener tab. A private page's link opens a new private window, never a
     /// browser window; any other, a new browser window on the opener tab's window's profile and workspace.
     func openLinkInNewWindow(opener: UUID, url: String) {

@@ -28,7 +28,10 @@ func dump(_ element: AXUIElement) {
 guard CommandLine.arguments.count == 2 else { fail("usage: ax-dump.swift <process name>") }
 guard AXIsProcessTrusted() else { fail("Accessibility permission is missing for this terminal") }
 let name = CommandLine.arguments[1]
-guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name }) else { fail("no process named \(name)") }
+// The shown name or the executable name, so "Stave" also finds the Debug build, which shows as "Stave Debug" (plan 5, decision 8).
+guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name || $0.executableURL?.lastPathComponent == name }) else {
+    fail("no process named \(name)")
+}
 let root = AXUIElementCreateApplication(app.processIdentifier)
 guard let window = (attribute(root, kAXWindowsAttribute) as? [AXUIElement])?.first else { fail("no window for \(name)") }
 dump(window)

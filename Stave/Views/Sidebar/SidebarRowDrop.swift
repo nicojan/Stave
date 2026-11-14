@@ -49,10 +49,12 @@ struct RowDropDelegate: DropDelegate {
     }
 
     func validateDrop(info: DropInfo) -> Bool {
-        if case .item? = drag.livePayload { true } else { false }
+        if drag.isFileDrop(info) { return true }
+        if case .item? = drag.livePayload { return true } else { return false }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        if drag.isFileDrop(info) { return DropProposal(operation: .copy) }
         let found = accepted(info)
         drag.hover(found?.target, owner: AnyHashable(row.id))
         return DropProposal(operation: found == nil ? .forbidden : .move)
@@ -61,6 +63,7 @@ struct RowDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(row.id)) }
 
     func performDrop(info: DropInfo) -> Bool {
+        if drag.isFileDrop(info) { return drag.openFileDrop(info) }
         guard let found = accepted(info) else { drag.end(); return false }
         let expected = drag.written
         drag.end()

@@ -26,6 +26,7 @@
 		46130092B92463BE21483B0E /* BrowserWindowController+PageEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */; };
 		4980113BEC7EF77EB2BA1F9E /* AddressField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4301C5F96EF73A0EDEC6288D /* AddressField.swift */; };
 		49C5205452A55B2C1DC15B18 /* StaveCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3A214511A6FDDB04ECC1D28 /* StaveCore */; };
+		4A0F6C433CEFC7B23DB88079 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = D54B15920F1B487CB29841C8 /* InfoPlist.strings */; };
 		4A6E8FB8ED8CC65D780164AD /* FirstRunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C81BBB8D6BF636D5428804CE /* FirstRunView.swift */; };
 		551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA666D30161B07E7A47C1BF /* EssentialsGrid.swift */; };
 		616C13F8718E2365EC357D6A /* SidebarPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */; };
@@ -53,6 +54,7 @@
 		C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */; };
 		D19182FC2DFF3D88D75AFA34 /* StaveWeb in Frameworks */ = {isa = PBXBuildFile; productRef = B02055879054269311A54DBA /* StaveWeb */; };
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
+		F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -70,6 +72,7 @@
 		4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSwitcher.swift; sourceTree = "<group>"; };
 		4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+PageEvents.swift"; sourceTree = "<group>"; };
 		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
+		5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Links.swift"; sourceTree = "<group>"; };
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopupWindowController.swift; sourceTree = "<group>"; };
 		72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopover.swift; sourceTree = "<group>"; };
@@ -78,6 +81,7 @@
 		81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagePrompts.swift; sourceTree = "<group>"; };
 		867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBarView.swift; sourceTree = "<group>"; };
 		8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPresenter.swift; sourceTree = "<group>"; };
+		95FBC22188EEA92B26C9E0CF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		995508A5262708F8EE5364E3 /* AppMenuState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuState.swift; sourceTree = "<group>"; };
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorePageWriter.swift; sourceTree = "<group>"; };
@@ -159,6 +163,7 @@
 			children = (
 				E79D6741E6C447D1CC2AEA5A /* AppDelegate.swift */,
 				D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */,
+				5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */,
 				1A0D6DB917EEE0EB7FA619D6 /* AppDelegate+Menus.swift */,
 				DECA69864B612986E62E0EF5 /* AppDelegate+Private.swift */,
 				65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */,
@@ -264,9 +269,18 @@
 				DB1ED1C2442C79A2AE0927F4 /* Info.plist */,
 				7ED2F2159BFD4065D57C6AFE /* Stave.entitlements */,
 				3B685D946852CE5994D9CEE8 /* App */,
+				E1B843D5724DFC258557E2D7 /* Resources */,
 				4F00580C9F6DAB4D6B661354 /* Views */,
 			);
 			path = Stave;
+			sourceTree = "<group>";
+		};
+		E1B843D5724DFC258557E2D7 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D54B15920F1B487CB29841C8 /* InfoPlist.strings */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -277,6 +291,7 @@
 			buildConfigurationList = 045C031C9F0BCD6283920846 /* Build configuration list for PBXNativeTarget "Stave" */;
 			buildPhases = (
 				27ED83C883175D7DD06AB1F3 /* Sources */,
+				AC19A9AD7B8DC2921D5ECDE3 /* Resources */,
 				727671AE8497F74637AD1130 /* Frameworks */,
 			);
 			buildRules = (
@@ -325,6 +340,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		AC19A9AD7B8DC2921D5ECDE3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A0F6C433CEFC7B23DB88079 /* InfoPlist.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		27ED83C883175D7DD06AB1F3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -332,6 +358,7 @@
 			files = (
 				4980113BEC7EF77EB2BA1F9E /* AddressField.swift in Sources */,
 				A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */,
+				F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */,
 				081DCB873719179C85209EA5 /* AppDelegate+Menus.swift in Sources */,
 				BA7DF77FC8649611C87D872A /* AppDelegate+Private.swift in Sources */,
 				0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */,
@@ -378,6 +405,17 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		D54B15920F1B487CB29841C8 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				95FBC22188EEA92B26C9E0CF /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		007F767F2C61A9527BBC4799 /* Release */ = {
@@ -531,6 +569,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = InfoPlist.strings;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Stave/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

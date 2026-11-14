@@ -43,3 +43,9 @@ targets:
         # Application Support/Stave-debug.
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Stave.debug
+        # Debug shows as "Stave Debug" in the default-browser list and Finder, so it can't be picked for the Release build by mistake
+        # (plan 5, decision 8). The bundle ID, product name and executable stay as they are. Launch Services shows CFBundleDisplayName only
+        # when the unlocalized value matches the bundle's file name (Info.plist: $(PRODUCT_NAME)) and LSHasLocalizedDisplayName is set; the
+        # name it shows then comes from en.lproj/InfoPlist.strings, which only Debug copies (Release excludes it below).
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: InfoPlist.strings

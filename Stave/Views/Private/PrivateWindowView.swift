@@ -25,6 +25,7 @@ struct PrivateWindowView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .fileDrop(actions.openDroppedFile)
         .overlay { commandBarLayer }
     }
 

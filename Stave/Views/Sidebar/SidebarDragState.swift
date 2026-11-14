@@ -30,6 +30,22 @@ final class SidebarDragState {
     /// Who set the indicator, so a view that is left after the next one was entered does not clear the newer indicator.
     @ObservationIgnored private var owner: AnyHashable?
 
+    /// Opens an HTML file dragged in from another app (Finder) and dropped on the sidebar (decision 6). Set by the window controller; nil
+    /// where file drops aren't taken.
+    @ObservationIgnored var openDroppedFile: (@MainActor @Sendable (URL) -> Void)?
+
+    /// A drag from outside the sidebar that carries files: the sidebar's drop targets take it as an opened file, so a file dropped on a row or
+    /// a workspace button acts as one dropped anywhere else on the window.
+    func isFileDrop(_ info: DropInfo) -> Bool {
+        openDroppedFile != nil && livePayload == nil && info.hasItemsConforming(to: [.fileURL])
+    }
+
+    /// Opens the drop's first HTML file (`FileDrop`). False when there is nothing to open.
+    func openFileDrop(_ info: DropInfo) -> Bool {
+        guard let open = openDroppedFile else { return false }
+        return FileDrop.openFirstHTML(info.itemProviders(for: [.fileURL]), open: open)
+    }
+
     /// True while a tab or folder row is dragged (not a workspace button).
     var isDraggingTab: Bool {
         if case .item(.tab)? = payload { true } else { false }
@@ -212,9 +228,10 @@ struct FixedDropDelegate: DropDelegate {
         return item
     }
 
-    func validateDrop(info: DropInfo) -> Bool { item() != nil }
+    func validateDrop(info: DropInfo) -> Bool { drag.isFileDrop(info) || item() != nil }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
+        if drag.isFileDrop(info) { return DropProposal(operation: .copy) }
         let allowed = item() != nil
         drag.hover(allowed ? target : nil, owner: AnyHashable(String(describing: target)))
         return DropProposal(operation: allowed ? .move : .forbidden)
@@ -223,6 +240,7 @@ struct FixedDropDelegate: DropDelegate {
     func dropExited(info: DropInfo) { drag.leave(owner: AnyHashable(String(describing: target))) }
 
     func performDrop(info: DropInfo) -> Bool {
+        if drag.isFileDrop(info) { return drag.openFileDrop(info) }
         guard let item = item() else { drag.end(); return false }
         let expected = drag.written
         drag.end()

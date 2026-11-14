@@ -1,6 +1,7 @@
 import ChorusEngine
 import Observation
 import SwiftUI
+import UniformTypeIdentifiers
 import StaveCore
 import StaveWeb
 
@@ -15,6 +16,11 @@ final class PageViewState {
 struct PageAreaActions {
     var reload: () -> Void
     var back: () -> Void
+    /// "Open Again" on a stored or restored file tab (decision 6).
+    var openAgain: () -> Void
+    /// An HTML file dropped anywhere on the window where no page takes it (the sidebar, a blank tab, no tab; `FileDrop`). Nil where drops
+    /// aren't taken.
+    var openDroppedFile: (@MainActor @Sendable (URL) -> Void)?
 }
 
 /// The content area: the selected tab's live page, the "showing in another window" snapshot, a blank tab, or no selection.
@@ -24,6 +30,7 @@ struct PageArea: View {
     let state: PageViewState
     let actions: PageAreaActions
 
+    @ViewBuilder
     var body: some View {
         if let tab = model.selectedTab {
             if case .elsewhere = model.placement {
@@ -67,7 +74,7 @@ struct PageContentView: View {
                 progressBar
             }
             if let failure = page.status.failure {
-                PageFailureView(failure: failure, canGoBack: page.status.canGoBack, reload: actions.reload, back: actions.back)
+                PageFailureView(failure: failure, canGoBack: page.status.canGoBack, hasDocument: page.webView.url != nil, reload: actions.reload, back: actions.back, openAgain: actions.openAgain)
             }
         }
         .ignoresSafeArea()
@@ -114,5 +121,53 @@ struct ElsewhereView: View {
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
         .ignoresSafeArea()
+    }
+}
+
+/// HTML files dropped on a window (decision 6). Over a live page the web view takes the drag itself (`PageWebView`); the sidebar's drop
+/// targets take a file drag from another app (`SidebarDragState.openDroppedFile`); `fileDrop` on the window's root view catches the rest.
+@MainActor
+enum FileDrop {
+    /// Reads every dropped file URL and opens the first HTML file (`OpenedFile.firstHTML`). A drop with no file URL is not taken.
+    static func openFirstHTML(_ providers: [NSItemProvider], open: @escaping @MainActor @Sendable (URL) -> Void) -> Bool {
+        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !files.isEmpty else { return false }
+        let collected = Collected(count: files.count, open: open)
+        for (index, provider) in files.enumerated() {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                Task { @MainActor in collected.add(url, at: index) }
+            }
+        }
+        return true
+    }
+
+    /// The drop's URLs in drop order, opened once every provider has answered.
+    @MainActor
+    private final class Collected: Sendable {
+        private var urls: [URL?]
+        private var answered = 0
+        private let open: @MainActor @Sendable (URL) -> Void
+
+        init(count: Int, open: @escaping @MainActor @Sendable (URL) -> Void) {
+            urls = Array(repeating: nil, count: count)
+            self.open = open
+        }
+
+        func add(_ url: URL?, at index: Int) {
+            urls[index] = url
+            answered += 1
+            guard answered == urls.count, let file = OpenedFile.firstHTML(urls.compactMap { $0 }) else { return }
+            open(file)
+        }
+    }
+}
+
+extension View {
+    /// Takes an HTML file dropped where nothing inside takes it (decision 6).
+    func fileDrop(_ open: (@MainActor @Sendable (URL) -> Void)?) -> some View {
+        onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard let open else { return false }
+            return FileDrop.openFirstHTML(providers, open: open)
+        }
     }
 }

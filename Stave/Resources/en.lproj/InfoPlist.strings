@@ -1,0 +1,2 @@
+/* Debug builds only (project.yml excludes this file from Release): the name Finder and the default-browser list show (plan 5, decision 8). */
+"CFBundleDisplayName" = "Stave Debug";

@@ -92,6 +92,11 @@ public final class LivePage {
     /// navigated in it since: it may not download (walkthrough fix 2), so a reopened page can't save a file with no click.
     @ObservationIgnored public private(set) var awaitsUserAction = false
     @ObservationIgnored var lastShownAt: Date
+    /// The folder (or the file alone) this tab's opened file may read, set by `PageHost.loadFile`. In memory only, never stored: a user-clicked
+    /// `file:` link inside it opens (decision 6).
+    @ObservationIgnored public internal(set) var grantedFolder: String?
+    /// The resolved path of the file `PageHost.loadFile` just started loading: its navigation is judged as `.openedFile`.
+    @ObservationIgnored var pendingOpenedFile: String?
 
     init(request: PageRequest, webView: WKWebView, writer: PageWriter, isContentBlockingOn: Bool, now: @escaping () -> Date) {
         tabID = request.tabID
@@ -153,8 +158,8 @@ public final class LivePage {
             holdsWrites = false
             return false
         }
-        guard NavigationPolicy.decide(current, isMainFrame: true, source: .restored) == .allow else {
-            status.failure = .refused(url: current)
+        if case .refuse(let failure) = NavigationPolicy.decide(current, isMainFrame: true, source: .restored) {
+            status.failure = failure ?? .refused(url: current)
             return true
         }
         holdsWrites = false

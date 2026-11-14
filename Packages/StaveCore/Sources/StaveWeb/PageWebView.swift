@@ -109,6 +109,27 @@ public final class PageWebView: WKWebView {
         return super.goForward()
     }
 
+    // MARK: Dropped files
+
+    /// The files of the last drop on the page and when it came. WebKit opens a dropped file the page didn't take as a main-frame `file:`
+    /// navigation; `PageDelegate` matches that navigation against this to send an HTML file through the opened-file path (decision 6).
+    private var droppedFiles: (urls: [URL], at: Date)?
+
+    override public func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let files = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? []
+        droppedFiles = files.isEmpty ? nil : (files, now())
+        return super.performDragOperation(sender)
+    }
+
+    /// The dropped file `url` names, when a drop came within `newTabChoiceLifetime`. At most once per drop.
+    func takeDroppedFile(matching url: String) -> URL? {
+        defer { droppedFiles = nil }
+        guard let droppedFiles, now().timeIntervalSince(droppedFiles.at) <= Self.newTabChoiceLifetime,
+              let path = OpenedFile.path(ofFileURL: url) else { return nil }
+        return droppedFiles.urls.first { OpenedFile.resolved($0).path == path }
+    }
+
     // MARK: The link menu
 
     /// What the link menu chose, when the new view WebKit is asking for comes from it. At most once per choice.

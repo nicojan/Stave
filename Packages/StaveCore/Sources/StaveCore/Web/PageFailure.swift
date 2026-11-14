@@ -1,5 +1,7 @@
 public enum PageFailure: Sendable, Equatable {
     case refused(url: String)
+    /// A stored or restored `file:` tab: refused like any address Stave won't open, with "Open Again" (decision 6).
+    case fileNotReopened(url: String)
     case noAppForLink(url: String)
     case loadFailed(host: String, message: String)
     case insecure(host: String)
@@ -10,7 +12,7 @@ public enum PageFailure: Sendable, Equatable {
 public enum PageText {
     public static func title(_ f: PageFailure) -> String {
         switch f {
-        case .refused: "Stave won't open this address"
+        case .refused, .fileNotReopened: "Stave won't open this address"
         case .noAppForLink: "No app can open this link"
         case .loadFailed: "Stave couldn't open this page"
         case .insecure: "This connection isn't private"
@@ -21,6 +23,7 @@ public enum PageText {
     public static func detail(_ f: PageFailure) -> String {
         switch f {
         case .refused(let url): "Stave only opens web addresses. It won't open \(url)."
+        case .fileNotReopened(let url): "Stave doesn't open files again by itself. Choose Open Again to open \(url)."
         case .noAppForLink(let url): "Nothing on this Mac is set up to open \(url)."
         case .loadFailed(_, let message): message
         case .insecure(let host): "Stave can't confirm that \(host) is the site it says it is, so it didn't open it."
@@ -44,6 +47,21 @@ public enum PageText {
     public static let elsewhereTitle = "This tab is open in another window"
     public static let bringHereButton = "Bring It Here"
     public static let reloadButton = "Reload"
+    public static let openAgainButton = "Open Again"
+
+    /// The panel offers "Open Again" (in place of Reload) only for a stored or restored file tab.
+    public static func offersOpenAgain(_ f: PageFailure) -> Bool {
+        if case .fileNotReopened = f { true } else { false }
+    }
+    /// The panel offers Reload except in place of Open Again, and for a refused address in a tab with nothing loaded (`hasDocument` false:
+    /// a refused link from another app, a refused typed address in a blank tab), where Reload could only refuse it again.
+    public static func offersReload(_ f: PageFailure, hasDocument: Bool) -> Bool {
+        switch f {
+        case .fileNotReopened: false
+        case .refused: hasDocument
+        case .noAppForLink, .loadFailed, .insecure, .crashed: true
+        }
+    }
     public static let backButton = "Back"
     public static let okButton = "OK"
     public static let cancelButton = "Cancel"

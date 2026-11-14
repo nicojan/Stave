@@ -321,9 +321,12 @@ public final class BrowserWindowModel: CommandBarWindow {
 
     // MARK: - Tabs
 
-    /// Opens a tab at the edge the `newTabEdge` setting names, in this workspace, and selects it.
-    public func openTab(url: String, origin: NewTabOrigin = .commandBar, containerID: UUID? = nil) {
-        if let created = createTab(url: url, origin: origin, containerID: containerID) { select(created.id) }
+    /// Opens a tab at the edge the `newTabEdge` setting names, in this workspace, and selects it. Nil when the store refused it.
+    @discardableResult
+    public func openTab(url: String, origin: NewTabOrigin = .commandBar, containerID: UUID? = nil) -> UUID? {
+        guard let created = createTab(url: url, origin: origin, containerID: containerID) else { return nil }
+        select(created.id)
+        return created.id
     }
 
     /// A link that opens a new tab (target=_blank, window.open, middle-click). It lands by the opener's placement rule and is selected only
