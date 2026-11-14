@@ -37,15 +37,18 @@ final class AppEnvironment {
     let popups = PopupRegistry()
     /// The one queue of camera and microphone questions, shown by whichever window shows the asking tab.
     let mediaQuestions = MediaQuestionCenter()
+    /// The rolling copies of the database in `<data folder>/Backups/`, started after launch maintenance.
+    let backups: DatabaseBackups
 
     /// Opens (creating if needed) the database and makes sure a profile exists, then runs the launch maintenance and, when asked, seeds
-    /// the sample. Throws `StoreError.newerSchema` without touching the file when the data was written by a newer Stave.
+    /// the sample, then starts the rolling backups. Throws `StoreError.newerSchema` without touching the file when the data was written
+    /// by a newer Stave, and `StoreError.backupFailed`, also without touching it, when the copy before a migration couldn't be made.
     init(dataDirectory: URL, arcHome: URL, seedSample: Bool) throws {
         try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
         if arcHome.lastPathComponent == LaunchArguments.isolatedArcHomeName, arcHome.deletingLastPathComponent().standardizedFileURL == dataDirectory.standardizedFileURL {
             try FileManager.default.createDirectory(at: arcHome, withIntermediateDirectories: true)
         }
-        let database = try StaveDatabase.open(at: StavePaths.databaseFile(in: dataDirectory))
+        let database = try StaveDatabase.open(at: StavePaths.databaseFile(in: dataDirectory), backupBeforeMigrating: true)
         let store = OrganizationStore(database: database)
         _ = try store.ensureDefaultProfile()
         try store.launchMaintenance()
@@ -93,6 +96,14 @@ final class AppEnvironment {
         // Lists that compile after pages were made are attached to them, taking effect from each page's next load.
         blocker.onReady = { [weak host] in host?.reattachRuleLists() }
         blocker.start()
+        let backups = DatabaseBackups(
+            database: database,
+            folder: dataDirectory.appendingPathComponent(BackupPolicy.folderName, isDirectory: true),
+            now: Date.init
+        )
+        backups.onFailure = { NSLog("Stave: could not back up the data: \($0)") }
+        self.backups = backups
+        backups.start()
     }
 
     /// The system Safari's version, so the user agent never claims a newer Safari than this Mac's WebKit; nil when it can't be read.

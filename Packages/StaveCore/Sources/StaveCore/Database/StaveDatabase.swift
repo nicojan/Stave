@@ -13,11 +13,19 @@ public final class StaveDatabase: Sendable {
 
     /// Creates the folder, opens the file in WAL mode and runs migrations.
     /// A file carrying migrations this build does not know is refused before anything is written.
-    public static func open(at fileURL: URL) throws -> StaveDatabase {
+    /// With `backupBeforeMigrating`, a file that already existed, has migrations applied and is missing a known one is first copied to
+    /// `<file's folder>/Backups/` as a pre-migration copy (after the newer-schema refusal, before the migration). If that copy fails,
+    /// open throws `StoreError.backupFailed` and the file is untouched. The copy runs synchronously, before launch shows any window,
+    /// because the migration must wait for it. The app passes `true`; tests and tools keep the default.
+    public static func open(at fileURL: URL, backupBeforeMigrating: Bool = false) throws -> StaveDatabase {
         let fileManager = FileManager.default
         let folder = fileURL.deletingLastPathComponent()
         if fileManager.fileExists(atPath: fileURL.path) {
-            try refuseIfNewer(fileURL)
+            let applied = try refuseIfNewer(fileURL)
+            let known = makeMigrator().migrations
+            if backupBeforeMigrating, !applied.isEmpty, !Set(known).isSubset(of: applied) {
+                try copyBeforeMigrating(fileURL)
+            }
         } else {
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         }
@@ -34,17 +42,38 @@ public final class StaveDatabase: Sendable {
     // MARK: - Newer-schema guard
 
     /// Opening a `DatabasePool` can write (journal-mode switch, WAL setup), so the check uses a separate
-    /// read-only connection that never touches the main file.
-    private static func refuseIfNewer(_ fileURL: URL) throws {
-        var readOnly = Configuration()
-        readOnly.readonly = true
-        let queue = try DatabaseQueue(path: fileURL.path, configuration: readOnly)
+    /// read-only connection that never touches the main file. Returns the applied migration identifiers.
+    private static func refuseIfNewer(_ fileURL: URL) throws -> Set<String> {
+        let queue = try readOnlyQueue(fileURL)
         defer { try? queue.close() }
         let known = Set(makeMigrator().migrations)
         let applied = try queue.read { db in
             try makeMigrator().appliedIdentifiers(db)
         }
-        if !Set(applied).isSubset(of: known) { throw StoreError.newerSchema }
+        if !applied.isSubset(of: known) { throw StoreError.newerSchema }
+        return applied
+    }
+
+    // MARK: - Pre-migration copy
+
+    private static func copyBeforeMigrating(_ fileURL: URL) throws {
+        let backups = fileURL.deletingLastPathComponent().appendingPathComponent(BackupPolicy.folderName, isDirectory: true)
+        do {
+            let queue = try readOnlyQueue(fileURL)
+            defer { try? queue.close() }
+            _ = try DatabaseBackups.copy(
+                from: queue, to: backups, kind: .premigration, excludedTables: BackupPolicy.excludedTables, now: Date()
+            )
+        } catch {
+            NSLog("Stave: could not back up the data before updating it: \(error)")
+            throw StoreError.backupFailed
+        }
+    }
+
+    private static func readOnlyQueue(_ fileURL: URL) throws -> DatabaseQueue {
+        var readOnly = Configuration()
+        readOnly.readonly = true
+        return try DatabaseQueue(path: fileURL.path, configuration: readOnly)
     }
 
     // MARK: - Migrations

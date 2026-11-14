@@ -7,4 +7,5 @@ public enum StoreError: Error, Equatable {
     case lastProfile
     case containerInUse
     case notPinned
+    case backupFailed
 }

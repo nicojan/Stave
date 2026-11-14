@@ -541,6 +541,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .critical
         if let storeError = error as? StoreError, storeError == .newerSchema {
             alert.messageText = "This copy of Stave is older than the one that last used your data. Install the newest Stave to open it."
+        } else if let storeError = error as? StoreError, storeError == .backupFailed {
+            alert.messageText = StoreErrorText.message(for: storeError)
         } else {
             alert.messageText = "Stave could not open its data."
             alert.informativeText = "\(error)"
