@@ -9,6 +9,7 @@ struct SettingsView: View {
     let compactMode: CompactModeSetting?
     let searchEngine: SearchEngineSetting?
     let externalLinks: ExternalLinkSetting?
+    let historyRetention: HistoryRetentionSetting?
     let isDefaultBrowser: Bool
     let makeDefaultBrowser: () -> Void
     let refreshDefaultBrowser: () -> Void
@@ -46,7 +47,14 @@ struct SettingsView: View {
                 }
                 .accessibilityLabel(SearchEngineSetting.title)
             }
-            if shortcuts == nil && compactMode == nil && searchEngine == nil && externalLinks == nil {
+            // Task 12 moves this into the General pane.
+            if let historyRetention {
+                Picker(HistoryRetention.settingTitle, selection: Binding(get: { historyRetention.retention }, set: { historyRetention.set($0) })) {
+                    ForEach(HistoryRetention.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .accessibilityLabel(HistoryRetention.settingTitle)
+            }
+            if shortcuts == nil && compactMode == nil && searchEngine == nil && externalLinks == nil && historyRetention == nil {
                 Text(PageChromeText.dataNotOpen).foregroundStyle(.secondary)
             }
         }

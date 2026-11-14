@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.compactMode = environment.compactMode
             menuState.searchEngine = environment.searchEngine
             menuState.externalLinks = environment.externalLinks
+            menuState.historyRetention = environment.historyRetention
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
             let router = PageEventsRouter(
                 environment: environment, controllers: { [weak self] in self?.controllers ?? [] },
@@ -241,6 +242,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func showArchive() {
         guard let controller = keyController, allowed(.showArchive, on: controller) else { return }
         controller.sidebarPresenter.openArchive(.menu)
+    }
+
+    /// History ▸ Show All History (⌘Y): the History view in place of the key browser window's page, or back to the page.
+    func showAllHistory() {
+        guard keyPrivate == nil, let controller = keyController, allowed(.showHistory, on: controller) else { return }
+        controller.model.toggleHistory()
+    }
+
+    /// History ▸ Clear History…: asks for the range on the key browser window, then clears that window's profile's history.
+    func clearHistory() {
+        guard keyPrivate == nil, let controller = keyController, allowed(.showHistory, on: controller) else { return }
+        controller.promptClearHistory()
     }
 
     /// File ▸ Import from Arc…: on the key browser window (else the front one). One import at a time; an open one is brought forward.

@@ -99,7 +99,7 @@ extension PrivateWindowModel: CommandBarWindow {
         case .search(let query):
             guard let engine = searchEngine else { return .chooseSearchEngine }
             open(typed: engine.searchURL(for: query), mode: mode, target: target)
-        case .tab, .archived, .workspace, .action:
+        case .tab, .archived, .workspace, .action, .history:
             break
         }
         return .done

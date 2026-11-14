@@ -33,6 +33,10 @@ final class AppMenuState {
     var isBusy = false
     /// View ▸ Back, Forward, Reload Page and Stop for the key window's shown page.
     var pageMenu = PageMenuState.disabled
+    /// History ▸ Show All History and Clear History…: a free browser window is key (`HistoryText.isShowAllHistoryEnabled`).
+    var canShowHistory = false
+    /// Nil until the store is open.
+    var historyRetention: HistoryRetentionSetting?
     /// Debug ▸ Crash Page Process: a page is shown and WebKit has the method.
     var canCrashPage = false
     func isEnabled(_ command: MenuCommand) -> Bool { MenuCommandGate.isEnabled(command, busy: isBusy) }

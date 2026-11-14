@@ -12,6 +12,8 @@ final class FakeWriter: PageWriter {
     enum Call: Equatable {
         case navigation(tabID: UUID, url: String, title: String, faviconURL: String?)
         case interactionState(tabID: UUID, hasData: Bool)
+        case visit(profileID: UUID, url: String)
+        case visitTitle(profileID: UUID, url: String, title: String)
     }
 
     var calls: [Call] = []
@@ -24,6 +26,18 @@ final class FakeWriter: PageWriter {
 
     func writeInteractionState(tabID: UUID, _ state: Data?) {
         calls.append(.interactionState(tabID: tabID, hasData: state != nil))
+    }
+
+    func recordVisit(profileID: UUID, url: String, title: String, at: Date) {
+        calls.append(.visit(profileID: profileID, url: url))
+    }
+
+    func updateVisitTitle(profileID: UUID, url: String, title: String) {
+        calls.append(.visitTitle(profileID: profileID, url: url, title: title))
+    }
+
+    var visits: [Call] {
+        calls.filter { if case .visit = $0 { true } else { false } }
     }
 
     var stateWrites: Int {
@@ -291,6 +305,85 @@ struct PageHostTests {
         let written = FakeWriter.Call.navigation(tabID: page.tabID, url: "https://example.com/", title: "Hello", faviconURL: "https://example.com/favicon.ico")
         #expect(try await waitUntil { page.status.title == "Hello" && writer.calls.contains(written) })
         #expect(page.status.url == "https://example.com/")
+        host.close(page.tabID)
+    }
+
+    // MARK: History
+
+    /// Review Focus 4: a private page (no `siteSettingsProfileID`) commits and records no visit; the same page with a profile records one,
+    /// and its title follows.
+    @Test func privateVisitsNeverStored() async throws {
+        let host = makeHost()
+        let privatePage = host.page(for: request(url: ""), writer: writer)
+        #expect(try await loadLocal(privatePage, html: "<title>Secret</title>", base: "https://example.com/"))
+        #expect(try await waitUntil { privatePage.status.title == "Secret" })
+        #expect(privatePage.commitCount == 1)
+        #expect(!writer.calls.contains { if case .visit = $0 { true } else if case .visitTitle = $0 { true } else { false } })
+        host.close(privatePage.tabID)
+
+        let profile = UUID()
+        var normal = request(url: "")
+        normal.siteSettingsProfileID = profile
+        let page = host.page(for: normal, writer: writer)
+        #expect(try await loadLocal(page, html: "<title>Public</title>", base: "https://example.org/"))
+        #expect(writer.visits == [.visit(profileID: profile, url: "https://example.org/")])
+        #expect(try await waitUntil { writer.calls.contains(.visitTitle(profileID: profile, url: "https://example.org/", title: "Public")) })
+        host.close(page.tabID)
+    }
+
+    /// A single-page site's in-page navigation (pushState, then a new document.title) never renames the visit the commit recorded: the
+    /// title window of a visit ends at the document's first same-document URL change.
+    @Test func sameDocumentChangeEndsVisitTitle() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        var normal = request(url: "")
+        normal.siteSettingsProfileID = profile
+        let page = host.page(for: normal, writer: writer)
+        #expect(try await loadLocal(page, html: "<title>Home</title>", base: "https://example.com/"))
+        #expect(try await waitUntil { writer.calls.contains(.visitTitle(profileID: profile, url: "https://example.com/", title: "Home")) })
+
+        _ = try await page.webView.evaluateJavaScript("history.pushState({}, '', '/article/1'); 1")
+        #expect(try await waitUntil { page.status.url == "https://example.com/article/1" })
+        _ = try await page.webView.evaluateJavaScript("document.title = 'Article 1'; 1")
+        // The new title reached the page (and the tab's own write), so a visit write, had there been one, has happened too.
+        #expect(try await waitUntil { page.status.title == "Article 1" })
+        try await Task.sleep(for: .milliseconds(200))
+        let titles = writer.calls.compactMap { call -> String? in
+            if case .visitTitle(_, "https://example.com/", let title) = call { title } else { nil }
+        }
+        #expect(titles == ["Home"])
+        #expect(writer.visits == [.visit(profileID: profile, url: "https://example.com/")])
+        host.close(page.tabID)
+    }
+
+    /// A tab Stave loads by itself (restored at launch, shown again after hibernation) records no visit until the user acts on it.
+    @Test func restoredTabCommitNotRecorded() async throws {
+        let host = makeHost()
+        host.testRuleLists = [try await blockAllRuleList()] // the stored address never reaches the network
+        let profile = UUID()
+        var stored = request(url: "https://example.com/stored")
+        stored.siteSettingsProfileID = profile
+        let page = host.page(for: stored, writer: writer)
+        #expect(page.awaitsUserAction)
+        page.webView.loadSimulatedRequest(URLRequest(url: try #require(URL(string: "https://example.com/again"))), responseHTML: "<title>Again</title>")
+        #expect(try await waitUntil { page.commitCount >= 1 && page.webView.url?.absoluteString == "https://example.com/again" && !page.webView.isLoading })
+        #expect(writer.visits.isEmpty)
+
+        page.userActed()
+        page.webView.loadSimulatedRequest(URLRequest(url: try #require(URL(string: "https://example.net/clicked"))), responseHTML: "<title>Clicked</title>")
+        #expect(try await waitUntil { writer.visits == [.visit(profileID: profile, url: "https://example.net/clicked")] })
+        host.close(page.tabID)
+    }
+
+    /// Only http and https commits are visits: a local `about:blank` document is not.
+    @Test func blankDocumentIsNoVisit() async throws {
+        let host = makeHost()
+        var normal = request(url: "")
+        normal.siteSettingsProfileID = UUID()
+        let page = host.page(for: normal, writer: writer)
+        page.webView.loadHTMLString("<title>Blank</title>", baseURL: nil)
+        #expect(try await waitUntil { page.commitCount >= 1 && !page.webView.isLoading })
+        #expect(writer.visits.isEmpty)
         host.close(page.tabID)
     }
 

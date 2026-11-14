@@ -22,10 +22,16 @@ final class AppEnvironment {
     let searchEngine: SearchEngineSetting
     /// "Open links from other apps in", for Settings; writing it bumps `revision`.
     let externalLinks: ExternalLinkSetting
+    /// "Remove history items", for Settings; the launch and daily trims read it.
+    let historyRetention: HistoryRetentionSetting
+    /// Trims history once a day while Stave runs (launch maintenance does the first).
+    private var historyTrim: Task<Void, Never>?
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
     let arcHome: URL
     /// Every page's website data store; never `WKWebsiteDataStore.default()`.
     let webStores: WebDataStores
+    /// Clear History's "Also remove cookies and website data", over `webStores`.
+    let websiteDataRemover: WebsiteDataRemover
     let contentBlocker: ContentBlockerManager
     /// The live pages of every window, keyed by tab.
     let pageHost: PageHost
@@ -80,11 +86,15 @@ final class AppEnvironment {
         let externalLinks = ExternalLinkSetting(store: store, revision: revision)
         externalLinks.onSaveError = { NSLog("Stave: could not save where links from other apps open: \($0)") }
         self.externalLinks = externalLinks
+        let retention = HistoryRetentionSetting(store: store, revision: revision)
+        retention.onSaveError = { NSLog("Stave: could not save how long history is kept: \($0)") }
+        self.historyRetention = retention
         let writer = StorePageWriter(store: store, revision: revision)
         self.pageWriter = writer
         self.downloads = DownloadList()
         let webStores = WebDataStores()
         self.webStores = webStores
+        self.websiteDataRemover = WebsiteDataRemover(stores: webStores)
         let blocker = ContentBlockerManager()
         self.contentBlocker = blocker
         let host = PageHost(
@@ -109,6 +119,23 @@ final class AppEnvironment {
         backups.onFailure = { NSLog("Stave: could not back up the data: \($0)") }
         self.backups = backups
         backups.start()
+        startDailyHistoryTrim()
+    }
+
+    /// Every `HistoryRetention.trimInterval` until the process ends, history rows older than the setting go (decision 9).
+    private func startDailyHistoryTrim() {
+        let store = store
+        historyTrim = Task.detached(priority: .utility) {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(HistoryRetention.trimInterval))
+                guard !Task.isCancelled else { return }
+                do {
+                    try store.trimHistoryBySetting()
+                } catch {
+                    NSLog("Stave: could not trim history: \(error)")
+                }
+            }
+        }
     }
 
     /// The system Safari's version, so the user agent never claims a newer Safari than this Mac's WebKit; nil when it can't be read.

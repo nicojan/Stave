@@ -37,6 +37,23 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
         }
     }
 
+    /// History is not shown in the sidebar, so a visit bumps no revision.
+    func recordVisit(profileID: UUID, url: String, title: String, at date: Date) {
+        do {
+            try store.recordVisit(profileID: profileID, url: url, title: title, at: date)
+        } catch {
+            NSLog("Stave: could not save a visit to history: \(error)")
+        }
+    }
+
+    func updateVisitTitle(profileID: UUID, url: String, title: String) {
+        do {
+            try store.updateVisitTitle(profileID: profileID, url: url, title: title)
+        } catch {
+            NSLog("Stave: could not save a visited page's title: \(error)")
+        }
+    }
+
     func decision(profileID: UUID, host: String, key: SiteSettingKey) -> SiteDecision? {
         do {
             return try store.siteDecision(profileID: profileID, host: host, key: key)
@@ -60,4 +77,6 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
 final class DiscardingPageWriter: PageWriter {
     func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) {}
     func writeInteractionState(tabID: UUID, _ state: Data?) {}
+    func recordVisit(profileID: UUID, url: String, title: String, at date: Date) {}
+    func updateVisitTitle(profileID: UUID, url: String, title: String) {}
 }

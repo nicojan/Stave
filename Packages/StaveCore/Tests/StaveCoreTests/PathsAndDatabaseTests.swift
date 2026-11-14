@@ -21,10 +21,11 @@ struct PathsAndDatabaseTests {
         let tables = try database.writer.read { db in
             try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
         }
-        for name in ["profile", "workspace", "folder", "slot", "tab", "container", "archivedTab", "windowState", "setting", "importRecord", "siteSetting"] {
+        for name in ["profile", "workspace", "folder", "slot", "tab", "container", "archivedTab", "windowState", "setting", "importRecord", "siteSetting", "historyVisit"] {
             #expect(tables.contains(name), "missing table \(name)")
         }
-        #expect(database.schemaVersion == 4)
+        #expect(database.schemaVersion == StaveDatabase.makeMigrator().migrations.count)
+        #expect(StaveDatabase.makeMigrator().migrations.last == "v5")
     }
 
     /// Every slot shape the schema must refuse, inserted directly (bypassing the store), each hitting a CHECK constraint.

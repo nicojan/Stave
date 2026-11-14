@@ -38,6 +38,24 @@ extension OrganizationStore {
         }
     }
 
+    /// The persistent website data stores of a profile: its own first, then its containers' (name, creation order), whether or not a
+    /// window has opened them. Clear History's "Also remove cookies and website data" empties exactly these; another profile's stores and a
+    /// private session's (which has no row) are never listed.
+    public func websiteDataStoreIDs(profileID: UUID) throws -> [UUID] {
+        try database.writer.read { db in
+            guard let profile = try Profile.fetchOne(db, key: profileID) else { throw StoreError.notFound }
+            return [profile.dataStoreID] + (try Self.containerStoreIDs(profileID: profileID, in: db))
+        }
+    }
+
+    private static func containerStoreIDs(profileID: UUID, in db: Database) throws -> [UUID] {
+        try Container
+            .filter(Column("profileID") == profileID)
+            .order(Column("name"), Column("rowid"))
+            .fetchAll(db)
+            .map(\.dataStoreID)
+    }
+
     // MARK: - Profile deletion
 
     /// Deletes the profile and, by cascade, its workspaces, slots, tabs, folders, containers, archive and window states.
@@ -47,11 +65,7 @@ extension OrganizationStore {
         try database.writer.write { db in
             guard let profile = try Profile.fetchOne(db, key: id) else { throw StoreError.notFound }
             guard try Profile.fetchCount(db) > 1 else { throw StoreError.lastProfile }
-            let containerStores = try Container
-                .filter(Column("profileID") == id)
-                .order(Column("name"), Column("rowid"))
-                .fetchAll(db)
-                .map(\.dataStoreID)
+            let containerStores = try Self.containerStoreIDs(profileID: id, in: db)
             _ = try profile.delete(db)
             return [profile.dataStoreID] + containerStores
         }

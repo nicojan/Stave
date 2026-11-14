@@ -40,6 +40,15 @@ public final class BrowserWindowModel: CommandBarWindow {
     public var frame: String
     /// The compact-mode setting as last read; every window re-reads it with the rest of the store when the revision changes.
     public private(set) var isCompact = false
+    /// The History view, while it shows in place of the page (decision 9). In memory only: not part of `windowState`.
+    public private(set) var history: HistoryBrowser?
+    public var isShowingHistory: Bool { history != nil }
+    /// Where the keyboard should go next: the History view's search field when ⌘Y shows it, the page when the view closes. Nil until the
+    /// first request. The controller and views honour it; the serial makes each request new.
+    public private(set) var focusRequest: WindowFocusRequest?
+    @ObservationIgnored private var focusSerial = 0
+    /// Set by the app: removes website data for Clear History's "Also remove cookies and website data".
+    @ObservationIgnored public weak var websiteData: WebsiteDataRemoving?
 
     /// The page host, told about closed, unloaded and deselected tabs. Weak: the app owns both.
     @ObservationIgnored public weak var pages: PageLifecycle?
@@ -190,6 +199,7 @@ public final class BrowserWindowModel: CommandBarWindow {
     /// Selects the tab, marks it active and claims its live page. `nil` clears the selection and releases the claim.
     public func select(_ tabID: UUID?) {
         guard let tabID else { clearSelection(); return }
+        hideHistory() // even the tab already selected: clicking it returns to its page
         guard Self.allTabs(in: snapshot).contains(where: { $0.id == tabID }) else {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
@@ -200,6 +210,14 @@ public final class BrowserWindowModel: CommandBarWindow {
         livePages.show(tabID, in: windowID)
         if let previous { pages?.tabDeselected(previous) }
         perform { try store.markActive(tabID: tabID) }
+    }
+
+    /// A click on a sidebar row. The list selects through `sidebarHighlight`, whose change never fires for the row already highlighted, so
+    /// the sidebar also reports each click here: a tab row is selected, which closes the History view even for the selected tab. A folder
+    /// row only opens or closes, so the view stays.
+    public func clickSidebarRow(_ item: SidebarItemID) {
+        guard case .tab(let id) = item else { return }
+        select(id)
     }
 
     /// Takes the selected tab's live page from the window that shows it.
@@ -224,6 +242,7 @@ public final class BrowserWindowModel: CommandBarWindow {
             lastError = StoreErrorText.message(for: StoreError.notFound)
             return
         }
+        hideHistory()
         aim(at: target)
         dropSelectionUnlessEssential()
         reload()
@@ -256,6 +275,7 @@ public final class BrowserWindowModel: CommandBarWindow {
             return
         }
         lastSwitchDirection = 0
+        hideHistory() // history is per profile
         profileID = id // the old workspace is not in the new profile, so `reload()` lands on its first workspace
         dropSelectionUnlessEssential()
         reload()
@@ -574,7 +594,9 @@ public final class BrowserWindowModel: CommandBarWindow {
     /// `target` is the tab a `.currentTab` address change applies to (the bar captures it when it opens); with no target it is the selected tab.
     /// A target that no longer exists gets a new tab instead.
     public func perform(_ result: CommandResult, mode: CommandBarMode, target: UUID? = nil) -> CommandOutcome {
+        if case .action = result {} else { hideHistory() } // a page, tab or workspace takes the content area back
         switch result {
+        case .history(let visit): open(url: visit.url, mode: mode, target: target)
         case .open(let url): open(url: url, mode: mode, target: target)
         case .search(let query): return search(query, mode: mode, target: target)
         case .tab(let found):
@@ -637,6 +659,70 @@ public final class BrowserWindowModel: CommandBarWindow {
         case .setContentBlocking(let on, _): return .setContentBlocking(on: on)
         }
         return .done
+    }
+
+    // MARK: - History
+
+    /// History ▸ Show All History (⌘Y): shows the History view in place of the page, or returns to the page when it shows.
+    public func toggleHistory() {
+        if isShowingHistory { hideHistory() } else { showHistory() }
+    }
+
+    /// Shows the view and asks for its search field, whatever held the focus before.
+    public func showHistory() {
+        guard history == nil else { return }
+        history = HistoryBrowser(store: store, profileID: snapshot.profile.id)
+        requestFocus(.historySearch)
+    }
+
+    /// Leaves the view and gives the keyboard back to the page, as Safari does. Nothing showing: nothing changes.
+    public func hideHistory() {
+        guard history != nil else { return }
+        history = nil
+        requestFocus(.page)
+    }
+
+    private func requestFocus(_ target: WindowFocusTarget) {
+        focusSerial += 1
+        focusRequest = WindowFocusRequest(target: target, serial: focusSerial)
+    }
+
+    /// Return or double-click in the History view: leaves the view and opens the visit in the selected tab (a new tab with none), through
+    /// the typed path, so the navigation policy judges it and the user opened it.
+    public func openVisit(_ visit: HistoryVisit) {
+        hideHistory()
+        open(url: visit.url, mode: .currentTab, target: nil)
+    }
+
+    /// History ▸ Clear History…: removes this profile's visits in `range` (history rows only) off the main thread, then refreshes the History
+    /// view if it shows. With `alsoWebsiteData`, it also removes the website data modified in the range from every persistent store of the
+    /// profile (its own and its containers'; never another profile's, never a private session's). Each failure is logged and shown.
+    public func clearHistory(_ range: HistoryClearRange, alsoWebsiteData: Bool, now: Date = Date(), calendar: Calendar = .current) async {
+        let store = store
+        let profileID = snapshot.profile.id
+        let since = range.since(now: now, calendar: calendar)
+        let cleared = await Task.detached { Result { try store.clearHistory(profileID: profileID, since: since) } }.value
+        switch cleared {
+        case .success: lastError = nil
+        case .failure(let error):
+            NSLog("Stave: could not clear history: \(error)")
+            lastError = StoreErrorText.message(for: error)
+        }
+        history?.reload()
+        guard alsoWebsiteData else { return }
+        await removeWebsiteData(profileID: profileID, since: since ?? .distantPast)
+    }
+
+    private func removeWebsiteData(profileID: UUID, since: Date) async {
+        let store = store
+        do {
+            guard let remover = websiteData else { throw StoreError.notFound }
+            let storeIDs = try await Task.detached { try store.websiteDataStoreIDs(profileID: profileID) }.value
+            try await remover.removeWebsiteData(storeIDs: storeIDs, since: since)
+        } catch {
+            NSLog("Stave: could not remove website data while clearing history: \(error)")
+            lastError = HistoryText.websiteDataNotRemoved
+        }
     }
 
     public func windowWillClose() { livePages.windowClosed(windowID) }

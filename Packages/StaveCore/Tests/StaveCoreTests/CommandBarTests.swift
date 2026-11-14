@@ -90,17 +90,81 @@ struct CommandBarTests {
 
     @Test func kindOrderBreaksScoreTies() {
         let workspace = Workspace(profileID: UUID(), name: "Docs space", icon: "", colorHex: "#FFFFFF", sortIndex: 0)
-        let found = candidates(tabs: ["Docs tab"], archived: ["Docs old"], workspaces: [workspace], actions: [.newWindow])
+        var found = candidates(tabs: ["Docs tab"], archived: ["Docs old"], workspaces: [workspace], actions: [.newWindow])
+        found.history = [HistoryVisit(profileID: UUID(), url: "https://example.net/d", title: "Docs visited", visitedAt: Date())]
         let results = CommandBarSearch.results(query: "doc", candidates: found)
         #expect(results.dropFirst().map { r -> String in
             switch r {
             case .tab: "tab"
             case .workspace: "workspace"
             case .action: "action"
+            case .history: "history"
             case .archived: "archived"
             default: "other"
             }
-        } == ["tab", "workspace", "archived"])
+        } == ["tab", "workspace", "history", "archived"])
+    }
+
+    /// Decision 9: history ranks after open tabs and before archived tabs, newest first among equals.
+    @Test func historyRanksAfterOpenTabs() {
+        let now = Date()
+        var found = candidates(tabs: ["Garden tab"], archived: ["Garden archived"])
+        found.history = [
+            HistoryVisit(profileID: UUID(), url: "https://example.net/new", title: "Garden newer", visitedAt: now),
+            HistoryVisit(profileID: UUID(), url: "https://example.net/old", title: "Garden older", visitedAt: now.addingTimeInterval(-60)),
+        ]
+        let titles = CommandBarSearch.results(query: "garden", candidates: found).dropFirst().map { r -> String in
+            switch r {
+            case .tab(let t): t.tab.title
+            case .history(let v): v.title
+            case .archived(let a): a.title
+            default: "other"
+            }
+        }
+        #expect(titles == ["Garden tab", "Garden newer", "Garden older", "Garden archived"])
+        let row = CommandRows.row(for: .history(found.history[0]), currentWorkspaceID: nil, engine: nil)
+        #expect(row.icon == .history)
+        #expect(row.title == "Garden newer")
+        #expect(row.secondary == "example.net")
+        #expect(row.accessibilityLabel == "Garden newer, history")
+    }
+
+    /// Plan 4's carried "blank New Tab rows": a blank tab lists after every tab with an address, and after every history and archived match.
+    @Test func blankTabsRankLast() {
+        let slot = UUID()
+        let blank = CommandTab(tab: Tab(slotID: slot, url: "", title: ""), section: .regular, workspaceID: nil, workspaceName: nil)
+        let older = CommandTab(tab: Tab(slotID: slot, url: "https://example.com/n", title: "Older"), section: .regular, workspaceID: nil, workspaceName: nil)
+        var found = CommandCandidates(tabs: [blank, older], archived: [ArchivedTab(profileID: UUID(), url: "https://example.org/n", title: "News archived")])
+        found.history = [HistoryVisit(profileID: UUID(), url: "https://example.net/n", title: "News visited", visitedAt: Date())]
+        #expect(CommandBarSearch.results(query: "", candidates: found) == [.tab(older), .tab(blank)])
+        let typed = CommandBarSearch.results(query: "new", candidates: found).dropFirst()
+        #expect(typed.last == .tab(blank))
+        #expect(typed.count == 3)
+    }
+
+    @Test func candidatesCarryHistoryNewestFirstOncePerAddress() throws {
+        let world = try makeWorld()
+        let start = world.clock.date
+        try world.store.recordVisit(profileID: world.profile.id, url: "https://example.com/a", title: "A", at: start)
+        try world.store.recordVisit(profileID: world.profile.id, url: "https://example.com/b", title: "B", at: start.addingTimeInterval(60))
+        try world.store.recordVisit(profileID: world.profile.id, url: "https://example.com/a", title: "A", at: start.addingTimeInterval(3 * 3600))
+        let found = try world.store.commandCandidates(profileID: world.profile.id)
+        #expect(found.history.map(\.url) == ["https://example.com/a", "https://example.com/b"])
+        let limited = try world.store.commandCandidates(profileID: world.profile.id, historyLimit: 1)
+        #expect(limited.history.count == 1)
+    }
+
+    @Test func performHistoryOpensItsAddress() throws {
+        let world = try makeWorld()
+        let first = try world.tab("first")
+        let model = try world.window(selected: first.id)
+        let visit = HistoryVisit(profileID: world.profile.id, url: "https://example.net/v", title: "V", visitedAt: Date())
+        var typed: [String] = []
+        model.loadTyped = { _, url in typed.append(url); return false }
+        #expect(model.perform(.history(visit), mode: .newTab) == .done)
+        #expect(model.selectedTab?.url == "https://example.net/v")
+        #expect(model.selectedTabID != first.id)
+        #expect(typed == ["https://example.net/v"]) // through the typed path: the policy judges it and the user opened it
     }
 
     @Test func urlMatchesRankBelowTitleMatches() {

@@ -3,7 +3,8 @@ import GRDB
 
 /// The single SQLite store (WAL) behind every Stave record.
 public final class StaveDatabase: Sendable {
-    public static let schemaVersion = 4
+    /// The number of migrations this build knows; derived, so adding a migration can't leave it stale.
+    public static let schemaVersion = makeMigrator().migrations.count
     public var schemaVersion: Int { Self.schemaVersion }
 
     private let pool: DatabasePool
@@ -84,7 +85,20 @@ public final class StaveDatabase: Sendable {
         migrator.registerMigration("v2", migrate: createSettingTable)
         migrator.registerMigration("v3", migrate: createImportRecordTable)
         migrator.registerMigration("v4", migrate: createSiteSettingTable)
+        migrator.registerMigration("v5", migrate: createHistoryVisitTable)
         return migrator
+    }
+
+    private static func createHistoryVisitTable(_ db: Database) throws {
+        try db.create(table: "historyVisit") { t in
+            t.primaryKey("id", .blob)
+            t.column("profileID", .blob).notNull().references("profile", onDelete: .cascade)
+            t.column("url", .text).notNull()
+            t.column("title", .text).notNull()
+            t.column("visitedAt", .datetime).notNull()
+            t.column("modifiedAt", .datetime).notNull()
+        }
+        try db.create(index: "historyVisit_on_profileID_visitedAt", on: "historyVisit", columns: ["profileID", "visitedAt"])
     }
 
     private static func createSiteSettingTable(_ db: Database) throws {

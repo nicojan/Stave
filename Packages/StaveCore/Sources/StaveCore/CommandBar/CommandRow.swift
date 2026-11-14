@@ -2,7 +2,7 @@ import Foundation
 
 /// Which icon a command-bar row shows. The view maps it to a picture; the choice is made here.
 public enum CommandRowIcon: Equatable, Sendable {
-    case open, search, tab, archived, action
+    case open, search, tab, archived, action, history
     case workspace(WorkspaceIcon)
 
     /// The SF Symbol name for the kinds that use one; nil for a workspace that shows an emoji.
@@ -12,6 +12,7 @@ public enum CommandRowIcon: Equatable, Sendable {
         case .search: "magnifyingglass"
         case .tab: "rectangle.on.rectangle"
         case .archived: "archivebox"
+        case .history: "clock"
         case .action: "command"
         case .workspace(.symbol(let name)): name
         case .workspace(.emoji): nil
@@ -67,6 +68,8 @@ public enum CommandRows {
         case .archived(let archived):
             let title = DisplayText.title(title: archived.title, url: archived.url)
             return row(.archived, title, secondary: CommandBarText.archivedSecondary, kind: "archived tab")
+        case .history(let visit):
+            return row(.history, HistoryText.rowTitle(visit), secondary: HistoryText.rowAddress(visit), kind: "history")
         case .workspace(let workspace):
             return row(.workspace(WorkspaceIcon(stored: workspace.icon)), workspace.name, secondary: nil, kind: "workspace")
         case .action(let action):

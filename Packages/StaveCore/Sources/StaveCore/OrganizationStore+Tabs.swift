@@ -130,9 +130,15 @@ extension OrganizationStore {
         }
     }
 
-    /// Run once at launch: trims the archive to the last 30 days.
+    /// Run once at launch: trims the archive to the last 30 days, and history by the "Remove history items" setting (history rows only;
+    /// never a tab or archived tab). A history trim that fails is logged and launch goes on; the next daily trim tries again.
     public func launchMaintenance() throws {
         _ = try trimArchive(olderThan: 30)
+        do {
+            try trimHistoryBySetting()
+        } catch {
+            NSLog("Stave: could not trim history at launch: \(error)")
+        }
     }
 
     // MARK: - Reading

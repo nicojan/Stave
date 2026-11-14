@@ -27,13 +27,15 @@ public struct PageSite: Equatable, Sendable {
 public struct CommandCandidates: Equatable, Sendable {
     public var tabs: [CommandTab]
     public var archived: [ArchivedTab]
+    /// Recent visits, one per address, newest first.
+    public var history: [HistoryVisit]
     public var workspaces: [Workspace]
     public var actions: [CommandAction]
     /// The selected page's site, when the window shows a live web page.
     public var pageSite: PageSite?
 
-    public init(tabs: [CommandTab] = [], archived: [ArchivedTab] = [], workspaces: [Workspace] = [], actions: [CommandAction] = [], pageSite: PageSite? = nil) {
-        self.tabs = tabs; self.archived = archived; self.workspaces = workspaces; self.actions = actions; self.pageSite = pageSite
+    public init(tabs: [CommandTab] = [], archived: [ArchivedTab] = [], history: [HistoryVisit] = [], workspaces: [Workspace] = [], actions: [CommandAction] = [], pageSite: PageSite? = nil) {
+        self.tabs = tabs; self.archived = archived; self.history = history; self.workspaces = workspaces; self.actions = actions; self.pageSite = pageSite
     }
 }
 
@@ -66,6 +68,8 @@ public enum CommandAction: Equatable, Sendable {
 
 public enum CommandResult: Equatable, Sendable {
     case open(url: String), search(query: String), tab(CommandTab), archived(ArchivedTab), workspace(Workspace), action(CommandAction)
+    /// A page from history; it opens through the typed path, so the navigation policy judges it and the user opened it.
+    case history(HistoryVisit)
 }
 
 public enum CommandOutcome: Equatable, Sendable {

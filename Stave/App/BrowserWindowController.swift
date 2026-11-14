@@ -72,7 +72,9 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         model.loadTyped = { [weak self] tabID, url in self?.loadTyped(url, in: tabID) ?? false }
         observeRevision()
         observePage()
+        observeFocusRequest()
         showSelected()
+        model.websiteData = environment.websiteDataRemover
     }
 
     // MARK: - Window
@@ -87,7 +89,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             reload: { [weak self] in self?.reloadPage() },
             back: { [weak self] in self?.goBack() },
             openAgain: { [weak self] in self?.openAgain() },
-            openDroppedFile: { [weak self] file in self?.openFile(file, origin: .commandBar) }
+            openDroppedFile: { [weak self] file in self?.openFile(file, origin: .commandBar) },
+            clearHistory: { [weak self] in self?.promptClearHistory() }
         )
         sidebarPresenter.drag.openDroppedFile = pageActions.openDroppedFile
         let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, pageHost: environment.pageHost, downloads: environment.downloads, pageViewState: pageViewState, pageActions: pageActions, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }))
@@ -206,6 +209,35 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
                 self.showSelected()
                 self.observePage()
             }
+        }
+    }
+
+    /// Honours the model's focus requests (the History view's search field, or the page when the view closes). Re-arms itself after each.
+    private func observeFocusRequest() {
+        withObservationTracking {
+            _ = model.focusRequest
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, !self.isClosed else { return }
+                if let request = self.model.focusRequest { self.honour(request) }
+                self.observeFocusRequest()
+            }
+        }
+    }
+
+    /// `.historySearch`: the window first takes the keyboard from whatever holds it (a sidebar list, a web view), which SwiftUI's focus
+    /// can't always take on its own, then the History view focuses its field. `.page`: the selected tab's web view, once it is back in the
+    /// window; with no page (a blank tab, no selection, the tab shown elsewhere) the focus stays where it is.
+    private func honour(_ request: WindowFocusRequest) {
+        switch request.target {
+        case .historySearch:
+            focusTask?.cancel()
+            window.makeFirstResponder(nil)
+            pageViewState.historySearchFocus = request.serial
+        case .page:
+            showSelected() // a newly selected tab's page may not be made yet; this is what `observePage` would do next anyway
+            guard let id = model.selectedTabID, model.placement == .here, environment.pageHost.existingPage(id) != nil else { return }
+            focusPage(id)
         }
     }
 

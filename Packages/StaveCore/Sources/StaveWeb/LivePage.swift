@@ -54,6 +54,10 @@ public struct PageRequest: Sendable, Equatable {
 public protocol PageWriter: AnyObject {
     @MainActor func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?)
     @MainActor func writeInteractionState(tabID: UUID, _ state: Data?)
+    /// A visit to a web page committed (decision 9). Never called for a private page (no `siteSettingsProfileID`).
+    @MainActor func recordVisit(profileID: UUID, url: String, title: String, at date: Date)
+    /// The page reported the title of the visit last recorded for `url`.
+    @MainActor func updateVisitTitle(profileID: UUID, url: String, title: String)
 }
 
 /// One tab's web view: KVO turns into `status` and, through the `PageRecorder`, into writes.
@@ -97,6 +101,9 @@ public final class LivePage {
     @ObservationIgnored public internal(set) var grantedFolder: String?
     /// The resolved path of the file `PageHost.loadFile` just started loading: its navigation is judged as `.openedFile`.
     @ObservationIgnored var pendingOpenedFile: String?
+    /// The address of the visit this document recorded, and the title last written for it; nil when the document is no visit.
+    @ObservationIgnored private var visitURL: String?
+    @ObservationIgnored private var visitTitle = ""
 
     init(request: PageRequest, webView: WKWebView, writer: PageWriter, isContentBlockingOn: Bool, now: @escaping () -> Date) {
         tabID = request.tabID
@@ -182,6 +189,24 @@ public final class LivePage {
         lastCommittedURL = url
         record(.committed(url: url))
         record(.stateChanged)
+        recordVisit(url)
+    }
+
+    /// History (decision 9): an http or https commit in a normal window is a visit. A private page (no profile) never records one, and
+    /// neither does a page Stave loaded by itself (a restored tab, a stored tab shown again) until the user acts on it. The title follows
+    /// in `updateVisitTitle`, once the page reports it.
+    private func recordVisit(_ url: String) {
+        visitURL = nil
+        visitTitle = ""
+        guard let profileID = siteSettingsProfileID, !awaitsUserAction, HistoryRules.isRecordable(url), let writer else { return }
+        visitURL = url
+        writer.recordVisit(profileID: profileID, url: url, title: "", at: now())
+    }
+
+    private func updateVisitTitle(_ title: String) {
+        guard let profileID = siteSettingsProfileID, let url = visitURL, !title.isEmpty, title != visitTitle, let writer else { return }
+        visitTitle = title
+        writer.updateVisitTitle(profileID: profileID, url: url, title: title)
     }
 
     /// The web content process ended. Shown as crashed; nothing is written until a new load commits.
@@ -260,8 +285,12 @@ public final class LivePage {
         recordSameDocument(url)
     }
 
+    /// A same-document URL change (pushState, a fragment) ends the recorded visit's title window: a single-page site's later titles
+    /// belong to its later addresses, never to the committed one's row. Those addresses are no visits (decision 9 records commits).
     private func recordSameDocument(_ url: String) {
         guard lastCommittedURL != nil, url != lastCommittedURL else { return }
+        visitURL = nil
+        visitTitle = ""
         lastCommittedURL = url
         record(.sameDocument(url: url))
         record(.stateChanged)
@@ -272,6 +301,7 @@ public final class LivePage {
         let title = webView.title ?? ""
         status.title = title
         record(.title(title))
+        updateVisitTitle(title)
     }
 
     private func loadingChanged() {
@@ -283,6 +313,7 @@ public final class LivePage {
         if let url = webView.url?.absoluteString, !url.isEmpty { recordSameDocument(url) }
         // A same-URL commit (reload) blanks the recorder's title; this heals it (ruling R4).
         record(.title(webView.title ?? ""))
+        updateVisitTitle(webView.title ?? "")
         record(.stateChanged)
         record(.finished)
     }

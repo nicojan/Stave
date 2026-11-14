@@ -3,8 +3,11 @@ import GRDB
 
 extension OrganizationStore {
     /// Every tab of the profile (Essentials, pinned, regular) with its workspace name, most recently active first; archived tabs newest first
-    /// up to `archiveLimit`; the profile's workspaces in order. `actions` is empty: the window adds them.
-    public func commandCandidates(profileID: UUID, archiveLimit: Int = 200) throws -> CommandCandidates {
+    /// up to `archiveLimit`; the newest visit of each address, newest first, up to `historyLimit`; the profile's workspaces in order.
+    /// `actions` is empty: the window adds them.
+    public func commandCandidates(
+        profileID: UUID, archiveLimit: Int = 200, historyLimit: Int = HistoryRules.commandBarLimit
+    ) throws -> CommandCandidates {
         try database.writer.read { db in
             let workspaces = try workspaces(profileID: profileID, in: db)
             let names = Dictionary(uniqueKeysWithValues: workspaces.map { ($0.id, $0.name) })
@@ -23,7 +26,16 @@ extension OrganizationStore {
                 .order(Column("closedAt").desc, Column("rowid").desc)
                 .limit(max(archiveLimit, 0))
                 .fetchAll(db)
-            return CommandCandidates(tabs: commandTabs, archived: archived, workspaces: workspaces, actions: [])
+            // Read with headroom for repeat addresses, then cut to one per address.
+            let visits = try HistoryVisit
+                .filter(Column("profileID") == profileID)
+                .order(Column("visitedAt").desc, Column("rowid").desc)
+                .limit(max(historyLimit, 0) * 4)
+                .fetchAll(db)
+            return CommandCandidates(
+                tabs: commandTabs, archived: archived, history: HistoryRules.onePerAddress(visits, limit: historyLimit),
+                workspaces: workspaces, actions: []
+            )
         }
     }
 }

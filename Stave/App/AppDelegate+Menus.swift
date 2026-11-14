@@ -50,8 +50,9 @@ extension AppDelegate {
             canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
             canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot),
             busy: busy,
-            pageMenu: PageMenuState.from(status: controller.shownPage.map(Self.summary(of:)), sheetOpen: busy),
-            canCrashPage: canCrash
+            pageMenu: PageMenuState.from(status: controller.shownPage.map(Self.summary(of:)), sheetOpen: busy, historyShown: model.isShowingHistory),
+            canCrashPage: canCrash,
+            canShowHistory: HistoryText.isShowAllHistoryEnabled(isPrivate: false, busy: busy)
         )
     }
 
@@ -68,6 +69,7 @@ extension AppDelegate {
         if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
         if menuState.pageMenu != menu.pageMenu { menuState.pageMenu = menu.pageMenu }
         if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
+        if menuState.canShowHistory != menu.canShowHistory { menuState.canShowHistory = menu.canShowHistory }
     }
 
     /// The menus for a key private window: only the page commands; no workspaces, tab actions or moves.
@@ -97,6 +99,8 @@ extension AppDelegate {
         var busy = false
         var pageMenu = PageMenuState.disabled
         var canCrashPage = false
+        /// False for a private window and with no browser window key (the defaults).
+        var canShowHistory = false
     }
 
     func observeKeyWindow() {

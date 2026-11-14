@@ -12,7 +12,7 @@ struct StaveApp: App {
         Settings {
             SettingsView(
                 shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine,
-                externalLinks: delegate.menuState.externalLinks, isDefaultBrowser: delegate.menuState.isDefaultBrowser,
+                externalLinks: delegate.menuState.externalLinks, historyRetention: delegate.menuState.historyRetention, isDefaultBrowser: delegate.menuState.isDefaultBrowser,
                 makeDefaultBrowser: { delegate.makeDefaultBrowser() }, refreshDefaultBrowser: { delegate.refreshDefaultBrowser() }
             )
         }
@@ -72,6 +72,13 @@ struct StaveApp: App {
                     Divider()
                     Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
                         .disabled(state.pageMenu.blockingOn == nil)
+                }
+                CommandMenu(HistoryText.menu) {
+                    Button(HistoryText.showAllHistory) { delegate.showAllHistory() }
+                        .keyboardShortcut("y", modifiers: .command)
+                        .disabled(!state.canShowHistory)
+                    Button(HistoryText.clearHistoryMenuItem) { delegate.clearHistory() }
+                        .disabled(!state.canShowHistory)
                 }
                 #if DEBUG
                 CommandMenu(PageMenuText.debugMenu) {

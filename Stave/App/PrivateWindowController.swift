@@ -315,4 +315,7 @@ extension PrivateWindowController: PageWriter {
     }
 
     func writeInteractionState(tabID: UUID, _ state: Data?) {}
+    /// A private window keeps no history (its pages carry no profile, so these are never called; they write nothing regardless).
+    func recordVisit(profileID: UUID, url: String, title: String, at date: Date) {}
+    func updateVisitTitle(profileID: UUID, url: String, title: String) {}
 }

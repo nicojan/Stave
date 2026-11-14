@@ -20,5 +20,7 @@ public enum SettingKeys {
     public static let newTabEdge = SettingKey<NewTabEdge>(name: "newTabEdge", defaultValue: .top)
     /// Where a link from another app opens (decision 7, question 14).
     public static let externalLinkTarget = SettingKey<ExternalLinkTarget>(name: "externalLinkTarget", defaultValue: .lastUsed)
+    /// "Remove history items" (decision 9, question 15): one year by default, as in Safari.
+    public static let historyRetention = SettingKey<HistoryRetention>(name: "historyRetention", defaultValue: .year)
     public static let sidebarWidth = SettingKey<Double>(name: "sidebarWidth", defaultValue: 260)
 }

@@ -142,6 +142,8 @@ struct SidebarView: View {
             setFolderOpen: { model.setFolderOpen($0, $1) }, perform: { request($0, on: $1) }
         )
         .tag(row.id)
+        // Alongside the list's own selection: a click on the row already highlighted changes no selection, yet must still leave History.
+        .simultaneousGesture(TapGesture().onEnded { model.clickSidebarRow(row.id) })
         .sidebarRowDrop(model: model, drag: drag, row: row)
     }
 

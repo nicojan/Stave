@@ -37,9 +37,9 @@ public enum BackupPolicy {
     public static let folderName = "Backups"
     /// One regular copy an hour while Stave runs.
     public static let interval: TimeInterval = 3600
-    /// Tables whose rows a copy leaves out (history and the downloads list, added by later tasks), so Clear History is never undone
-    /// by an old copy. A table that doesn't exist in the file is skipped.
-    public static let excludedTables: [String] = []
+    /// Tables whose rows a copy leaves out (history, and from Task 14 the downloads list), so Clear History is never undone by an old
+    /// copy. A table that doesn't exist in the file is skipped.
+    public static let excludedTables: [String] = ["historyVisit"]
 
     private static let prefix = "stave-"
     private static let premigrationMarker = "-premigration"

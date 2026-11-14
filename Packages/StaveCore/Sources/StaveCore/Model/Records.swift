@@ -155,3 +155,19 @@ public struct WindowState: Codable, FetchableRecord, PersistableRecord, Sendable
         self.selectedTabID = selectedTabID; self.frame = frame; self.sortIndex = sortIndex; self.modifiedAt = modifiedAt
     }
 }
+
+/// One visit to a web page (plan 5 decision 9): a main-frame commit in a normal window, never a private one. A repeat visit to the same
+/// address within `HistoryRules.mergeWindow` moves this row's time forward instead of adding one.
+public struct HistoryVisit: Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable, Equatable {
+    public var id: UUID
+    public var profileID: UUID
+    public var url: String
+    public var title: String
+    public var visitedAt: Date
+    public var modifiedAt: Date
+
+    public init(id: UUID = UUID(), profileID: UUID, url: String, title: String, visitedAt: Date, modifiedAt: Date = Date()) {
+        self.id = id; self.profileID = profileID; self.url = url; self.title = title
+        self.visitedAt = visitedAt; self.modifiedAt = modifiedAt
+    }
+}

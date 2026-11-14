@@ -10,6 +10,9 @@ import StaveWeb
 final class PageViewState {
     /// Bumped when another window's snapshot may have landed; snapshots themselves are not observable.
     var snapshotRevision = 0
+    /// Bumped by the window controller after it took the keyboard from whatever held it, so the History view focuses its search field
+    /// (the model's `.historySearch` focus request).
+    var historySearchFocus = 0
 }
 
 /// What the content area asks of its window controller.
@@ -21,6 +24,8 @@ struct PageAreaActions {
     /// An HTML file dropped anywhere on the window where no page takes it (the sidebar, a blank tab, no tab; `FileDrop`). Nil where drops
     /// aren't taken.
     var openDroppedFile: (@MainActor @Sendable (URL) -> Void)?
+    /// History ▸ Clear History…, from the History view's button. A private window has no History view and leaves it empty.
+    var clearHistory: () -> Void = {}
 }
 
 /// The content area: the selected tab's live page, the "showing in another window" snapshot, a blank tab, or no selection.
@@ -32,7 +37,10 @@ struct PageArea: View {
 
     @ViewBuilder
     var body: some View {
-        if let tab = model.selectedTab {
+        if let history = model.history {
+            // In place of the page, not a tab (decision 9); ⌘Y, a tab or a visit returns to a page.
+            HistoryView(browser: history, focusSerial: state.historySearchFocus, open: { model.openVisit($0) }, clear: actions.clearHistory)
+        } else if let tab = model.selectedTab {
             if case .elsewhere = model.placement {
                 ElsewhereView(
                     title: DisplayText.title(for: tab),

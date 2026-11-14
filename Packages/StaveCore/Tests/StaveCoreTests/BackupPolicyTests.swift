@@ -87,6 +87,6 @@ import Testing
     @Test func constants() {
         #expect(BackupPolicy.folderName == "Backups")
         #expect(BackupPolicy.interval == 3600)
-        #expect(BackupPolicy.excludedTables.isEmpty)
+        #expect(BackupPolicy.excludedTables == ["historyVisit"]) // Task 14 adds downloadRecord
     }
 }

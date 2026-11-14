@@ -33,9 +33,9 @@ public struct PageMenuState: Equatable, Sendable {
     /// The blocking toggle's state for a page at `url` whose blocking is `isOn`: nil (disabled) where blocking does not apply.
     public static func blockingState(url: String, isOn: Bool) -> Bool? { contentBlockingEnabled(url: url) ? isOn : nil }
 
-    /// No page, or a sheet over the window, disables everything.
-    public static func from(status: PageStatusSummary?, sheetOpen: Bool) -> PageMenuState {
-        guard let status, status.hasPage, !sheetOpen else { return .disabled }
+    /// No page, a sheet over the window, or the History view in place of the page disables everything: the page behind it is hidden.
+    public static func from(status: PageStatusSummary?, sheetOpen: Bool, historyShown: Bool = false) -> PageMenuState {
+        guard let status, status.hasPage, !sheetOpen, !historyShown else { return .disabled }
         return PageMenuState(
             canGoBack: status.canGoBack, canGoForward: status.canGoForward,
             canReload: true, canStop: status.isLoading, blockingOn: status.blockingOn
