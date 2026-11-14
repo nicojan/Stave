@@ -82,6 +82,17 @@ struct SidebarMenusTests {
         #expect(SidebarMenus.promptPrefill(action: .newFolderInside, currentTitle: "Old") == "")
     }
 
+    @Test func blankFolderRenameStartsEmptyWithPlaceholder() {
+        // A blank-titled folder shows "Untitled Folder"; renaming it starts empty, with that name as the placeholder (Nico, 2026-11-14).
+        let shown = SidebarLabels.folderTitle("   ")
+        #expect(SidebarMenus.promptPrefill(action: .renameFolder, currentTitle: shown) == "")
+        #expect(SidebarMenus.promptPlaceholder(action: .renameFolder, currentTitle: shown) == "Untitled Folder")
+        // Confirming the empty field cancels, so the stored blank title is kept, never replaced by "Untitled Folder".
+        #expect(SidebarMenus.folderTitle(typed: SidebarMenus.promptPrefill(action: .renameFolder, currentTitle: shown), action: .renameFolder) == nil)
+        #expect(SidebarMenus.promptPlaceholder(action: .renameFolder, currentTitle: "Old") == nil)
+        #expect(SidebarMenus.promptPlaceholder(action: .newFolder, currentTitle: "") == nil)
+    }
+
     @Test func regularRowFlag() {
         #expect(row(.regularTab).isRegular)
         #expect(!row(.pinnedTab(drifted: false)).isRegular)

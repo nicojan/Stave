@@ -34,7 +34,7 @@ struct EssentialsGrid: View {
         }
         .buttonStyle(.plain)
         .help(title)
-        .accessibilityLabel(SidebarLabels.essential(title: title))
+        .accessibilityLabel(SidebarLabels.essential(title: tab.title, url: tab.url))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .sidebarActions(SidebarMenus.actions(forEssential: tab, in: model.snapshot)) { perform($0, tab.id) }
         .modifier(EssentialTileDrop(model: model, drag: drag, tab: tab, index: index, count: essentials.count))

@@ -63,7 +63,13 @@ public enum SidebarRows {
 
 /// VoiceOver labels, one per row form. The sidebar and the by-hand VoiceOver check both read these.
 public enum SidebarLabels {
-    public static func essential(title: String) -> String { "\(title), Essential" }
+    /// An Essential's label trims the stored title like its monogram does.
+    public static func essential(title: String) -> String { "\(title.trimmingCharacters(in: .whitespacesAndNewlines)), Essential" }
+
+    /// The label for an Essential's stored title and address: the trimmed title, or what `DisplayText` shows when it trims to nothing.
+    public static func essential(title: String, url: String) -> String {
+        essential(title: DisplayText.title(title: title.trimmingCharacters(in: .whitespacesAndNewlines), url: url))
+    }
 
     public static func pinnedTab(title: String, drifted: Bool) -> String {
         drifted ? "\(title), pinned tab, away from its pinned page" : "\(title), pinned tab"

@@ -86,6 +86,7 @@ struct SidebarView: View {
             NamePromptSheet(
                 title: prompt.action.promptTitle, fieldLabel: SidebarText.folderName,
                 prefill: SidebarMenus.promptPrefill(action: prompt.action, currentTitle: prompt.currentTitle),
+                placeholder: SidebarMenus.promptPlaceholder(action: prompt.action, currentTitle: prompt.currentTitle),
                 confirmTitle: SidebarText.promptConfirm(for: prompt.action),
                 confirm: { typed in
                     model.run(prompt.action, on: prompt.item, typed: typed)

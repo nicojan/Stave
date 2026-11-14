@@ -176,9 +176,17 @@ public enum SidebarMenus {
         return action == .renameFolder ? nil : "New Folder"
     }
 
-    /// The prefilled text of the prompt: a rename starts from the current title.
+    /// The prefilled text of the prompt: a rename starts from the shown title, except a blank-titled folder (shown as "Untitled
+    /// Folder"), whose field starts empty so confirming it can't store the fallback name. A folder really named "Untitled Folder"
+    /// looks the same, and confirming its empty field cancels, so its title is kept either way.
     public static func promptPrefill(action: SidebarAction, currentTitle: String) -> String {
-        action == .renameFolder ? currentTitle : ""
+        guard action == .renameFolder, currentTitle != SidebarLabels.untitledFolder else { return "" }
+        return currentTitle
+    }
+
+    /// The field's placeholder when it isn't the field label: "Untitled Folder" while renaming a blank-titled folder.
+    public static func promptPlaceholder(action: SidebarAction, currentTitle: String) -> String? {
+        action == .renameFolder && currentTitle == SidebarLabels.untitledFolder ? SidebarLabels.untitledFolder : nil
     }
 }
 

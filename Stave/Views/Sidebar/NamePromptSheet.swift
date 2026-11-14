@@ -8,6 +8,7 @@ import StaveCore
 struct NamePromptSheet: View {
     let title: String
     let fieldLabel: String
+    let placeholder: String?
     let confirmTitle: String
     let confirm: (String) -> Void
     let cancel: () -> Void
@@ -15,15 +16,15 @@ struct NamePromptSheet: View {
     @State private var text: String
     @FocusState private var fieldFocused: Bool
 
-    init(title: String, fieldLabel: String, prefill: String = "", confirmTitle: String, confirm: @escaping (String) -> Void, cancel: @escaping () -> Void) {
-        self.title = title; self.fieldLabel = fieldLabel; self.confirmTitle = confirmTitle; self.confirm = confirm; self.cancel = cancel
+    init(title: String, fieldLabel: String, prefill: String = "", placeholder: String? = nil, confirmTitle: String, confirm: @escaping (String) -> Void, cancel: @escaping () -> Void) {
+        self.title = title; self.fieldLabel = fieldLabel; self.placeholder = placeholder; self.confirmTitle = confirmTitle; self.confirm = confirm; self.cancel = cancel
         _text = State(initialValue: prefill)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.headline).accessibilityAddTraits(.isHeader)
-            TextField(fieldLabel, text: $text)
+            TextField(placeholder ?? fieldLabel, text: $text)
                 .focused($fieldFocused)
                 .accessibilityLabel(fieldLabel)
             HStack {

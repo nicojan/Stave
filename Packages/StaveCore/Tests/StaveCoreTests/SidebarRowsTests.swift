@@ -72,6 +72,10 @@ struct SidebarRowsTests {
 
     @Test func labelsAreExact() {
         #expect(SidebarLabels.essential(title: "Mail") == "Mail, Essential")
+        // The label trims the stored title like the monogram does (Nico, 2026-11-14); a blank title falls back to the host.
+        #expect(SidebarLabels.essential(title: "  Mail \n") == "Mail, Essential")
+        #expect(SidebarLabels.essential(title: "  ", url: "https://mail.example.com/inbox") == "mail.example.com, Essential")
+        #expect(SidebarLabels.essential(title: " Mail ", url: "https://mail.example.com/") == "Mail, Essential")
         #expect(SidebarLabels.pinnedTab(title: "Docs", drifted: false) == "Docs, pinned tab")
         #expect(SidebarLabels.pinnedTab(title: "Docs", drifted: true) == "Docs, pinned tab, away from its pinned page")
         #expect(SidebarLabels.folder(title: "Reading", isOpen: true, childCount: 1) == "Reading, folder, open, 1 item")
