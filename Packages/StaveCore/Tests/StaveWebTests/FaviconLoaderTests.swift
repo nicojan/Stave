@@ -140,10 +140,13 @@ struct FaviconLoaderTests {
     /// A server that trickles one byte at a time is given up on at the timeout. Its body is a real icon, so without the timeout the load
     /// would end, much later, with an image.
     @Test func faviconSlowTrickleTimesOut() async throws {
-        FaviconStub.set("slow.example.com", .paced(FaviconFixtures.png(width: 16, height: 16), chunk: 1, every: 0.25, declareLength: true))
+        let icon = FaviconFixtures.png(width: 16, height: 16)
+        FaviconStub.set("slow.example.com", .paced(icon, chunk: 1, every: 0.25, declareLength: true))
         let started = ContinuousClock.now
         #expect(await loader(nil, timeout: 1).load("https://slow.example.com/favicon.png") == nil)
-        #expect(ContinuousClock.now - started < .seconds(8))
+        // Bounded by the whole trickle, not a fixed time: a loaded CI runner can starve the 1 s timeout for several seconds, but
+        // ending before the last byte could have arrived still proves the load gave up rather than finished.
+        #expect(ContinuousClock.now - started < .seconds(Double(icon.count) * 0.25))
         #expect(FaviconStub.bytesSent(to: "slow.example.com") > 0) // the trickle really started
     }
 
@@ -206,10 +209,13 @@ struct FaviconLoaderTests {
         let loader = loader(nil)
         loader.decode = { data in probe.slowDecode(data) }
         let load = Task { await loader.load("https://decode.example.com/favicon.png") }
-        let deadline = ContinuousClock.now + .seconds(10)
+        let deadline = ContinuousClock.now + .seconds(60)
         while !probe.started, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         try #require(probe.started)
-        let tickedDuringDecode = !probe.finished // this line runs on the main actor while the decode sleeps
+        // The decode is blocked until this main-actor code releases it, so reaching here with it unfinished proves the main actor
+        // keeps running during a decode (a decode on the main thread would block this loop until its 60 s gate timed out).
+        let tickedDuringDecode = !probe.finished
+        probe.release()
         #expect(tickedDuringDecode)
         #expect(await load.value != nil)
         #expect(probe.ranOnMain == false)
@@ -236,10 +242,13 @@ private final class DecodeProbe: Sendable {
     var finished: Bool { state.withLock { $0.finished } }
     var ranOnMain: Bool { state.withLock { $0.onMain } }
 
-    /// A decode that blocks its thread for 0.6 s, as a large image would.
+    private let gate = DispatchSemaphore(value: 0)
+    func release() { gate.signal() }
+
+    /// A decode that blocks its thread until the test releases it (at most 60 s), as a large image would.
     func slowDecode(_ data: Data) -> Data? {
         start(onMain: Thread.isMainThread)
-        Thread.sleep(forTimeInterval: 0.6)
+        _ = gate.wait(timeout: .now() + 60)
         finish()
         return FaviconLoader.scaledPNG(data)
     }
