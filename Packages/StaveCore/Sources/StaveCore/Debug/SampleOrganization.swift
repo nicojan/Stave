@@ -70,4 +70,15 @@ public enum SampleOrganization {
         _ = try tab(store, "https://wiki.example.com/handbook", "Team handbook", in: work)
         _ = try tab(store, "https://example.net/standup", "Standup notes", in: work)
     }
+
+    #if DEBUG
+    /// Debug builds only, called by the app with `-StaveSeedSample` right after `seed` wrote the sample: one regular tab in the Work workspace
+    /// whose stored address is `javascript:alert(1)`, as an Arc import could bring. The by-hand check selects it and sees it refused, never run.
+    /// Kept out of `seed` so every test of the sample stays on example.com/.org/.net.
+    public static func seedHostileStoredURL(into store: OrganizationStore) throws {
+        let profile = try store.ensureDefaultProfile()
+        guard let work = try store.workspaces(profileID: profile.id).first(where: { $0.name == "Work" }) else { return }
+        _ = try tab(store, "javascript:alert(1)", "Hostile stored address", in: work)
+    }
+    #endif
 }

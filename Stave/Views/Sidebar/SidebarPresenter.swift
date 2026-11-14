@@ -39,17 +39,33 @@ final class SidebarPresenter {
     private(set) var commandBar: CommandBarModel?
     /// False when the bar closed by presenting a sheet, alert or popover, which must keep the focus it takes.
     @ObservationIgnored private(set) var returnsFocusToList = true
+    /// Set while the bar's row is running when the row sent an address into a page: the page takes the focus, not the list (decision 14).
+    @ObservationIgnored private var pageTakesFocus = false
+    func pageWillTakeFocus() { pageTakesFocus = true }
     /// Opens a window like ⌘N. Set by the window controller.
     @ObservationIgnored var newWindow: () -> Void = {}
     /// Opens the Arc import like File ▸ Import from Arc…. Set by the window controller.
     @ObservationIgnored var importFromArc: () -> Void = {}
+    /// The shown page's site and blocking state, for the command bar's blocking action. Set by the window controller.
+    @ObservationIgnored var pageSite: () -> PageSite? = { nil }
+    /// Turns content blocking on or off for the shown page's site. Set by the window controller.
+    @ObservationIgnored var setContentBlocking: (Bool) -> Void = { _ in }
 
     /// Opens (or reopens in another mode) the command bar from the window's current state.
     func openCommandBar(_ mode: CommandBarMode, for model: BrowserWindowModel) {
         commandBar = CommandBarModel(
-            mode: mode, candidates: model.commandCandidates(), currentURL: model.selectedTab?.url,
+            mode: mode, candidates: model.commandCandidates(pageSite: pageSite()), currentURL: model.selectedTab?.url,
             currentWorkspaceID: model.snapshot.workspace.id, searchEngine: model.searchEngine,
             currentTabID: model.selectedTabID
+        )
+        returnsFocusToList = true
+    }
+
+    /// Opens the private window's bar: only the typed row (an address or a search), nothing of the store (plan 3, decision 15).
+    func openCommandBar(_ mode: CommandBarMode, for model: PrivateWindowModel) {
+        commandBar = CommandBarModel(
+            mode: mode, candidates: model.commandCandidates, currentURL: model.selectedTab?.url,
+            searchEngine: model.searchEngine, currentTabID: model.selectedTabID
         )
         returnsFocusToList = true
     }
@@ -82,12 +98,16 @@ final class SidebarPresenter {
     }
 
     /// Runs the bar's selected row. The bar closes unless it needs an engine choice; an outcome the window cannot handle is handled here.
-    func activate(in model: BrowserWindowModel) {
+    func activate(in model: CommandBarWindow) {
         guard let bar = commandBar else { return }
-        switch bar.activate(in: model) {
+        pageTakesFocus = false
+        let step = bar.activate(in: model)
+        let toPage = pageTakesFocus
+        pageTakesFocus = false
+        switch step {
         case .stay: return
         case .close(let outcome):
-            returnsFocusToList = !Self.presentsPanel(outcome)
+            returnsFocusToList = !Self.presentsPanel(outcome) && !toPage
             commandBar = nil
             handle(outcome)
         }
@@ -108,6 +128,7 @@ final class SidebarPresenter {
         case .newWindow: newWindow()
         case .newWorkspace: workspaceEditor = .create
         case .newProfile: showNewProfile = true
+        case .setContentBlocking(let on): setContentBlocking(on)
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)

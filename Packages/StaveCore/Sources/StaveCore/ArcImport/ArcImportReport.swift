@@ -41,6 +41,8 @@ public struct ArcImportReport: Equatable, Sendable {
         case favoritesFolder(folder: String)
         /// An unpinned folder imported as regular tabs (`includeUnpinnedTabs`): regular tabs have no folders.
         case unpinnedFolder(space: String, folder: String)
+        /// Once per import, when count > 0: items Arc's order didn't list, placed at the end of their folder or space.
+        case unlistedItems(count: Int)
     }
 
     public enum Skipped: Equatable, Sendable {
@@ -53,6 +55,8 @@ public struct ArcImportReport: Equatable, Sendable {
         case unrecognizedProfile(space: String)
         /// Once per import, when count > 0.
         case duplicateItem(count: Int)
+        /// Once per import, when count > 0: entries in Arc's order that named no item in the file.
+        case missingItem(count: Int)
         /// One per `topApps` container whose profile marker is missing or unrecognized; its tabs went to the default profile's Essentials.
         case unrecognizedFavoritesProfile
         /// Once per space: the workspace was created, but its pinned container id is unresolved or a resolved container id is absent from the items.

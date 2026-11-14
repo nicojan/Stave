@@ -91,6 +91,19 @@ struct SidebarRowsTests {
         #expect(pinned.isDrifted)
     }
 
+    @Test func driftIgnoresTheFragment() {
+        var pinned = tab(url: "https://mail.example.com/#inbox")
+        pinned.pinnedURL = "https://mail.example.com/#inbox"
+        pinned.url = "https://mail.example.com/#inbox/thread-7"
+        #expect(!pinned.isDrifted)
+        pinned.url = "https://mail.example.com/"
+        #expect(!pinned.isDrifted)
+        pinned.url = "https://mail.example.com/settings#inbox"
+        #expect(pinned.isDrifted)
+        pinned.url = "https://mail.example.com/?tab=2#inbox"
+        #expect(pinned.isDrifted)
+    }
+
     @Test func addressText() {
         #expect(DisplayText.address(for: "https://www.example.com/a") == "example.com")
         #expect(DisplayText.address(for: "https://sub.example.org") == "sub.example.org")

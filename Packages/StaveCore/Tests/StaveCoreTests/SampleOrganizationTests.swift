@@ -111,4 +111,17 @@ struct SampleOrganizationTests {
         #expect(try store.workspaces(profileID: profile.id).count == 1)
         #expect(try store.essentials(profileID: profile.id).isEmpty)
     }
+
+    #if DEBUG
+    @Test func hostileSeedAddsOneJavaScriptTabToWork() throws {
+        let (store, _, _) = try makeTempStore()
+        try SampleOrganization.seed(into: store)
+        try SampleOrganization.seedHostileStoredURL(into: store)
+        let profile = try #require(try store.profiles().first)
+        let work = try #require(try store.workspaces(profileID: profile.id).first { $0.name == "Work" })
+        let regular = try store.regularTabs(workspaceID: work.id)
+        #expect(regular.count == 3)
+        #expect(regular.filter { $0.url == "javascript:alert(1)" }.count == 1)
+    }
+    #endif
 }

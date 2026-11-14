@@ -2,7 +2,7 @@ name: Stave
 options:
   bundleIdPrefix: com.nicojan
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
 
@@ -21,6 +21,8 @@ targets:
     dependencies:
       - package: StaveCore
         product: StaveCore
+      - package: StaveCore
+        product: StaveWeb
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nicojan.Stave
@@ -29,7 +31,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
         INFOPLIST_FILE: Stave/Info.plist
         CODE_SIGN_ENTITLEMENTS: Stave/Stave.entitlements
         ENABLE_HARDENED_RUNTIME: true

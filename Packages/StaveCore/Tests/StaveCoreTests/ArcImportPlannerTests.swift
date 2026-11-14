@@ -166,6 +166,15 @@ struct ArcImportPlannerTests {
         #expect(plan.skipped.last == .duplicateItem(count: 2))
     }
 
+    @Test func unlistedAndMissingItemsAreReported() {
+        let sidebar = ArcSidebar(spaces: [], favorites: [:], duplicateItems: 0, unlistedItems: 3, missingItems: 1)
+        let plan = ArcImportPlanner.plan(sidebar, options: ArcImportOptions(), profileNames: [:])
+        #expect(plan.flattened.contains(.unlistedItems(count: 3)))
+        #expect(plan.skipped.contains(.missingItem(count: 1)))
+        let quiet = ArcImportPlanner.plan(ArcSidebar(spaces: [], favorites: [:], duplicateItems: 0), options: ArcImportOptions(), profileNames: [:])
+        #expect(quiet.flattened.isEmpty && quiet.skipped.isEmpty)
+    }
+
     @Test func favoritesNonWebAndUnsupportedCarryNoSpace() {
         let sidebar = ArcSidebar(
             spaces: [],

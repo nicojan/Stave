@@ -32,17 +32,18 @@ Browser extensions, cross-device sync, split view, Glance, Boosts (per-site CSS/
 - Telemetry, ads, or anything in the UI that sells something.
 - An opinionated behaviour the user cannot switch off.
 - Non-standard keyboard shortcuts for things Safari and Chrome already have shortcuts for.
+- Common browser behaviour done differently. Anything Stave shares with other browsers (permissions, downloads, link menus, windows, prompts) acts the way Chrome, Safari and Firefox do (Nico, 2026-11-04). Stave's difference is putting workspaces and similar features together in one browser, not new takes on standard behaviour. Where the big browsers disagree, or the workspace model leaves it open, the choice goes to Nico.
 - AI as the point of the product.
 - Breaking or slowing down Chorus by sharing its engine.
 
 ## Constraints
 
 - **Open source under the MIT licence** (Nico's decision), like Chorus. Public repo, public CI, the same release setup as Chorus. Test fixtures never contain anyone's real browsing data. No code is copied from Zen (MPL-2.0) or Ora (GPL-2.0); they are reference for behaviour only. Code from MIT-licensed projects (such as arc-export) may be adapted with attribution in `THIRD_PARTY_NOTICES.md`.
-- **macOS 14 or later** (my call: matches Chorus and the engine; `WKWebsiteDataStore(forIdentifier:)` needs 14).
+- **macOS 15 or later.** It was macOS 14 until 2026-11-09 (my call then: it matched Chorus and the engine, and `WKWebsiteDataStore(forIdentifier:)` needs 14). ChorusEngine 1.5.36 requires macOS 15, so Stave moved with it.
 - **Bundle ID `com.nicojan.Stave`.** This identity is what Apple's Passwords allow-list and the passkey entitlement attach to, so it must never change. Debug builds use `com.nicojan.Stave.debug` and their own data folder, as Chorus does, so a development copy can never touch real data.
 - **Engine:** depends on the `ChorusEngine` product of the Chorus repo by git tag, pinned `exact:`. Stave never edits engine code in its own repo; engine changes go to Chorus and come back through a tag.
 - **Distribution** like Chorus: Developer ID signed, notarized, Sparkle auto-updates, Homebrew cask in `nicojan/tap`. Not sandboxed, not on the Mac App Store (my call: the App Store adds review risk and sandbox limits). This decision is revisited if the passkey entitlement turns out to be available only to App Store apps (see Open checks).
-- **Swift 6, AppKit + SwiftUI**, matching Chorus's conventions, including CI on macOS 14 and 15 with Xcode 16.2's limits.
+- **Swift 6, AppKit + SwiftUI**, matching Chorus's conventions, including CI on macOS 15 and 26 with the newest stable Xcode (26 or later).
 - **Privacy:** nothing leaves the Mac except page traffic, Sparkle's update check and the content blocker's list updates (if any). The update check carries no identifier. Whether it is counted (as Chorus's appcast Worker counts daily checks) is stated plainly in the README (my call: count, anonymously, like Chorus, and say so).
 
 ## The organization model (decided with Nico)
@@ -61,11 +62,11 @@ Profile (own cookies and website data, own history and archive)
 - **Profile.** Its own persistent `WKWebsiteDataStore`, and its own history, archive, downloads list and settings overrides. Everything in a profile shares its cookies unless the tab is in a container. Deleting a profile removes its data store after a confirmation that names what will be lost.
 - **Workspace.** A named group of tabs inside a profile, with an icon and a colour that tints the sidebar (an Arc delight). Workspaces in a profile share its cookies.
 - **Essentials.** Tabs pinned for the whole profile, shown at the top of the sidebar in every workspace as an icon grid. Each Essential is one live web view that moves into whichever workspace is on screen, so it keeps its state. Like pinned tabs, an Essential can be reset to its pinned page.
-- **Pinned tabs.** Belong to one workspace. Remembered by their pinned URL, title and icon even when no web view exists. Clicking one loads it. You can navigate away inside it; one action (and a visible "back to pinned page" affordance when it has drifted) resets it. Closing a pinned tab unloads it; only "Unpin" or "Remove" deletes it. Folders hold pinned tabs and nest one level (my call: Arc allows deeper nesting, but one level covers most use and keeps the sidebar calm; deeper Arc folders are flattened into their nearest allowed parent on import, and the import report says so).
+- **Pinned tabs.** Belong to one workspace. Remembered by their pinned URL, title and icon even when no web view exists. Clicking one loads it. You can navigate away inside it; one action (and a visible "back to pinned page" affordance when it has drifted, meaning its address differs from the pinned one apart from the part after `#`, as in Zen) resets it. Closing a pinned tab unloads it; only "Unpin" or "Remove" deletes it. Folders hold pinned tabs and nest one level (my call: Arc allows deeper nesting, but one level covers most use and keeps the sidebar calm; deeper Arc folders are flattened into their nearest allowed parent on import, and the import report says so).
 - **Regular tabs.** Belong to one workspace. Every open regular tab is restored after quit or crash, including its back/forward history. Closing a tab moves it to the profile's archive, searchable from the command bar and restorable; archived tabs are trimmed after 30 days (my call). Auto-archiving of idle tabs is a setting, off by default (my call: Arc's default surprised people).
 - **Where new tabs go (my call, deterministic and tested, since Vivaldi users noticed when this broke).** A new tab from the command bar goes to the top of the workspace's regular tabs. A link opened from a tab goes directly below that tab. A link from another app goes to the top of the regular tabs in the workspace that receives it. A setting can flip "top" to "bottom".
 - **Containers.** A tab can live in a container instead of the profile's store. A **named container** ("Work Google") has its own persistent store and can be used by many tabs, including pinned tabs and Essentials. A **throwaway container** has a non-persistent store that disappears when its last tab closes. Containers belong to a profile. Tabs show their container's colour. Deleting a named container removes its store only after checking that no tab still uses it (the rule Chorus learned the hard way with shared stores).
-- **Private window.** A window with its own throwaway store, a plain tab list and no Essentials, pinned tabs or workspaces. It records no history, no archive and no downloads list, and saves nothing to disk (my call: table stakes in any browser).
+- **Private window.** A window with a throwaway store, shared with the profile's other private windows while any is open, as in Chrome and Firefox (Nico, 2026-11-04), a plain tab list and no Essentials, pinned tabs or workspaces. It records no history, no archive and no downloads list, and saves nothing to disk (my call: table stakes in any browser).
 - **One live page, one place (my call).** A web view can be on screen in only one window. When a page is already showing in another window (an Essential, or a workspace open in two windows), the second window shows the page's last snapshot and "Showing in another window — bring it here". Clicking it moves the live page to this window. Focus alone never moves a page, so pages don't jump around.
 - **Moving things.** A tab moves freely between workspaces of the same profile without reloading. Moving it to another profile or container means reopening it there, which reloads the page; the UI says so before doing it.
 
@@ -145,7 +146,7 @@ No separate bookmarks bar or manager in the first release. Pinned tabs and folde
 
 ## Open checks (unverified)
 
-- Whether the passkey entitlement is available to Developer ID (non-App Store) apps, and Apple's exact criteria for granting it.
+- Apple's criteria and process for granting the passkey entitlement. (Whether it is available outside the App Store is answered: Zen 1.24b carries it under its own team with a Developer ID provisioning profile, checked 2026-11-04; see `docs/research/2026-11-04-zen-internals.md`.)
 - Apple's process and timeline for the Passwords allow-list.
 - Whether DRM video (Netflix and similar) plays in a WKWebView browser outside Safari.
 - Memory cost of many data stores (profiles plus containers) in one app.

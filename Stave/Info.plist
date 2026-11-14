@@ -4,5 +4,11 @@
 <dict>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Websites you allow can use your camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Websites you allow can use your microphone.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Stave saves the files you download in your Downloads folder.</string>
 </dict>
 </plist>

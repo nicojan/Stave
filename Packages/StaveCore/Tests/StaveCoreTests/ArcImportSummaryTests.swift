@@ -111,6 +111,15 @@ struct ArcImportSummaryTests {
         ])
     }
 
+    @Test func unlistedAndMissingItemLines() {
+        let many = summary(flattened: [.unlistedItems(count: 2)], skipped: [.missingItem(count: 3)])
+        #expect(many.changed == ["2 items had no place in Arc's order, so they went at the end of their folder or space."])
+        #expect(many.skipped == ["Arc's file listed 3 items it didn't contain, so there was nothing to import for them."])
+        let one = summary(flattened: [.unlistedItems(count: 1)], skipped: [.missingItem(count: 1)])
+        #expect(one.changed == ["1 item had no place in Arc's order, so it went at the end of its folder or space."])
+        #expect(one.skipped == ["Arc's file listed 1 item it didn't contain, so there was nothing to import for it."])
+    }
+
     @Test func fixedCopy() {
         #expect(ArcImportCopy.loginsNotice == "Logins, passwords and cookies can't be imported from Arc, so you'll sign in to sites again. If your passwords are in iCloud Keychain, the Passwords app can copy them for you. Passkeys will work in Stave once Apple approves it.")
         #expect(ArcImportCopy.keepACopy == "Arc may stop opening on December 22, 2026. To import later, keep a copy of Arc's sidebar file: ~/Library/Application Support/Arc/StorableSidebar.json.")

@@ -372,6 +372,22 @@ struct CommandBarTests {
         #expect(actions.contains(.newTabInContainer(id: container.id, name: "Shop")))
     }
 
+    @Test func blockingActionNamesHost() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("site")
+        let model = try world.window(selected: tab.id)
+        let on = model.commandCandidates(pageSite: PageSite(host: "example.com", blockingOn: true))
+        #expect(on.pageSite == PageSite(host: "example.com", blockingOn: true))
+        #expect(on.actions.map(\.title).contains("Turn Off Content Blocking for example.com"))
+        #expect(!on.actions.map(\.title).contains("Turn On Content Blocking for example.com"))
+        let off = model.commandCandidates(pageSite: PageSite(host: "example.com", blockingOn: false))
+        #expect(off.actions.map(\.title).contains("Turn On Content Blocking for example.com"))
+        let none = model.commandCandidates()
+        #expect(!none.actions.contains { $0.title.contains("Content Blocking") })
+        // Running it hands the switch to the app, which owns the page.
+        #expect(model.perform(.action(.setContentBlocking(on: false, host: "example.com")), mode: .newTab) == .setContentBlocking(on: false))
+    }
+
     @Test func actionTitles() {
         #expect(CommandAction.switchProfile(id: UUID(), name: "Work").title == "Switch to Work")
         #expect(CommandAction.newTabInContainer(id: UUID(), name: "Shop").title == "New Tab in Shop")

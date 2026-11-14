@@ -33,12 +33,28 @@ extension OrganizationStore {
 
     /// Update-only: a write for a closed tab throws `.notFound` and never re-creates it.
     public func updateNavigation(tabID: UUID, url: String, title: String, faviconURL: String?, interactionState: Data?) throws {
+        try writeNavigation(tabID: tabID, url: url, title: title, faviconURL: faviconURL, interactionState: .some(interactionState))
+    }
+
+    /// A live page's navigation write: like `updateNavigation`, but the stored `interactionState` is kept (the page writes it separately,
+    /// throttled), so a crash between the two writes never loses the tab's history. Update-only.
+    public func updatePageNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) throws {
+        try writeNavigation(tabID: tabID, url: url, title: title, faviconURL: faviconURL, interactionState: nil)
+    }
+
+    /// `interactionState` nil keeps the stored state; `.some(x)` replaces it with `x`.
+    private func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?, interactionState: Data??) throws {
         try database.writer.write { db in
             guard var tab = try Tab.fetchOne(db, key: tabID) else { throw StoreError.notFound }
+            // A pinned page saved without an icon adopts the first one that arrives while the tab is still on that page; an existing icon is never replaced.
+            // Drift is judged on the incoming url (the tab's stored url is about to be replaced).
+            if let pinnedURL = tab.pinnedURL, Tab.isSamePage(pinnedURL, url), tab.pinnedFaviconURL == nil, let faviconURL {
+                tab.pinnedFaviconURL = faviconURL
+            }
             tab.url = url
             tab.title = title
             tab.faviconURL = faviconURL
-            tab.interactionState = interactionState
+            if let interactionState { tab.interactionState = interactionState }
             tab.modifiedAt = now()
             try tab.update(db)
         }
@@ -153,7 +169,7 @@ extension OrganizationStore {
     /// A pinned tab or Essential that has drifted is about to become regular, which clears its pinned page. Archives that page first (its pinned URL
     /// and title) in the caller's transaction, so moving or unpinning never loses it. A tab on its pinned page loses nothing and archives nothing.
     func archivePinnedPageIfDrifted(slot: Slot, tab: Tab, closedAt: Date, in db: Database) throws {
-        guard let pinnedURL = tab.pinnedURL, pinnedURL != tab.url else { return }
+        guard let pinnedURL = tab.pinnedURL, !Tab.isSamePage(pinnedURL, tab.url) else { return }
         try ArchivedTab(
             profileID: slot.profileID, workspaceID: slot.workspaceID,
             url: pinnedURL, title: tab.pinnedTitle ?? "", faviconURL: tab.pinnedFaviconURL,
@@ -163,7 +179,7 @@ extension OrganizationStore {
 
     /// The archive-row twin of `archivePinnedPageIfDrifted`: a restored row that carries a pinned page different from its url archives that page.
     func archivePinnedPage(of archived: ArchivedTab, closedAt: Date, in db: Database) throws {
-        guard let pinnedURL = archived.pinnedURL, pinnedURL != archived.url else { return }
+        guard let pinnedURL = archived.pinnedURL, !Tab.isSamePage(pinnedURL, archived.url) else { return }
         try ArchivedTab(
             profileID: archived.profileID, workspaceID: archived.workspaceID,
             url: pinnedURL, title: archived.pinnedTitle ?? "", faviconURL: archived.pinnedFaviconURL,

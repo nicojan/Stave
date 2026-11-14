@@ -1,13 +1,22 @@
 {
-  "originHash" : "0893c74b56d421a55ef962b8dac76abb1e64cdec481d5595b4f61c6afe03c344",
+  "originHash" : "933a1cf508453a8d47ce665ace30039c2028693086e0f36982f9890acb9167a2",
   "pins" : [
+    {
+      "identity" : "chorus",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nicojan/Chorus.git",
+      "state" : {
+        "revision" : "0f740263496b114c0c30298211e3822c700c8bd0",
+        "version" : "1.5.36"
+      }
+    },
     {
       "identity" : "grdb.swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/groue/GRDB.swift",
       "state" : {
-        "revision" : "18497b68fdbb3a09528d260a0a0e1e7e61c8c53d",
-        "version" : "7.8.0"
+        "revision" : "92a554cd0d5e8d67cb18993c6054e73fe42c066c",
+        "version" : "7.12.0"
       }
     }
   ],

@@ -14,13 +14,13 @@
 
 1. **Foundation** — this plan. *Done: merged to `main` at `9076fda` (PR #1).*
 2. **Arc import** — parser for `StorableSidebar.json` into `OrganizationStore` calls, synthetic fixtures, import report. Depends only on this plan. *Built: `docs/superpowers/plans/2026-10-29-stave-arc-import.md`, PR #2.*
-3. **Web layer** — tab web-view pool, restore of `interactionState`, popups tied to opener, data stores per profile/container/private window, content blocking, downloads, permissions. Depends on this plan and the Chorus engine tag (1.5.32+). *Not started. Unblocked: Chorus tag `v1.5.32` contains the `ChorusEngine` package. Plan not yet written.*
-4. **Window and sidebar** — real sidebar (Essentials grid, folders, drag and drop, archive), command bar, workspace switching, compact mode, "bring it here" placeholder, accessibility, and the Arc import's UI. *Built, reviewed and CI green; draft PR #3, waiting on Nico's pointer checks before merge: `docs/superpowers/plans/2026-10-29-stave-window-sidebar.md`. It ran before plan 3, because pages are placeholders until the web layer lands.*
-5. **Browser basics and release** — default-browser registration, settings, site-compatibility tools, shortcuts, Sparkle, signing, notarization, Homebrew, the "beta is ready when" gate.
+3. **Web layer** — tab web-view pool, restore of `interactionState`, popups tied to opener, data stores per profile/container/private window, content blocking, downloads, permissions. Depends on this plan and the Chorus engine tag (1.5.32+). *Built, reviewed and CI green (on macOS 14 and 15 when built; macOS 15 and 26 since 2026-11-09) on `feat/web-layer`, draft PR #4 stacked on PR #3, waiting on Nico's sign-in, camera, download and VoiceOver checks: `docs/superpowers/plans/2026-10-31-stave-web-layer.md`. Pinned Chorus `exact: "1.5.32"`, moved to `exact: "1.5.36"` on 2026-11-09 with macOS 15 as the minimum; uses only the engine's content blocker and `WebViewContainer`; the rest is Stave's own (see that plan's "The engine at v1.5.32").*
+4. **Window and sidebar** — real sidebar (Essentials grid, folders, drag and drop, archive), command bar, workspace switching, compact mode, "bring it here" placeholder, accessibility, and the Arc import's UI. *Built, reviewed and CI green (macOS 15 and 26); draft PR #3, waiting on Nico's pointer checks (now including compact mode's) before merge: `docs/superpowers/plans/2026-10-29-stave-window-sidebar.md`. It ran before plan 3, because pages are placeholders until the web layer lands.*
+5. **Browser basics and release** — default-browser registration, settings, site-compatibility tools, shortcuts, Sparkle, signing, notarization, Homebrew, the "beta is ready when" gate. *Drafted 2026-11-10 for Nico's review, not built: `docs/superpowers/plans/2026-11-10-stave-browser-basics.md` (proposed as Part A, browser basics, and Part B, release).*
 
 ## Global Constraints
 
-- macOS deployment target `14.0`; `SWIFT_VERSION` `6.0`; strict concurrency on.
+- macOS deployment target `14.0` (raised to `15.0` on 2026-11-09 with ChorusEngine 1.5.36); `SWIFT_VERSION` `6.0`; strict concurrency on.
 - Bundle ID `com.nicojan.Stave`; Debug uses `com.nicojan.Stave.debug`.
 - Data folder is always explicit: `~/Library/Application Support/Stave` (Release) or `~/Library/Application Support/Stave-debug` (Debug). Never a framework default path.
 - Database file name `stave.sqlite`.

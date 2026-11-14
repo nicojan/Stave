@@ -3,7 +3,7 @@ import GRDB
 
 /// The single SQLite store (WAL) behind every Stave record.
 public final class StaveDatabase: Sendable {
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
     public var schemaVersion: Int { Self.schemaVersion }
 
     private let pool: DatabasePool
@@ -54,7 +54,20 @@ public final class StaveDatabase: Sendable {
         migrator.registerMigration("v1", migrate: createSchemaV1)
         migrator.registerMigration("v2", migrate: createSettingTable)
         migrator.registerMigration("v3", migrate: createImportRecordTable)
+        migrator.registerMigration("v4", migrate: createSiteSettingTable)
         return migrator
+    }
+
+    private static func createSiteSettingTable(_ db: Database) throws {
+        try db.create(table: "siteSetting") { t in
+            t.primaryKey("id", .blob)
+            t.column("profileID", .blob).notNull().references("profile", onDelete: .cascade)
+            t.column("host", .text).notNull()
+            t.column("key", .text).notNull()
+            t.column("decision", .text).notNull()
+            t.column("modifiedAt", .datetime).notNull()
+            t.uniqueKey(["profileID", "host", "key"])
+        }
     }
 
     private static func createImportRecordTable(_ db: Database) throws {
