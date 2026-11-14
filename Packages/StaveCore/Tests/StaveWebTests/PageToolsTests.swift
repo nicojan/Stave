@@ -50,4 +50,33 @@ struct PageToolsTests {
         _ = try await webView.evaluateJavaScript("getSelection().selectAllChildren(document.getElementById('p')); 0")
         #expect(await PageTools.selectedText(in: webView) == "alpha beta")
     }
+
+    /// Decision 13: the print job is named after the page and prints what the web view shows. The operation is made, never run: no print job
+    /// is ever sent from a test.
+    @Test func printOperationNamesThePage() async throws {
+        let delegate = LoadWaiter()
+        let loaded = try await loadedWebView("<!doctype html><title>Invented</title><p>alpha</p>", delegate: delegate)
+        let webView = try #require(loaded)
+        let operation = PageTools.print(webView, title: "Invented Title")
+        #expect(operation.jobTitle == "Invented Title")
+        #expect(operation.showsPrintPanel)
+        #expect(operation.view?.frame.isEmpty == false)
+    }
+
+    /// Decision 14: the Develop items need WebKit's private inspector and the page's `developerExtrasEnabled`; without the preference they
+    /// stay disabled.
+    @Test func inspectorNeedsDeveloperExtras() {
+        let on = WKWebViewConfiguration()
+        PageConfiguration.enableDeveloperExtras(on)
+        let inspectable = WKWebView(frame: .zero, configuration: on)
+        #expect(PageTools.hasDeveloperExtras(inspectable))
+        #expect(PageTools.canShowInspector(inspectable))
+        #expect(PageTools.canShowPageSource(inspectable))
+        let plain = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        #expect(!PageTools.hasDeveloperExtras(plain))
+        #expect(!PageTools.canShowInspector(plain))
+        #expect(!PageTools.canShowPageSource(plain))
+        // `isInspectable` stays off: the in-app inspector doesn't need it (decision 14).
+        #expect(!inspectable.isInspectable)
+    }
 }

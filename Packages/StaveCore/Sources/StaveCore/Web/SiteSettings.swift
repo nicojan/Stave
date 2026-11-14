@@ -31,3 +31,24 @@ public enum SiteHost {
         HostText.host(of: urlOrHost)
     }
 }
+
+/// A per-site value other than an Ask / Allow / Block answer (decisions 12 and 24), stored per profile and host.
+public enum SiteValueKey: String, Codable, Sendable { case zoom, userAgent }
+
+/// A remembered per-site value, scoped to a profile; `value` is the JSON text of the value. Never written for a private window. Like a site
+/// setting, it is not user data, so removing one needs no archive.
+public struct SiteValue: Codable, FetchableRecord, PersistableRecord, Sendable, Identifiable, Equatable {
+    public static let databaseTableName = "siteValue"
+
+    public var id: UUID
+    public var profileID: UUID
+    public var host: String
+    public var key: SiteValueKey
+    public var value: String
+    public var modifiedAt: Date
+
+    public init(id: UUID = UUID(), profileID: UUID, host: String, key: SiteValueKey, value: String, modifiedAt: Date = Date()) {
+        self.id = id; self.profileID = profileID; self.host = host; self.key = key
+        self.value = value; self.modifiedAt = modifiedAt
+    }
+}

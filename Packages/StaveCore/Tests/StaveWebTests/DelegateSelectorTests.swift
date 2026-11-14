@@ -26,6 +26,8 @@ extension PageDelegateTests {
         "webView:runJavaScriptTextInputPanelWithPrompt:defaultText:initiatedByFrame:completionHandler:",
         "webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:",
         "webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:",
+        // WebKit's private UI delegate (Task 9): the in-app inspector opens in its own window
+        "_webView:didAttachLocalInspector:",
         // Downloads
         "download:decideDestinationUsingResponse:suggestedFilename:completionHandler:",
         "downloadDidFinish:",

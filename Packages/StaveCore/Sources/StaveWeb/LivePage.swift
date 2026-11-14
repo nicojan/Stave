@@ -71,6 +71,8 @@ public final class LivePage {
     public let siteSettingsProfileID: UUID?
     public internal(set) var status: PageStatus
     public internal(set) var isContentBlockingOn: Bool
+    /// The page's zoom (`pageZoom`), set only through `setZoom` so the menus can follow it (decision 12).
+    public private(set) var zoom = ZoomLevels.defaultLevel
 
     @ObservationIgnored weak var writer: PageWriter?
     @ObservationIgnored private var recorder: PageRecorder
@@ -207,6 +209,16 @@ public final class LivePage {
         guard let profileID = siteSettingsProfileID, let url = visitURL, !title.isEmpty, title != visitTitle, let writer else { return }
         visitTitle = title
         writer.updateVisitTitle(profileID: profileID, url: url, title: title)
+    }
+
+    func setZoom(_ level: Double) {
+        zoom = level
+        webView.pageZoom = level
+    }
+
+    /// The site key (`SiteHost.normalized`) of the document the web view holds, else of the address shown; nil with no web site.
+    var siteKey: String? {
+        SiteHost.normalized(webView.url?.absoluteString ?? status.url)
     }
 
     /// The web content process ended. Shown as crashed; nothing is written until a new load commits.

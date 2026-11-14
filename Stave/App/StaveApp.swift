@@ -51,6 +51,12 @@ struct StaveApp: App {
                         .keyboardShortcut("w", modifiers: [.command, .shift])
                         .disabled(!state.isEnabled(.closeWindow))
                 }
+                // Literal keys until Task 10's StandardShortcuts table (decision 16).
+                CommandGroup(replacing: .printItem) {
+                    Button(PageMenuText.print) { delegate.printPage() }
+                        .keyboardShortcut("p", modifiers: .command)
+                        .disabled(!state.pageMenu.canPrint)
+                }
                 // Replaces the system's text-editing group, so its Find items never sit beside these with the same keys. Literal keys
                 // until Task 10's StandardShortcuts table.
                 CommandGroup(replacing: .textEditing) {
@@ -88,6 +94,17 @@ struct StaveApp: App {
                         .keyboardShortcut(".", modifiers: .command)
                         .disabled(!state.pageMenu.canStop)
                     Divider()
+                    // Safari's order and keys; ⌘= also zooms in (`AppDelegate.installZoomKeyAlternate`). Literal keys until Task 10.
+                    Button(PageMenuText.actualSize) { delegate.actualSize() }
+                        .keyboardShortcut("0", modifiers: .command)
+                        .disabled(!state.pageMenu.canResetZoom)
+                    Button(PageMenuText.zoomIn) { delegate.zoomIn() }
+                        .keyboardShortcut("+", modifiers: .command)
+                        .disabled(!state.pageMenu.canZoomIn)
+                    Button(PageMenuText.zoomOut) { delegate.zoomOut() }
+                        .keyboardShortcut("-", modifiers: .command)
+                        .disabled(!state.pageMenu.canZoomOut)
+                    Divider()
                     Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
                         .disabled(state.pageMenu.blockingOn == nil)
                 }
@@ -97,6 +114,15 @@ struct StaveApp: App {
                         .disabled(!state.canShowHistory)
                     Button(HistoryText.clearHistoryMenuItem) { delegate.clearHistory() }
                         .disabled(!state.canShowHistory)
+                }
+                // Always visible, with no setting (decision 14); each item is disabled when the private piece it needs is missing.
+                CommandMenu(PageMenuText.developMenu) {
+                    Button(PageMenuText.showWebInspector) { delegate.showWebInspector() }
+                        .keyboardShortcut("i", modifiers: [.command, .option])
+                        .disabled(!state.pageMenu.canInspect)
+                    Button(PageMenuText.showPageSource) { delegate.showPageSource() }
+                        .keyboardShortcut("u", modifiers: [.command, .option])
+                        .disabled(!state.pageMenu.canShowSource)
                 }
                 #if DEBUG
                 CommandMenu(PageMenuText.debugMenu) {

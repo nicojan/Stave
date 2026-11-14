@@ -9,6 +9,10 @@ import WebKit
 public protocol SiteSettingsSource: AnyObject {
     @MainActor func decision(profileID: UUID, host: String, key: SiteSettingKey) -> SiteDecision?
     @MainActor func setDecision(profileID: UUID, host: String, key: SiteSettingKey, _ d: SiteDecision?)
+    /// A per-site value (zoom; from Task 16 the user agent), nil when none is stored or it can't be read. Never asked for a private page.
+    @MainActor func siteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, as type: V.Type) -> V?
+    /// Stores a per-site value; nil removes it. Never called for a private page.
+    @MainActor func setSiteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, _ value: V?)
 }
 
 /// Stave's own page pool, keyed by tab ID (plan 3, decisions 2, 3, 8, 10 and 16).
@@ -46,6 +50,11 @@ public final class PageHost {
     @ObservationIgnored private let activeDownloads = ActiveDownloads()
     /// A private session's camera/microphone answers, in memory only (decision 11); they go with the session's last window.
     @ObservationIgnored private var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
+    /// A private session's site values (its zoom), JSON in memory only: a private window writes no site values. They go with the session,
+    /// like `privateMediaAnswers`.
+    @ObservationIgnored private var privateSiteValues: [PrivateSiteValueKey: Data] = [:]
+    /// Whether pages in private windows get `developerExtrasEnabled` and so the inspector (decision 14, Task 9's spike).
+    static let privateWindowsInspect = false
     /// Seam for tests: finds and opens apps for non-web links.
     @ObservationIgnored var externalApps = ExternalApps.system
     /// Test-only seam: extra rule lists added to every page this host makes (a block-all list keeps tests off the network).
@@ -74,7 +83,8 @@ public final class PageHost {
             ruleLists: (blocking ? contentBlocker.enabledLists() : []) + testRuleLists,
             applicationName: applicationName,
             messageHandler: faviconRelay,
-            fileLinkHandler: fileLinkRelay
+            fileLinkHandler: fileLinkRelay,
+            developerExtras: request.siteSettingsProfileID != nil || Self.privateWindowsInspect
         )
         let webView = PageWebView(frame: .zero, configuration: configuration)
         webView.now = now
@@ -209,10 +219,11 @@ public final class PageHost {
         }
     }
 
-    /// Drops one session's in-memory camera and microphone answers. Runs when the session's last window closes (`leavePrivateSession`).
+    /// Drops one session's in-memory camera and microphone answers and site values. Runs when the session's last window closes (`leavePrivateSession`).
     func forgetPrivate(sessionID: UUID) {
         let store = DataStoreKey.privateSession(sessionID)
         privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != store }
+        privateSiteValues = privateSiteValues.filter { $0.key.store != store }
     }
 
     /// The last snapshot of the tab's page, kept in memory.
@@ -335,6 +346,62 @@ public final class PageHost {
             for list in contentBlocker.enabledLists() { content.add(list) }
         }
         for list in testRuleLists { content.add(list) }
+    }
+
+    // MARK: Zoom (decision 12)
+
+    /// View ▸ Zoom In (⌘+): the next of Safari's levels, kept for the page's site.
+    public func zoomIn(_ tabID: UUID) { changeZoom(tabID) { ZoomLevels.next(after: $0) } }
+
+    /// View ▸ Zoom Out (⌘-).
+    public func zoomOut(_ tabID: UUID) { changeZoom(tabID) { ZoomLevels.previous(before: $0) } }
+
+    /// View ▸ Actual Size (⌘0): 100 %, and the site's stored zoom is removed.
+    public func resetZoom(_ tabID: UUID) { changeZoom(tabID) { _ in ZoomLevels.defaultLevel } }
+
+    /// Sets the page's zoom, keeps it for its site (100 % keeps nothing; a page with no web site keeps nothing), and moves the other open
+    /// pages of that site and profile (or private session) to it at once, as Chrome does.
+    private func changeZoom(_ tabID: UUID, _ step: (Double) -> Double) {
+        guard let page = pages[tabID], !page.isClosed else { return }
+        let level = step(page.zoom)
+        page.setZoom(level)
+        guard let site = page.siteKey else { return }
+        setSiteValue(ZoomLevels.storedValue(level), for: page, host: site, key: .zoom)
+        for other in pages.values where other !== page && sharesSiteValues(other, page) && other.siteKey == site {
+            other.setZoom(level)
+        }
+    }
+
+    /// On every main-frame commit: the committed site's stored zoom, or 100 % when none is stored.
+    func applyStoredZoom(to page: LivePage) {
+        guard !page.isClosed else { return }
+        let stored = page.siteKey.flatMap { siteValue(for: page, host: $0, key: .zoom, as: Double.self) }
+        let level = ZoomLevels.sanitized(stored)
+        if page.zoom != level || page.webView.pageZoom != level { page.setZoom(level) }
+    }
+
+    /// Two pages read the same site values: the same profile, or the same private session.
+    private func sharesSiteValues(_ a: LivePage, _ b: LivePage) -> Bool {
+        if let profile = a.siteSettingsProfileID { return profile == b.siteSettingsProfileID }
+        return b.siteSettingsProfileID == nil && a.store == b.store
+    }
+
+    // MARK: Site values
+
+    /// A profile's values are stored; a private session's are kept in memory for the session only.
+    func siteValue<V: Codable>(for page: LivePage, host: String, key: SiteValueKey, as type: V.Type) -> V? {
+        if let profileID = page.siteSettingsProfileID {
+            return siteSettings.siteValue(profileID: profileID, host: host, key: key, as: type)
+        }
+        return privateSiteValues[PrivateSiteValueKey(store: page.store, host: host, key: key)].flatMap { try? JSONDecoder().decode(V.self, from: $0) }
+    }
+
+    func setSiteValue<V: Codable>(_ value: V?, for page: LivePage, host: String, key: SiteValueKey) {
+        if let profileID = page.siteSettingsProfileID {
+            siteSettings.setSiteValue(profileID: profileID, host: host, key: key, value)
+        } else {
+            privateSiteValues[PrivateSiteValueKey(store: page.store, host: host, key: key)] = value.flatMap { try? JSONEncoder().encode($0) }
+        }
     }
 
     // MARK: Camera and microphone
@@ -502,6 +569,12 @@ struct PrivateMediaKey: Hashable {
     var store: DataStoreKey
     var host: String
     var key: SiteSettingKey
+}
+
+struct PrivateSiteValueKey: Hashable {
+    var store: DataStoreKey
+    var host: String
+    var key: SiteValueKey
 }
 
 /// Receives favicon messages from the isolated `StaveFavicon` world. Holds the host weakly, because the

@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let menuState = AppMenuState()
     var menuGeneration = 0
     var keyObservers: [NSObjectProtocol] = []
+    /// ⌘= as a hidden alternate of View ▸ Zoom In (⌘+), as in Safari (`installZoomKeyAlternate`).
+    var zoomKeyMonitor: Any?
     private(set) var importCoordinator: ImportCoordinator?
     /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
     private var pageEvents: PageEventsRouter?

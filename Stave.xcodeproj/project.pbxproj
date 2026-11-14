@@ -42,6 +42,7 @@
 		A0F26111A32BA92309611D15 /* MediaQuestionCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */; };
 		A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */; };
 		A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */; };
+		AB48C18B8B230B2F01549179 /* AppDelegate+PageTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F764C169F4A16116B13D08E /* AppDelegate+PageTools.swift */; };
 		ACB1F09103500FE7501A8E4D /* CommandBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */; };
 		AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1942EB2B034830D345E030ED /* BrowserWindowController.swift */; };
 		B207D8F4B94BD9461B0FAC74 /* PageEventsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */; };
@@ -78,6 +79,7 @@
 		4835396844D6668AA906D3E8 /* FindBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBar.swift; sourceTree = "<group>"; };
 		4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSwitcher.swift; sourceTree = "<group>"; };
 		4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+PageEvents.swift"; sourceTree = "<group>"; };
+		4F764C169F4A16116B13D08E /* AppDelegate+PageTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+PageTools.swift"; sourceTree = "<group>"; };
 		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
 		5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Links.swift"; sourceTree = "<group>"; };
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
@@ -175,6 +177,7 @@
 				D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */,
 				5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */,
 				1A0D6DB917EEE0EB7FA619D6 /* AppDelegate+Menus.swift */,
+				4F764C169F4A16116B13D08E /* AppDelegate+PageTools.swift */,
 				DECA69864B612986E62E0EF5 /* AppDelegate+Private.swift */,
 				65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */,
 				995508A5262708F8EE5364E3 /* AppMenuState.swift */,
@@ -372,6 +375,7 @@
 				A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */,
 				F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */,
 				081DCB873719179C85209EA5 /* AppDelegate+Menus.swift in Sources */,
+				AB48C18B8B230B2F01549179 /* AppDelegate+PageTools.swift in Sources */,
 				BA7DF77FC8649611C87D872A /* AppDelegate+Private.swift in Sources */,
 				0C368BDE7A26043F6B82A504 /* AppDelegate.swift in Sources */,
 				91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */,

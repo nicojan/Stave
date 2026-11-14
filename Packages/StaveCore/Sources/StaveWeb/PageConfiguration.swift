@@ -31,9 +31,11 @@ public enum PageConfiguration {
         ruleLists: [WKContentRuleList],
         applicationName: String,
         messageHandler: WKScriptMessageHandler,
-        fileLinkHandler: WKScriptMessageHandler
+        fileLinkHandler: WKScriptMessageHandler,
+        developerExtras: Bool = true
     ) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
+        if developerExtras { enableDeveloperExtras(configuration) }
         configuration.websiteDataStore = store
         configuration.applicationNameForUserAgent = applicationName
         configuration.preferences.isElementFullscreenEnabled = true
@@ -46,5 +48,13 @@ public enum PageConfiguration {
         for list in ruleLists { content.add(list) }
         configuration.userContentController = content
         return configuration
+    }
+
+    /// WebKit's private `developerExtrasEnabled` preference: Inspect Element in the page menu and the in-app Web Inspector (decision 14),
+    /// with no setting, as in Chrome and Firefox. Where the private setter is missing, nothing is set and the Develop items stay disabled.
+    public static func enableDeveloperExtras(_ configuration: WKWebViewConfiguration) {
+        let preferences = configuration.preferences
+        guard preferences.responds(to: PageTools.developerExtrasSetter) else { return }
+        preferences.setValue(true, forKey: PageTools.developerExtrasKey)
     }
 }

@@ -86,7 +86,21 @@ public final class StaveDatabase: Sendable {
         migrator.registerMigration("v3", migrate: createImportRecordTable)
         migrator.registerMigration("v4", migrate: createSiteSettingTable)
         migrator.registerMigration("v5", migrate: createHistoryVisitTable)
+        migrator.registerMigration("v6", migrate: createSiteValueTable)
         return migrator
+    }
+
+    /// Per-site values (zoom, from Task 16 the user agent), shaped like `siteSetting` (decision 12).
+    private static func createSiteValueTable(_ db: Database) throws {
+        try db.create(table: "siteValue") { t in
+            t.primaryKey("id", .blob)
+            t.column("profileID", .blob).notNull().references("profile", onDelete: .cascade)
+            t.column("host", .text).notNull()
+            t.column("key", .text).notNull()
+            t.column("value", .text).notNull()
+            t.column("modifiedAt", .datetime).notNull()
+            t.uniqueKey(["profileID", "host", "key"])
+        }
     }
 
     private static func createHistoryVisitTable(_ db: Database) throws {

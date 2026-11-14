@@ -56,6 +56,25 @@ final class FakeSiteSettings: SiteSettingsSource {
     func setDecision(profileID: UUID, host: String, key: SiteSettingKey, _ d: SiteDecision?) {
         values["\(profileID)|\(host)|\(key.rawValue)"] = d
     }
+
+    /// Site values as the store keeps them (JSON text), and every write in order (nil for a removal).
+    var siteValues: [String: Data] = [:]
+    var siteValueWrites: [(key: String, value: Data?)] = []
+
+    func siteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, as type: V.Type) -> V? {
+        siteValues["\(profileID)|\(host)|\(key.rawValue)"].flatMap { try? JSONDecoder().decode(V.self, from: $0) }
+    }
+
+    func setSiteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, _ value: V?) {
+        let name = "\(profileID)|\(host)|\(key.rawValue)"
+        let data = value.flatMap { try? JSONEncoder().encode($0) }
+        siteValues[name] = data
+        siteValueWrites.append((name, data))
+    }
+
+    func zoom(profileID: UUID, host: String) -> Double? {
+        siteValue(profileID: profileID, host: host, key: .zoom, as: Double.self)
+    }
 }
 
 @MainActor
@@ -606,6 +625,163 @@ struct PageHostTests {
         #expect(page.isContentBlockingOn)
         #expect(settings.decision(profileID: profile, host: "example.com", key: .contentBlocking) == nil)
         host.close(page.tabID)
+    }
+
+    // MARK: Developer tools (decision 14)
+
+    /// Every page in a normal window gets `developerExtrasEnabled`, with no setting.
+    @Test func developerExtrasOnEveryPage() {
+        let host = makeHost()
+        let page = profilePage(host, profile: UUID())
+        #expect(PageTools.hasDeveloperExtras(page.webView))
+        #expect(!page.webView.isInspectable)
+        host.close(page.tabID)
+    }
+
+    /// Task 9's spike could not prove that the inspector never writes a private page's address to WebKit's default store (it was checked on
+    /// macOS 27 only, and its breakpoints and local overrides keep URLs), so a private window's pages get no developer extras.
+    @Test func privatePagesHaveNoDeveloperExtras() {
+        let host = makeHost()
+        let page = host.page(for: request(url: ""), writer: writer)
+        #expect(!PageTools.hasDeveloperExtras(page.webView))
+        #expect(!PageTools.canShowInspector(page.webView))
+        host.close(page.tabID)
+    }
+
+    // MARK: Zoom (decision 12)
+
+    func profilePage(_ host: PageHost, profile: UUID) -> LivePage {
+        var normal = request(url: "")
+        normal.siteSettingsProfileID = profile
+        return host.page(for: normal, writer: writer)
+    }
+
+    /// Loads `url` as a committed main-frame navigation (no network) and waits for the commit to settle.
+    func commit(_ page: LivePage, _ url: String) async throws -> Bool {
+        let commits = page.commitCount
+        page.webView.loadSimulatedRequest(URLRequest(url: try #require(URL(string: url))), responseHTML: "<title>Invented</title>")
+        // WebKit lowercases the host it reports.
+        return try await waitUntil { page.commitCount > commits && page.webView.url?.absoluteString.lowercased() == url.lowercased() && !page.webView.isLoading }
+    }
+
+    /// A page at a stored 150 % on one host that commits a host with nothing stored goes back to 100 %: the zoom never leaks to another site.
+    @Test func zoomResetsOnHostWithoutValue() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        settings.setSiteValue(profileID: profile, host: "example.com", key: .zoom, 1.5)
+        let page = profilePage(host, profile: profile)
+        #expect(try await commit(page, "https://example.com/a"))
+        #expect(try await waitUntil { page.webView.pageZoom == 1.5 })
+        #expect(page.zoom == 1.5)
+        #expect(try await commit(page, "https://example.org/b"))
+        #expect(try await waitUntil { page.webView.pageZoom == 1.0 })
+        #expect(page.zoom == 1.0)
+        host.close(page.tabID)
+    }
+
+    /// Zoom is keyed by `SiteHost.normalized`, the key site settings use: `www.`, case and port don't make another site.
+    @Test func zoomKeyMatchesSiteSettingKey() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let first = profilePage(host, profile: profile)
+        #expect(try await commit(first, "https://WWW.Example.com:8443/a"))
+        host.zoomIn(first.tabID)
+        #expect(first.webView.pageZoom == 1.15)
+        #expect(settings.zoom(profileID: profile, host: "example.com") == 1.15)
+        #expect(settings.siteValues.count == 1)
+        let second = profilePage(host, profile: profile)
+        #expect(try await commit(second, "https://example.com/b"))
+        #expect(try await waitUntil { second.webView.pageZoom == 1.15 })
+        // Another profile has its own zoom for the same host.
+        let other = profilePage(host, profile: UUID())
+        #expect(try await commit(other, "https://example.com/b"))
+        #expect(other.webView.pageZoom == 1.0)
+        for page in [first, second, other] { host.close(page.tabID) }
+    }
+
+    /// Zoom In and Zoom Out step through Safari's levels; Actual Size goes back to 100 % and removes the stored row.
+    @Test func actualSizeRemovesTheStoredZoom() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let page = profilePage(host, profile: profile)
+        #expect(try await commit(page, "https://example.net/"))
+        host.zoomIn(page.tabID)
+        host.zoomIn(page.tabID)
+        #expect(page.zoom == 1.25)
+        host.zoomOut(page.tabID)
+        #expect(page.zoom == 1.15)
+        #expect(settings.zoom(profileID: profile, host: "example.net") == 1.15)
+        host.resetZoom(page.tabID)
+        #expect(page.zoom == 1.0)
+        #expect(page.webView.pageZoom == 1.0)
+        #expect(settings.siteValues.isEmpty)
+        #expect(settings.siteValueWrites.last?.value == nil)
+        // Zooming out to 100 % from above also stores nothing.
+        host.zoomIn(page.tabID)
+        host.zoomOut(page.tabID)
+        #expect(settings.siteValues.isEmpty)
+        host.close(page.tabID)
+    }
+
+    /// Other open pages of the same site and profile follow a zoom change at once, as in Chrome; other sites don't.
+    @Test func zoomFollowsToOpenPagesOfTheSite() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let first = profilePage(host, profile: profile)
+        let second = profilePage(host, profile: profile)
+        let elsewhere = profilePage(host, profile: profile)
+        #expect(try await commit(first, "https://example.com/a"))
+        #expect(try await commit(second, "https://www.example.com/b"))
+        #expect(try await commit(elsewhere, "https://example.org/"))
+        host.zoomIn(first.tabID)
+        #expect(second.zoom == 1.15 && second.webView.pageZoom == 1.15)
+        #expect(elsewhere.zoom == 1.0 && elsewhere.webView.pageZoom == 1.0)
+        for page in [first, second, elsewhere] { host.close(page.tabID) }
+    }
+
+    /// A page with no web site (a blank tab, a local file) zooms but stores nothing.
+    @Test func zoomWithoutAHostStoresNothing() async throws {
+        let host = makeHost()
+        let page = profilePage(host, profile: UUID())
+        host.zoomIn(page.tabID)
+        #expect(page.zoom == 1.15)
+        #expect(settings.siteValueWrites.isEmpty)
+        host.close(page.tabID)
+    }
+
+    /// A private window writes no site values (Global Constraint): its zoom is kept in memory for the private session, shared by its pages on
+    /// the same host, and goes with the session (`leavePrivateSession`), as its camera answers do.
+    @Test func privateZoomNotStored() async throws {
+        let host = makeHost()
+        let profile = UUID()
+        let session = host.joinPrivateSession(profileID: profile)
+        func privatePage() -> LivePage {
+            host.page(for: PageRequest(tabID: UUID(), store: .privateSession(session), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        }
+        let first = privatePage()
+        #expect(try await commit(first, "https://example.com/a"))
+        host.zoomIn(first.tabID)
+        #expect(first.webView.pageZoom == 1.15)
+        #expect(settings.siteValueWrites.isEmpty)
+        let second = privatePage()
+        #expect(try await commit(second, "https://example.com/b"))
+        #expect(try await waitUntil { second.webView.pageZoom == 1.15 })
+        host.close(first.tabID)
+        host.close(second.tabID)
+        // The memory is read through the old session's own store key, before and after the session ends, so the check after
+        // `leavePrivateSession` fails if the session's zoom were kept (a new session's key would miss it either way).
+        #expect(host.siteValue(for: first, host: "example.com", key: .zoom, as: Double.self) == 1.15)
+
+        host.leavePrivateSession(profileID: profile)
+        #expect(host.siteValue(for: first, host: "example.com", key: .zoom, as: Double.self) == nil)
+        let nextSession = host.joinPrivateSession(profileID: profile)
+        #expect(nextSession != session)
+        let later = host.page(for: PageRequest(tabID: UUID(), store: .privateSession(nextSession), siteSettingsProfileID: nil, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+        #expect(try await commit(later, "https://example.com/c"))
+        #expect(later.webView.pageZoom == 1.0)
+        #expect(settings.siteValueWrites.isEmpty)
+        host.close(later.tabID)
+        host.leavePrivateSession(profileID: profile)
     }
 
     // MARK: Hibernation

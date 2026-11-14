@@ -138,4 +138,13 @@ extension PageDelegate {
         }
         return answer.allow ? .grant : .deny
     }
+
+    // MARK: Web Inspector (decision 14)
+
+    /// WebKit's private UI delegate call when a page's in-app inspector opens, from Develop or the page's Inspect Element. It would sit
+    /// attached beside the page, where Stave's page host can't show it, so it moves to its own window once WebKit has finished attaching it.
+    @objc(_webView:didAttachLocalInspector:)
+    public func webViewDidAttachLocalInspector(_ webView: WKWebView, inspector: NSObject) {
+        Task { @MainActor in PageTools.detachInspector(inspector) }
+    }
 }

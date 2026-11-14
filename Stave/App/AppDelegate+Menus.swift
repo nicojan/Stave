@@ -85,11 +85,25 @@ extension AppDelegate {
     }
 
     /// A live page's status for the page menu. The blocking toggle applies only to a page with a web site (`PageMenuState.blockingState`).
-    private static func summary(of page: LivePage) -> PageStatusSummary {
+    static func summary(of page: LivePage) -> PageStatusSummary {
         PageStatusSummary(
             isLoading: page.status.isLoading, canGoBack: page.status.canGoBack, canGoForward: page.status.canGoForward,
-            hasPage: true, blockingOn: PageMenuState.blockingState(url: page.status.url, isOn: page.isContentBlockingOn)
+            hasPage: true, blockingOn: PageMenuState.blockingState(url: page.status.url, isOn: page.isContentBlockingOn),
+            hasFailure: page.status.failure != nil, isBlank: PageMenuState.isBlank(url: page.status.url), zoom: page.zoom,
+            inspectorAvailable: PageTools.canShowInspector(page.webView), sourceAvailable: PageTools.canShowPageSource(page.webView)
         )
+    }
+
+    /// ⌘= zooms in like ⌘+ (Safari answers both; on most layouts + needs Shift). A SwiftUI menu item takes one key, so ⌘= is caught before
+    /// the menus and sent to the same command, only while Zoom In is enabled; otherwise the key goes on as usual.
+    func installZoomKeyAlternate() {
+        guard zoomKeyMonitor == nil else { return }
+        zoomKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers == "=", self.menuState.pageMenu.canZoomIn else { return event }
+            self.zoomIn()
+            return nil
+        }
     }
 
     /// Everything the menus show for the key window, read in one observation pass.
@@ -111,6 +125,7 @@ extension AppDelegate {
     }
 
     func observeKeyWindow() {
+        installZoomKeyAlternate()
         let center = NotificationCenter.default
         keyObservers = [
             NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,

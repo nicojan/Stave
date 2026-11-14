@@ -346,6 +346,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         page?.committed()
+        // Zoom follows the committed site, or goes back to 100 % (decision 12), so it never leaks to another site.
+        if let page { host?.applyStoredZoom(to: page) }
         // As in Chrome, a question waiting for the old document is dropped when a new one commits.
         events?.cancelWaitingQuestions(tabID: tabID)
         refuseWaitingDownloads()

@@ -70,6 +70,24 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
             NSLog("Stave: could not save a site setting: \(error)")
         }
     }
+
+    /// A row that can't be read is logged and treated as none, so the page falls back to the default (100 % zoom).
+    func siteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, as type: V.Type) -> V? {
+        do {
+            return try store.siteValue(profileID: profileID, host: host, key: key, as: type)
+        } catch {
+            NSLog("Stave: could not read a site value: \(error)")
+            return nil
+        }
+    }
+
+    func setSiteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, _ value: V?) {
+        do {
+            try store.setSiteValue(profileID: profileID, host: host, key: key, value)
+        } catch {
+            NSLog("Stave: could not save a site value: \(error)")
+        }
+    }
 }
 
 /// The writer of pages that are no store tabs (pop-ups): nothing they do is written, so they leave no rows and are never restored.
