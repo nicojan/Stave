@@ -113,7 +113,8 @@ public enum ArcImportCopy {
     public static let historyUnreadable = "Stave couldn't check whether you've imported from Arc before, so it didn't import."
 
     public static func errorMessage(for error: Error) -> String {
-        switch error as? ArcImportError {
+        if let storeError = error as? StoreError, storeError == .importChanged { return StoreErrorText.message(for: storeError) }
+        return switch error as? ArcImportError {
         case .fileTooLarge: "This file is over 64 MB, far larger than any Arc sidebar file, so Stave didn't open it."
         case .notJSON: "This isn't an Arc sidebar file. Stave couldn't read it as JSON."
         case .noSidebar: "This file doesn't contain an Arc sidebar."

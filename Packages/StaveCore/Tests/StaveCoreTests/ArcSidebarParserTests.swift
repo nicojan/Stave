@@ -184,15 +184,24 @@ struct ArcSidebarParserTests {
         #expect(sidebar.duplicateItems == 999)
     }
 
-    @Test(.timeLimit(.minutes(1))) func doublingFoldersDoNotExplode() throws {
-        // Each folder lists the next one twice: 2^40 paths without a visited set.
+    /// Each folder lists the next one twice: 2^40 paths without a visited set. The parse runs off the test's task and the test stops
+    /// waiting after a deadline, so a regression fails here by itself instead of hanging the run.
+    @Test(.timeLimit(.minutes(1))) func doublingFoldersDoNotExplode() async throws {
         var items = ""
         for level in 1...40 {
             let next = level == 40 ? "[]" : #"["F\#(level + 1)","F\#(level + 1)"]"#
             items += #","F\#(level)",{"id":"F\#(level)","childrenIds":\#(next),"title":"F\#(level)","data":{"list":{}}}"#
         }
-        let sidebar = try ArcSidebarParser.parse(sidebarJSON(items: items, children: ["F1"]))
-        #expect(sidebar.duplicateItems == 39)
+        let data = sidebarJSON(items: items, children: ["F1"])
+        let outcome = ParseOutcome()
+        // Detached and never awaited: a walk that doesn't end must not hold the test. Within the deadline it has finished.
+        Task.detached { outcome.set(Result { try ArcSidebarParser.parse(data).duplicateItems }) }
+        let deadline = ContinuousClock.now + .seconds(20)
+        while outcome.value == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let result = try #require(outcome.value, "the parse took over 20 seconds: the walk is exploding (is the visited set gone?)")
+        #expect(try result.get() == 39)
     }
 
     private func nestedFolders(depth: Int) -> Data {
@@ -463,4 +472,20 @@ struct ArcSidebarParserTests {
             #expect(sidebar.missingItems == 0, "\(name)")
         }
     }
+
+    /// `"profile": null` is a marker Stave can't read, so the space goes to the first profile and is reported, like any unknown marker.
+    @Test func nullProfileIsUnrecognized() throws {
+        let ids = #""newContainerIDs":[{"pinned":{}},"P"]"#
+        let space = arcSpaceJSON("S1", #""title":"A","profile":null,\#(ids)"#)
+        let sidebar = try ArcSidebarParser.parse(arcSidebarData(items: pinnedAndUnpinnedItems, spaces: [space]))
+        #expect(sidebar.spaces.map(\.profile) == [.unrecognized])
+    }
+}
+
+/// The result of a parse running on another thread, read by the test that started it.
+private final class ParseOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Result<Int, Error>?
+    var value: Result<Int, Error>? { lock.withLock { stored } }
+    func set(_ result: Result<Int, Error>) { lock.withLock { stored = result } }
 }

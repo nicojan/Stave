@@ -16,11 +16,13 @@ struct ImportRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Iden
 extension OrganizationStore {
     /// When the newest import from `source` happened, or nil if there has been none.
     public func lastImport(source: ImportSource) throws -> Date? {
-        try database.writer.read { db in
-            try ImportRecord
-                .filter(Column("source") == source.rawValue)
-                .order(Column("importedAt").desc, Column("rowid").desc)
-                .fetchOne(db)?.importedAt
-        }
+        try database.writer.read { db in try lastImport(source: source, in: db) }
+    }
+
+    func lastImport(source: ImportSource, in db: Database) throws -> Date? {
+        try ImportRecord
+            .filter(Column("source") == source.rawValue)
+            .order(Column("importedAt").desc, Column("rowid").desc)
+            .fetchOne(db)?.importedAt
     }
 }

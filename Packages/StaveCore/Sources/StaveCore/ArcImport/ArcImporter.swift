@@ -28,29 +28,32 @@ public enum ArcImporter {
     }
 
     /// Reads a sidebar file from disk. The size is checked before any byte is read; a missing file, a directory or a read failure is `.unreadable`. An unreadable Local State counts as absent.
+    /// `expectingLastImport` is the last Arc import the caller saw; see `OrganizationStore.importArc(_:expectingLastImport:)`.
     public static func run(
         sidebarFile: URL,
         localStateFile: URL?,
         options: ArcImportOptions,
-        into store: OrganizationStore
+        into store: OrganizationStore,
+        expectingLastImport: Date? = nil
     ) throws -> ArcImportReport {
         guard let size = regularFileSize(at: sidebarFile) else { throw ArcImportError.unreadable }
         guard size <= ArcSidebarParser.maximumFileSize else { throw ArcImportError.fileTooLarge }
         guard let sidebar = try? Data(contentsOf: sidebarFile.resolvingSymlinksInPath()) else { throw ArcImportError.unreadable }
         let localState = localStateFile.flatMap(readLocalState)
-        return try run(sidebar: sidebar, localState: localState, options: options, into: store)
+        return try run(sidebar: sidebar, localState: localState, options: options, into: store, expectingLastImport: expectingLastImport)
     }
 
     public static func run(
         sidebar: Data,
         localState: Data?,
         options: ArcImportOptions,
-        into store: OrganizationStore
+        into store: OrganizationStore,
+        expectingLastImport: Date? = nil
     ) throws -> ArcImportReport {
         let parsed = try ArcSidebarParser.parse(sidebar)
         let names = localState.map { ArcProfileNames.names(fromLocalState: $0) } ?? [:]
         let plan = ArcImportPlanner.plan(parsed, options: options, profileNames: names)
-        return try store.importArc(plan)
+        return try store.importArc(plan, expectingLastImport: expectingLastImport)
     }
 
     /// Local State bytes, or nil (treated as absent) when it is not a regular file, is over the cap or cannot be read.

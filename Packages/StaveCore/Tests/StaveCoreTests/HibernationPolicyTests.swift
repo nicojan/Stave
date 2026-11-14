@@ -52,4 +52,16 @@ import Testing
         #expect(result == idle.sorted { $0.lastShownAt < $1.lastShownAt }.map(\.id))
         #expect(Set(result).count == result.count)
     }
+
+    /// Idle pages go, and when the rest are still over the cap the oldest of those go too: the union, each once, oldest first.
+    @Test func idlePlusOverflowIsTheirUnion() {
+        let idle = (0..<2).map { page(minutesAgo: 40 + Double($0)) }
+        let fresh = (0..<28).map { page(minutesAgo: 1 + Double($0) * 0.1) }
+        let result = HibernationPolicy.pagesToUnload(fresh + idle, now: now)
+        // 30 live, 2 idle go; 28 left against a cap of 24, so the 4 oldest fresh pages go too.
+        let oldestFresh = fresh.sorted { $0.lastShownAt < $1.lastShownAt }.prefix(4)
+        let expected = (idle + oldestFresh).sorted { $0.lastShownAt < $1.lastShownAt }.map(\.id)
+        #expect(result == expected)
+        #expect(Set(result).count == 6)
+    }
 }

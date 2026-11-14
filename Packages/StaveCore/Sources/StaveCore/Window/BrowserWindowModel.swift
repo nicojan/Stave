@@ -10,7 +10,7 @@ public protocol PageLifecycle: AnyObject {
     func tabUnloaded(_ id: UUID)
     /// This window stopped showing the tab (selection moved on or cleared).
     func tabDeselected(_ id: UUID)
-    /// The tab's stored address and history were replaced from outside its page (Back to Pinned Page, `navigateSelected`): a live page must
+    /// The tab's stored address and history were replaced from outside its page (Back to Pinned Page): a live page must
     /// follow the store instead of writing its old page back.
     func tabNavigated(_ id: UUID)
 }
@@ -54,6 +54,10 @@ public final class BrowserWindowModel: CommandBarWindow {
     @ObservationIgnored private let base: WindowState
     @ObservationIgnored private var profileID: UUID
     @ObservationIgnored private var workspaceID: UUID
+    /// Whether a tab still exists. Injectable so a test can make it fail while the sidebar read succeeds.
+    @ObservationIgnored var readTabExists: (UUID) throws -> Bool
+    /// The IDs of a workspace's pinned and regular tabs, which its deletion archives. Injectable so a test can make it fail.
+    @ObservationIgnored var readWorkspaceTabIDs: (UUID) throws -> [UUID]
 
     /// Where the selected tab's live page is shown; nil with no selection. Read from the registry, which owns the answer.
     public var placement: LivePlacement? { selectedTabID.map { livePages.placement(of: $0, in: windowID) } }
@@ -72,6 +76,11 @@ public final class BrowserWindowModel: CommandBarWindow {
     public init(store: OrganizationStore, revision: StoreRevision, livePages: LivePageRegistry, state: WindowState) throws {
         let loaded = try Self.read(store, profileID: state.profileID, workspaceID: state.workspaceID)
         self.store = store; self.revision = revision; self.livePages = livePages; self.base = state
+        readTabExists = { try store.tabExists($0) }
+        readWorkspaceTabIDs = { id in
+            let workspace = try store.sidebarSnapshot(workspaceID: id)
+            return (Self.pinnedTabs(workspace.pinned) + workspace.regular).map(\.id)
+        }
         windowID = state.id; frame = state.frame
         snapshot = loaded.snapshot; rows = loaded.rows; workspaces = loaded.workspaces
         profiles = loaded.profiles; containers = loaded.containers
@@ -82,7 +91,8 @@ public final class BrowserWindowModel: CommandBarWindow {
     }
 
     /// Re-reads the store. A missing workspace falls back to the profile's first, a missing profile to the first profile.
-    /// A selected tab that is gone clears the selection and releases this window's claim. A failed read keeps the old snapshot.
+    /// A selected tab that is gone clears the selection and releases this window's claim. A failed read keeps the old snapshot and shows
+    /// the failure; so does a failed check of whether a vanished tab still exists, which clears the selection without a deselect.
     public func reload() {
         do {
             let loaded = try Self.read(store, profileID: profileID, workspaceID: workspaceID)
@@ -97,7 +107,14 @@ public final class BrowserWindowModel: CommandBarWindow {
         if let id = selectedTabID, !Self.allTabs(in: snapshot).contains(where: { $0.id == id }) {
             // Gone from this window's rows. A tab that still exists was moved away (its page survives), so this window reports it deselected;
             // an archived or removed tab is covered by `tabClosed` instead.
-            clearSelection(reportDeselect: (try? store.tabExists(id)) == true)
+            let stillExists: Bool
+            do {
+                stillExists = try readTabExists(id)
+            } catch {
+                lastError = StoreErrorText.message(for: error)
+                stillExists = false
+            }
+            clearSelection(reportDeselect: stillExists)
         }
         dropStaleHighlight()
     }
@@ -254,13 +271,23 @@ public final class BrowserWindowModel: CommandBarWindow {
         perform { try store.updateWorkspace(id, name: name, icon: icon, colorHex: colorHex) }
     }
 
-    /// Deleting the current workspace first moves to its neighbour (next, else previous).
+    /// Deleting the current workspace first moves to its neighbour (next, else previous). The tabs it archives are read first, so each
+    /// one's page hears `tabGone`; when that read fails, the failure shows and nothing is deleted or switched.
     public func deleteWorkspace(_ id: UUID) {
+        let archivedIDs: [UUID]
+        do {
+            archivedIDs = try readWorkspaceTabIDs(id)
+        } catch {
+            // As `perform` does with a failed write: re-read (the workspace may be gone already), then show this failure.
+            let message = StoreErrorText.message(for: error)
+            reload()
+            lastError = message
+            return
+        }
         if id == snapshot.workspace.id, let index = workspaces.firstIndex(where: { $0.id == id }) {
             let neighbour = workspaces.indices.contains(index + 1) ? workspaces[index + 1] : (index > 0 ? workspaces[index - 1] : nil)
             if let neighbour { switchWorkspace(to: neighbour.id) }
         }
-        let archivedIDs = (try? store.sidebarSnapshot(workspaceID: id)).map { Self.pinnedTabs($0.pinned) + $0.regular }?.map(\.id) ?? []
         guard perform({ try store.deleteWorkspace(id) }) != nil else { return }
         for id in archivedIDs { tabGone(id) }
     }
@@ -298,14 +325,6 @@ public final class BrowserWindowModel: CommandBarWindow {
                 url: url, title: "", workspaceID: snapshot.workspace.id, origin: origin,
                 containerID: containerID, edge: try store.setting(SettingKeys.newTabEdge)
             )
-        }
-    }
-
-    /// Stores the URL, clears the title (the sidebar shows the host) and the history; a live page then reloads from the store.
-    public func navigateSelected(to url: String) {
-        guard let id = selectedTabID else { return }
-        if perform({ try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }) != nil {
-            pages?.tabNavigated(id)
         }
     }
 

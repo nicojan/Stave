@@ -84,7 +84,7 @@ struct ArcImportStoreTests {
             profiles: [PlannedProfile(target: .new(name: "Solo"), workspaces: [], essentials: [tab("https://a.example.com", "A")])],
             flattened: [], skipped: []
         )
-        let report = try store.importArc(plan)
+        let report = try store.importArc(plan, expectingLastImport: nil)
         #expect(report.imported == ArcImportReport.Counts(profiles: 1, essentials: 1))
         let solo = try #require(try store.profiles().first { $0.name == "Solo" })
         #expect(try store.workspaces(profileID: solo.id).map(\.name) == ["Home"])
@@ -156,7 +156,7 @@ struct ArcImportStoreTests {
             ],
             flattened: [], skipped: []
         )
-        #expect(throws: StoreError.folderTooDeep) { try store.importArc(bad) }
+        #expect(throws: StoreError.folderTooDeep) { try store.importArc(bad, expectingLastImport: nil) }
         let after = try snapshot()
         #expect(after.0 == before.0)
         #expect(after.1 == before.1)
@@ -170,7 +170,7 @@ struct ArcImportStoreTests {
         let plan = ArcImportPlan(
             profiles: [PlannedProfile(target: .existingDefault, workspaces: [], essentials: [])], flattened: [], skipped: []
         )
-        let report = try store.importArc(plan)
+        let report = try store.importArc(plan, expectingLastImport: nil)
         #expect(report.imported == ArcImportReport.Counts())
         let profile = try #require(try store.profiles().first)
         #expect(try store.workspaces(profileID: profile.id).map(\.name) == ["Home"])
@@ -191,7 +191,7 @@ struct ArcImportStoreTests {
                 PlannedProfile(target: .existingDefault, workspaces: [workspace("In Default")], essentials: []),
             ],
             flattened: [], skipped: [])
-        _ = try store.importArc(plan)
+        _ = try store.importArc(plan, expectingLastImport: nil)
         let profiles = try store.profiles()
         #expect(profiles.map(\.name) == ["Personal", "X"])
         let names = try profiles.map { profile in try store.workspaces(profileID: profile.id).map(\.name) }
@@ -223,9 +223,75 @@ struct ArcImportStoreTests {
     @Test func lastImportIsTheNewest() throws {
         let (store, clock) = try makeStoreAndClock()
         _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store)
+        let first = try store.lastImport(source: .arc)
         clock.advance(by: 60)
-        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store)
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: store, expectingLastImport: first)
         #expect(try store.lastImport(source: .arc) == clock.date)
+    }
+
+    /// The repeat check runs inside the import's own transaction: an import that expected no earlier import (or an older one) is refused
+    /// when another import has landed since, and writes nothing.
+    @Test func importRefusesWhenTheHistoryChanged() throws {
+        let (store, clock) = try makeStoreAndClock()
+        let basic = try plan("basic")
+        _ = try store.importArc(basic, expectingLastImport: nil)
+        let first = try #require(try store.lastImport(source: .arc))
+        let profile = try #require(try store.profiles().first)
+        let workspacesAfterFirst = try store.workspaces(profileID: profile.id)
+
+        clock.advance(by: 60)
+        #expect(throws: StoreError.importChanged) { try store.importArc(basic, expectingLastImport: nil) }
+        #expect(throws: StoreError.importChanged) { try store.importArc(basic, expectingLastImport: first.addingTimeInterval(-1)) }
+        #expect(try store.workspaces(profileID: profile.id) == workspacesAfterFirst)
+        #expect(try store.lastImport(source: .arc) == first)
+
+        // A confirmed repeat names the import it saw, and goes through.
+        _ = try store.importArc(basic, expectingLastImport: first)
+        #expect(try store.lastImport(source: .arc) == clock.date)
+        #expect(try store.workspaces(profileID: profile.id).count > workspacesAfterFirst.count)
+    }
+
+    /// Every record an import writes is stamped from the store's clock, never the wall clock.
+    @Test func importStampsRecordsWithTheStoreClock() throws {
+        let (store, clock) = try makeStoreAndClock()
+        clock.advance(by: 12_345)
+        let stamp = clock.date
+        _ = try store.importArc(try plan("edge-cases", includeUnpinned: true), expectingLastImport: nil)
+        let profiles = try store.profiles()
+        #expect(profiles.count > 1)
+        #expect(profiles.allSatisfy { $0.modifiedAt == stamp })
+        var tabs: [Tab] = []
+        for profile in profiles {
+            let essentials = try store.essentials(profileID: profile.id)
+            tabs += essentials
+            for workspace in try store.workspaces(profileID: profile.id) {
+                #expect(workspace.modifiedAt == stamp)
+                let snapshot = try store.sidebarSnapshot(workspaceID: workspace.id)
+                tabs += pinnedTabs(snapshot.pinned) + snapshot.regular
+                #expect(pinnedFolders(snapshot.pinned).allSatisfy { $0.modifiedAt == stamp })
+            }
+        }
+        #expect(!tabs.isEmpty)
+        #expect(tabs.allSatisfy { $0.modifiedAt == stamp && $0.lastActiveAt == stamp })
+        #expect(try store.lastImport(source: .arc) == stamp)
+    }
+
+    private func pinnedTabs(_ items: [PinnedItem]) -> [Tab] {
+        items.flatMap { item -> [Tab] in
+            switch item {
+            case .tab(let tab): [tab]
+            case .folder(_, let children): pinnedTabs(children)
+            }
+        }
+    }
+
+    private func pinnedFolders(_ items: [PinnedItem]) -> [Folder] {
+        items.flatMap { item -> [Folder] in
+            switch item {
+            case .tab: []
+            case .folder(let folder, let children): [folder] + pinnedFolders(children)
+            }
+        }
     }
 
     @Test func failedImportWritesNoRecord() throws {
@@ -236,7 +302,7 @@ struct ArcImportStoreTests {
             profiles: [PlannedProfile(target: .existingDefault, workspaces: [workspace], essentials: [])],
             flattened: [], skipped: []
         )
-        #expect(throws: StoreError.folderTooDeep) { try store.importArc(bad) }
+        #expect(throws: StoreError.folderTooDeep) { try store.importArc(bad, expectingLastImport: nil) }
         #expect(try store.lastImport(source: .arc) == nil)
     }
 

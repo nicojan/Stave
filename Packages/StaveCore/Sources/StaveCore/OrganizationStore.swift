@@ -62,16 +62,6 @@ public final class OrganizationStore: Sendable {
         }
     }
 
-    public func renameWorkspace(_ id: UUID, to name: String) throws {
-        try writer.write { db in
-            guard let workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }
-            var renamed = workspace
-            renamed.name = name
-            renamed.modifiedAt = now()
-            try renamed.update(db)
-        }
-    }
-
     public func updateWorkspace(_ id: UUID, name: String, icon: String, colorHex: String) throws {
         try writer.write { db in
             guard var workspace = try Workspace.fetchOne(db, key: id) else { throw StoreError.notFound }

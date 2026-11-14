@@ -236,14 +236,101 @@ struct PageLifecycleTests {
         #expect(pages.navigated == [tab.id])
     }
 
-    @Test func navigateSelectedTellsTheLivePage() throws {
+    @Test func deleteWorkspaceWithPinnedInFolder() throws {
         let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let folder = try world.store.createFolder(workspaceID: other.id, parentFolderID: nil, title: "Folder")
+        let inFolder = try world.store.openTab(url: "https://example.org/in-folder", title: "In folder", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        try world.store.pinTab(inFolder.id, folderID: folder.id)
+        let window = try world.window()
+        let pages = FakePages()
+        window.pages = pages
+        window.deleteWorkspace(other.id)
+        #expect(pages.closed == [inFolder.id])
+        let archived = try world.store.archivedTabs(profileID: world.profile.id)
+        #expect(archived.map(\.url) == ["https://example.org/in-folder"])
+        #expect(archived.map(\.pinnedURL) == ["https://example.org/in-folder"])
+        #expect(try world.store.workspaces(profileID: world.profile.id).map(\.id) == [world.home.id])
+    }
+
+    private struct ReadFailure: Error {}
+
+    /// The store's own read throws (here the container table is gone behind the window's back): the failure shows, and the window keeps
+    /// the last snapshot and selection rather than showing a half-read sidebar.
+    @Test func reloadReportsAReadFailure() throws {
+        let (store, database, _) = try makeTempStore(now: TestClock().now)
+        let profile = try store.ensureDefaultProfile()
+        let home = try #require(try store.workspaces(profileID: profile.id).first)
+        let world = World(store: store, profile: profile, home: home)
         let tab = try world.tab("a")
         let window = try world.window(selected: tab.id)
         let pages = FakePages()
         window.pages = pages
-        window.navigateSelected(to: "https://example.org/next")
-        #expect(pages.navigated == [tab.id])
-        #expect(window.selectedTab?.url == "https://example.org/next")
+        let before = window.snapshot
+        let rowsBefore = window.rows
+        _ = try world.tab("b") // a change the failed read must not half-show
+        try database.writer.write { db in try db.execute(sql: "ALTER TABLE container RENAME TO containerGone") }
+        window.reload()
+        #expect(window.lastError == StoreErrorText.fallback)
+        #expect(window.snapshot == before)
+        #expect(window.rows == rowsBefore)
+        #expect(window.selectedTabID == tab.id)
+        #expect(pages.deselected.isEmpty)
+        #expect(pages.closed.isEmpty)
+    }
+
+    /// The sidebar read succeeds and the selected tab is gone from it, but asking whether it still exists fails: the failure shows, and
+    /// the selection clears without a deselect (the tab may be gone, so nothing tells its page it is merely hidden).
+    @Test func reloadReportsATabExistsFailure() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        let pages = FakePages()
+        window.pages = pages
+        window.readTabExists = { _ in throw ReadFailure() }
+        try world.store.moveTab(tab.id, toWorkspace: other.id, section: .regular, folderID: nil, after: nil) // behind the window's back
+        window.reload()
+        #expect(window.selectedTabID == nil)
+        #expect(window.lastError == StoreErrorText.fallback)
+        #expect(pages.deselected.isEmpty)
+        #expect(pages.closed.isEmpty)
+    }
+
+    /// The control for the test above: with the existence check working, a tab moved away is reported deselected and no error shows.
+    @Test func reloadReportsTheDeselectOfATabMovedAway() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        let pages = FakePages()
+        window.pages = pages
+        try world.store.moveTab(tab.id, toWorkspace: other.id, section: .regular, folderID: nil, after: nil)
+        window.reload()
+        #expect(window.selectedTabID == nil)
+        #expect(window.lastError == nil)
+        #expect(pages.deselected == [tab.id])
+    }
+
+    /// Without the list of tabs to archive, their pages would never hear `tabClosed`: the delete stops before it starts.
+    @Test func deleteWorkspaceReadFailureDeletesNothing() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let tab = try world.store.openTab(url: "https://example.org/a", title: "a", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        let window = try BrowserWindowModel(
+            store: world.store, revision: world.revision, livePages: world.livePages,
+            state: WindowState(profileID: world.profile.id, workspaceID: other.id, selectedTabID: tab.id, frame: "", sortIndex: 0)
+        )
+        let pages = FakePages()
+        window.pages = pages
+        window.readWorkspaceTabIDs = { _ in throw ReadFailure() }
+        window.deleteWorkspace(other.id)
+        #expect(window.lastError == StoreErrorText.fallback)
+        #expect(try world.store.workspaces(profileID: world.profile.id).map(\.id) == [world.home.id, other.id])
+        #expect(window.snapshot.workspace.id == other.id)
+        #expect(window.selectedTabID == tab.id)
+        #expect(try world.store.archivedTabs(profileID: world.profile.id).isEmpty)
+        #expect(pages.closed.isEmpty)
+        #expect(pages.deselected.isEmpty)
     }
 }

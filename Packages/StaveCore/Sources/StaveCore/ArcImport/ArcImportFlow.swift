@@ -97,6 +97,8 @@ public final class ArcImportFlow {
         let store = store
         let source = source
         let options = ArcImportOptions(includeUnpinnedTabs: includeUnpinnedTabs)
+        // The history this sheet showed: the import's own transaction refuses it if another import landed since.
+        let expected = previousImport
         let outcome = await Task.detached(priority: .userInitiated) { () -> Result<ArcImportReport, Error> in
             let file: URL
             switch source {
@@ -108,7 +110,8 @@ public final class ArcImportFlow {
                     sidebarFile: file,
                     localStateFile: ArcImporter.localStateFile(nextTo: file),
                     options: options,
-                    into: store
+                    into: store,
+                    expectingLastImport: expected
                 )
             }
         }.value
@@ -119,6 +122,8 @@ public final class ArcImportFlow {
             revision.bump()
             phase = .finished(ArcImportSummary(report: report))
         case .failure(let error):
+            // Another import landed first: read the history again, so the next start asks before importing a second copy.
+            if error as? StoreError == .importChanged { refreshHistory() }
             phase = .failed(ArcImportCopy.errorMessage(for: error))
         }
     }

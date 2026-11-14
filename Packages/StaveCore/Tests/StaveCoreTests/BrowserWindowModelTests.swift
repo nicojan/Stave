@@ -226,21 +226,6 @@ struct BrowserWindowModelTests {
         #expect(model.selectedTabID == a.id)
     }
 
-    @Test func navigateSelectedDrifts() throws {
-        let world = try makeWorld()
-        let tab = try world.tab("a")
-        let model = try world.window()
-        model.pin(tab.id, folderID: nil)
-        model.select(tab.id)
-        model.navigateSelected(to: "https://example.org/elsewhere")
-        let stored = try #require(model.selectedTab)
-        #expect(stored.url == "https://example.org/elsewhere")
-        #expect(stored.title == "")
-        #expect(model.rows.first?.kind == .pinnedTab(drifted: true))
-        model.resetPinned(tab.id)
-        #expect(model.rows.first?.kind == .pinnedTab(drifted: false))
-    }
-
     @Test func removePinnedArchivesAndMovesTheSelectionOn() throws {
         let world = try makeWorld()
         let pinned = try world.tab("a"), regular = try world.tab("b")

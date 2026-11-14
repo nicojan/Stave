@@ -64,4 +64,23 @@ import Testing
         #expect(r.record(.finished, at: at(10)).isEmpty)
         #expect(r.flush(at: at(10)).isEmpty)
     }
+
+    /// A flush starts a new throttle window, so a change right after it waits for the interval again.
+    @Test func flushResetsTheThrottleClock() {
+        var r = make()
+        _ = r.record(.stateChanged, at: at(0))
+        _ = r.record(.stateChanged, at: at(1))
+        #expect(r.flush(at: at(1.5)) == [.interactionState])
+        #expect(r.record(.stateChanged, at: at(2.5)).isEmpty)
+        #expect(r.record(.stateChanged, at: at(3.6)) == [.interactionState])
+    }
+
+    /// A commit that leaves address, title and favicon as stored (a reload of a page with no title yet) writes nothing.
+    @Test func sameStateCommitWritesNothing() {
+        var r = PageRecorder(url: "https://example.com", title: "", faviconURL: nil)
+        #expect(r.record(.committed(url: "https://example.com"), at: at(0)).isEmpty)
+        // With a title stored, the same address still writes, because a commit clears the title.
+        var titled = make()
+        #expect(titled.record(.committed(url: "https://example.com"), at: at(0)) == [.navigation(url: "https://example.com", title: "", faviconURL: nil)])
+    }
 }

@@ -179,6 +179,9 @@ struct WebStoreTests {
         var migrator = StaveDatabase.makeMigrator()
         let queue = try DatabaseQueue(path: v3File.path)
         try migrator.migrate(queue, upTo: "v3")
+        // The control: the v3 file has no siteSetting table, so finding one below proves the migration made it.
+        let before = try queue.read { db in try db.tableExists("siteSetting") }
+        #expect(before == false)
         try queue.close()
         migrator = StaveDatabase.makeMigrator()
         let reopened = try StaveDatabase.open(at: v3File)
@@ -186,5 +189,27 @@ struct WebStoreTests {
             try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         #expect(tables.contains("siteSetting"))
+    }
+
+    /// One answer per profile, host and key: a second row for the same three is refused by the database itself.
+    @Test func siteSettingIsUniquePerProfileHostAndKey() throws {
+        let (store, database, _) = try makeTempStore()
+        let p = try store.createProfile(name: "P")
+        let q = try store.createProfile(name: "Q")
+        let insert = "INSERT INTO siteSetting (id, profileID, host, key, decision, modifiedAt) VALUES (?, ?, ?, ?, 'allow', ?)"
+        try database.writer.write { db in
+            try db.execute(sql: insert, arguments: [UUID(), p.id, "example.com", "camera", Date()])
+            // Each differs from the first row in exactly one of the three.
+            try db.execute(sql: insert, arguments: [UUID(), q.id, "example.com", "camera", Date()])
+            try db.execute(sql: insert, arguments: [UUID(), p.id, "example.org", "camera", Date()])
+            try db.execute(sql: insert, arguments: [UUID(), p.id, "example.com", "microphone", Date()])
+        }
+        #expect(throws: DatabaseError.self) {
+            try database.writer.write { db in
+                try db.execute(sql: insert, arguments: [UUID(), p.id, "example.com", "camera", Date()])
+            }
+        }
+        #expect(try database.writer.read { db in try SiteSetting.fetchCount(db) } == 4)
+        #expect(try store.siteDecision(profileID: p.id, host: "example.com", key: .camera) == .allow)
     }
 }

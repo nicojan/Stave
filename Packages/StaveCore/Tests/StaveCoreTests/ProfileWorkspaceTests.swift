@@ -42,24 +42,6 @@ struct ProfileWorkspaceTests {
         #expect(try store.workspaces(profileID: profile.id).map(\.name) == ["Home", "A", "B", "C"])
     }
 
-    @Test func renameBumpsModifiedAt() throws {
-        let clock = TestClock()
-        let (store, _, _) = try makeTempStore(now: clock.now)
-        let profile = try store.createProfile(name: "P")
-        let home = try #require(try store.workspaces(profileID: profile.id).first)
-        clock.advance(by: 1)
-        try store.renameWorkspace(home.id, to: "Main")
-        let renamed = try #require(try store.workspaces(profileID: profile.id).first)
-        #expect(renamed.name == "Main")
-        #expect(renamed.modifiedAt > home.modifiedAt)
-        #expect(renamed.modifiedAt == clock.date)
-    }
-
-    @Test func renameUnknownThrowsNotFound() throws {
-        let (store, _, _) = try makeTempStore()
-        #expect(throws: StoreError.notFound) { try store.renameWorkspace(UUID(), to: "X") }
-    }
-
     @Test func deleteUnknownThrowsNotFound() throws {
         let (store, _, _) = try makeTempStore()
         #expect(throws: StoreError.notFound) { try store.deleteWorkspace(UUID()) }

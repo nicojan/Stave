@@ -3,8 +3,11 @@ import GRDB
 
 extension OrganizationStore {
     /// Writes an Arc import plan in one transaction: any failure leaves the store untouched. Existing data is only appended after.
-    public func importArc(_ plan: ArcImportPlan) throws -> ArcImportReport {
+    /// `expectingLastImport` is the last Arc import the caller saw (nil for none). The check runs inside the transaction, so of two
+    /// imports started from the same view of the history only the first is written; the other throws `.importChanged` and writes nothing.
+    public func importArc(_ plan: ArcImportPlan, expectingLastImport: Date?) throws -> ArcImportReport {
         try database.writer.write { db in
+            guard try lastImport(source: .arc, in: db) == expectingLastImport else { throw StoreError.importChanged }
             var counts = ArcImportReport.Counts()
             // First, so a first-run default is created before any imported profile and keeps its place at the top.
             let defaultProfile = plan.profiles.contains { $0.target == .existingDefault }

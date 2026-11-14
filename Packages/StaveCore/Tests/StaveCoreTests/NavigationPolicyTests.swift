@@ -120,4 +120,16 @@ struct NavigationPolicyTests {
         #expect(PageText.mediaQuestion(host: "example.com", camera: true, microphone: true) == "Allow example.com to use your camera and microphone?")
         #expect(PageText.elsewhereTitle == "This tab is open in another window")
     }
+
+    /// Scheme matching ignores case, and a typed `data:` address is refused with the panel rather than loaded.
+    @Test func upperCaseSchemesAndTypedData() {
+        #expect(NavigationPolicy.decide("MAILTO:a@example.com", isMainFrame: true, source: .typed) == .askToOpenExternally("MAILTO:a@example.com"))
+        #expect(NavigationPolicy.decide("MAILTO:a@example.com", isMainFrame: true, source: .page(userGesture: false)) == .refuse(nil))
+        #expect(NavigationPolicy.decide("MAILTO:a@example.com", isMainFrame: true, source: .stored) == .refuse(.refused(url: "MAILTO:a@example.com")))
+        for source in [NavigationSource.stored, .restored, .typed, .page(userGesture: false)] {
+            #expect(NavigationPolicy.decide("ABOUT:BLANK", isMainFrame: true, source: source) == .allow)
+        }
+        #expect(NavigationPolicy.decide("data:text/html,x", isMainFrame: true, source: .typed) == .refuse(.refused(url: "data:text/html,x")))
+        #expect(NavigationPolicy.decide("DATA:text/html,x", isMainFrame: true, source: .typed) == .refuse(.refused(url: "DATA:text/html,x")))
+    }
 }

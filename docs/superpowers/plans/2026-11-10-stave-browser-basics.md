@@ -380,7 +380,7 @@ THIRD_PARTY_NOTICES.md, README.md           # T1 (README backup and restore step
 - Modify: `OrganizationStore.swift`, `OrganizationStore+ArcImport.swift`, `OrganizationStore+Imports.swift`, `Window/BrowserWindowModel.swift`; tests across `StaveCoreTests` and `StaveWebTests`
 
 **Interfaces:**
-- Produces: no new public API. Removes dead `renameWorkspace` (replaced by `updateWorkspace`) and `navigateSelected` if nothing calls them (check with `command grep -rn` across `Stave/` and both packages first; keep and test any that has a caller). Moves the repeat-import check inside the import's own write transaction (plan 4's Carried). `deleteWorkspace` and `BrowserWindowModel.reload()` stop reading archived IDs and tab existence with `try?`: a read failure becomes `lastError`.
+- Produces: one public API change (amended 2026-11-14, preflight T3 row 1): `OrganizationStore.importArc(_:expectingLastImport:)` replaces `importArc(_:)`, both `ArcImporter.run` overloads gain `expectingLastImport: Date? = nil`, and `StoreError` gains `importChanged`, because refusing the second of two concurrent imports while still allowing a confirmed repeat needs a compare-and-set input. Nothing else public is added. Removes dead `renameWorkspace` (replaced by `updateWorkspace`) and `navigateSelected` if nothing calls them (check with `command grep -rn` across `Stave/` and both packages first; keep and test any that has a caller). Moves the repeat-import check inside the import's own write transaction (plan 4's Carried). `deleteWorkspace` and `BrowserWindowModel.reload()` stop reading archived IDs and tab existence with `try?`: a read failure becomes `lastError`.
 
 - [ ] **Step 1: Write failing tests** (plans 2, 3 and 4 listed them):
   - `repeatImportCheckedInsideTheTransaction`: two imports started together from the same file write one import and refuse the other.
@@ -389,7 +389,7 @@ THIRD_PARTY_NOTICES.md, README.md           # T1 (README backup and restore step
   - From plan 3's "Missing tests": the unique `(profileID, host, key)` index; a v3 file has no `siteSetting` table before migrating (control); `MAILTO:`, `ABOUT:BLANK` and typed `data:` through `NavigationPolicy`; flush resetting the recorder's throttle clock; same-state commit; the idle-plus-overflow union in `HibernationPolicy`; `#expect(ready)` gets a failure message; the `EngineLinkTests` 60 s timeout task is cancelled.
   - From plan 2's "can wait": `profile: null` → `.unrecognized`; the scheme-table cases `"foo bar:x"`, `"1http://x"`, `":"`; the store clock stamps imported records; the doubling-folders test fails by itself rather than hanging.
 - [ ] **Step 2: Run** the full suite → the new tests FAIL where the code is missing, PASS where they only pin behaviour (note which in the commit body).
-- [ ] **Step 3: Implement.** Remove the unused `StaveWebTests` dependency on `StaveCore` only if the build still passes.
+- [ ] **Step 3: Implement.** Remove the unused `StaveWebTests` dependency on `StaveCore` only if the build still passes. (Amended 2026-11-14: not removed. Six `StaveWebTests` files `import StaveCore`, so the dependency is in use; preflight T3 row 5.)
 - [ ] **Step 4: Run** the full package suite and both app builds → PASS.
 - [ ] **Step 5: Commit** `refactor: store tidy-ups and the tests deferred from plans 1-4`
 

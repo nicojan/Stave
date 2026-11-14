@@ -133,6 +133,41 @@ struct ArcImportFlowTests {
         #expect(try workspaceCount(store) == (try workspaceCount(reference)))
     }
 
+    /// Two sheets opened before either imported both saw no earlier import. The check inside the import's transaction lets one through
+    /// and refuses the other, which writes nothing and asks to confirm next time.
+    @Test func repeatImportCheckedInsideTheTransaction() async throws {
+        let store = try makeStore()
+        let revision = StoreRevision()
+        let home = try makeHome()
+        let first = flow(store, revision, home: home), second = flow(store, revision, home: home)
+        async let a: Void = first.start()
+        async let b: Void = second.start()
+        _ = await (a, b)
+
+        let phases = [first.phase, second.phase]
+        #expect(phases.filter { if case .finished = $0 { true } else { false } }.count == 1)
+        #expect(phases.contains(.failed(ArcImportCopy.errorMessage(for: StoreError.importChanged))))
+        #expect(revision.value == 1)
+        let reference = try makeStore()
+        _ = try ArcImporter.run(sidebar: try arcFixture("basic"), localState: nil, options: .init(), into: reference)
+        #expect(try workspaceCount(store) == (try workspaceCount(reference)))
+
+        let refused = summary(of: first.phase) == nil ? first : second
+        let date = try #require(try store.lastImport(source: .arc))
+        #expect(refused.previousImport == date)
+        await refused.start()
+        #expect(refused.phase == .confirmRepeat(previous: date))
+    }
+
+    private func summary(of phase: ArcImportFlow.Phase) -> ArcImportSummary? {
+        if case .finished(let summary) = phase { summary } else { nil }
+    }
+
+    @Test func refusedImportHasItsOwnMessage() {
+        #expect(ArcImportCopy.errorMessage(for: StoreError.importChanged) == StoreErrorText.message(for: StoreError.importChanged))
+        #expect(StoreErrorText.message(for: StoreError.importChanged) == "Stave imported from Arc while this was open, so it didn't import a second time. Nothing was changed.")
+    }
+
     private struct ReadFailure: Error {}
 
     @Test func unreadableHistoryFailsSafe() async throws {

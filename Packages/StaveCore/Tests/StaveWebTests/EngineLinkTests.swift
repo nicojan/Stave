@@ -16,6 +16,7 @@ struct EngineLinkTests {
 
     @Test func contentBlockerCompiles() async throws {
         let manager = ContentBlockerManager()
+        var timeout: Task<Void, Never>?
         let ready: Bool = await withCheckedContinuation { continuation in
             var resumed = false
             let finish: (Bool) -> Void = { value in
@@ -25,12 +26,15 @@ struct EngineLinkTests {
             }
             manager.onReady = { finish(true) }
             manager.start()
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(60))
+            timeout = Task { @MainActor in
+                // A cancelled sleep throws: return without answering, since the compile already did.
+                guard (try? await Task.sleep(for: .seconds(60))) != nil else { return }
                 finish(false)
             }
         }
-        #expect(ready)
+        // The compile answered first: the 60 s timer has nothing left to do, so it doesn't outlive the test.
+        timeout?.cancel()
+        #expect(ready, "the content blocker didn't report ready within 60 seconds")
         #expect(!manager.enabledLists().isEmpty)
     }
 

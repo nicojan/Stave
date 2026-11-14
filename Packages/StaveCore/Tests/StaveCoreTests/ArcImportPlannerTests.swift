@@ -266,6 +266,10 @@ struct ArcImportPlannerTests {
             ("https://example.com/日本語 space", nil),
             ("mailto:a@example.com", "mailto"),
             ("", ""),
+            // Not RFC 3986 schemes: a space, a leading digit, nothing before the colon.
+            ("foo bar:x", ""),
+            ("1http://x", ""),
+            (":", ""),
         ]
         for (url, expected) in cases {
             let plan = planOf(space("W", pinned: [.tab(ArcTab(url: url, title: "T"))]))
