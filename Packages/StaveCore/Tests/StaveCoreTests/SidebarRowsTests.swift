@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import StaveCore
 
@@ -102,6 +103,28 @@ struct SidebarRowsTests {
         #expect(pinned.isDrifted)
         pinned.url = "https://mail.example.com/?tab=2#inbox"
         #expect(pinned.isDrifted)
+    }
+
+    @Test func blankFolderLabel() throws {
+        let blanks = ["", "  ", "\n", "\u{3000}"]
+        for blank in blanks {
+            #expect(SidebarLabels.folder(title: blank, isOpen: true, childCount: 0) == "Untitled Folder, folder, open, 0 items")
+        }
+        let (store, database, _) = try makeTempStore()
+        let profile = try store.ensureDefaultProfile()
+        let workspace = try #require(try store.workspaces(profileID: profile.id).first)
+        let folders = try blanks.map { try store.createFolder(workspaceID: workspace.id, parentFolderID: nil, title: $0) }
+        let rows = SidebarRows.build(try store.sidebarSnapshot(workspaceID: workspace.id), containers: [])
+        #expect(rows.map(\.title) == Array(repeating: "Untitled Folder", count: blanks.count))
+        #expect(rows.map(\.accessibilityLabel) == Array(repeating: "Untitled Folder, folder, open, 0 items", count: blanks.count))
+        let stored = try database.writer.read { db in try folders.map { try Folder.fetchOne(db, key: $0.id)?.title } }
+        #expect(stored == blanks.map(Optional.some)) // shown as "Untitled Folder", never rewritten
+    }
+
+    @Test func blankFolderNamesKeepTodaysRules() {
+        #expect(SidebarMenus.folderTitle(typed: "  ", action: .newFolder) == "New Folder")
+        #expect(SidebarMenus.folderTitle(typed: "  ", action: .renameFolder) == nil)
+        #expect(SidebarMenus.folderTitle(typed: "\u{3000}", action: .renameFolder) == nil)
     }
 
     @Test func addressText() {

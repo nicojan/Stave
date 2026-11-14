@@ -51,7 +51,7 @@ public enum SidebarRows {
             case .folder(let folder, let children):
                 let head = SidebarRow(
                     id: .folder(folder.id), kind: .folder(isOpen: folder.isOpen, childCount: children.count), depth: depth,
-                    parentFolderID: parent, title: folder.title, containerColorHex: nil,
+                    parentFolderID: parent, title: SidebarLabels.folderTitle(folder.title), containerColorHex: nil,
                     accessibilityLabel: SidebarLabels.folder(title: folder.title, isOpen: folder.isOpen, childCount: children.count)
                 )
                 guard folder.isOpen else { return [head] }
@@ -69,8 +69,17 @@ public enum SidebarLabels {
         drifted ? "\(title), pinned tab, away from its pinned page" : "\(title), pinned tab"
     }
 
+    /// What a folder whose stored title is blank or only whitespace is shown and read as (plan 5 question 5).
+    public static let untitledFolder = "Untitled Folder"
+
+    /// The title a folder shows: the stored title, or `untitledFolder` when it trims to nothing. Display only; the stored
+    /// title is never rewritten, so an Arc import stays as imported.
+    public static func folderTitle(_ stored: String) -> String {
+        stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? untitledFolder : stored
+    }
+
     public static func folder(title: String, isOpen: Bool, childCount: Int) -> String {
-        "\(title), folder, \(isOpen ? "open" : "closed"), \(childCount) \(childCount == 1 ? "item" : "items")"
+        "\(folderTitle(title)), folder, \(isOpen ? "open" : "closed"), \(childCount) \(childCount == 1 ? "item" : "items")"
     }
 
     public static func regularTab(title: String, containerName: String?) -> String {

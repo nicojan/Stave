@@ -41,6 +41,18 @@ struct WebStoreTests {
         #expect(SiteHost.normalized("") == nil)
     }
 
+    @Test func siteHostAndDisplayAgree() {
+        let urls = [
+            "https://WWW.Example.com:8443/a", "http://user@Example.NET/p", "https://example.com@example.net/x",
+            "http://[::1]:8080/", "https://xn--bcher-kva.example/", "https://www./",
+        ]
+        for url in urls {
+            #expect(DisplayText.address(for: url) == (SiteHost.normalized(url) ?? url), "\(url)")
+        }
+        #expect(DisplayText.address(for: "http://[::1]:8080/") == "[::1]")
+        #expect(SiteHost.normalized("http://[::1]:8080/") == "[::1]")
+    }
+
     @Test func interactionStateOnlyTouchesState() throws {
         let clock = TestClock()
         let (store, _, _) = try makeTempStore(now: clock.now)

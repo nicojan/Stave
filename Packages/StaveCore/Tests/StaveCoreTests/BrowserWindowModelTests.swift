@@ -130,6 +130,19 @@ struct BrowserWindowModelTests {
         #expect(world.revision.value == revision)
     }
 
+    @Test func switchByNumberAtIntMin() throws {
+        let world = try makeWorld()
+        _ = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        let model = try world.window()
+        let revision = world.revision.value
+        for number in [Int.min, Int.max] {
+            model.switchWorkspace(number: number)
+            #expect(model.snapshot.workspace.id == world.home.id)
+            #expect(model.lastError == nil)
+        }
+        #expect(world.revision.value == revision)
+    }
+
     @Test func switchProfileGoesToFirstWorkspace() throws {
         let world = try makeWorld()
         let work = try world.store.createProfile(name: "Work")

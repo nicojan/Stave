@@ -136,11 +136,12 @@ public final class OrganizationStore: Sendable {
 
             let stamp = now()
             let slots = try Slot.filter(Column("workspaceID") == id).fetchAll(db)
-            let slotsByID = Dictionary(uniqueKeysWithValues: slots.map { ($0.id, $0) })
             let tabs = try Tab.filter(slots.map(\.id).contains(Column("slotID"))).order(Column("lastActiveAt"), Column("rowid")).fetchAll(db)
+            // The tabs were fetched by these slots' IDs, so every tab has its slot; no missing-slot guard is needed.
             for tab in tabs {
-                guard let slot = slotsByID[tab.slotID] else { throw StoreError.notFound }
-                try makeArchivedTab(slot: slot, tab: tab, closedAt: stamp).insert(db)
+                for slot in slots where slot.id == tab.slotID {
+                    try makeArchivedTab(slot: slot, tab: tab, closedAt: stamp).insert(db)
+                }
             }
             _ = try workspace.delete(db)
         }

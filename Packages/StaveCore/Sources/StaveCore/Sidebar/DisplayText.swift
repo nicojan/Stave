@@ -15,22 +15,20 @@ public enum DisplayText {
     /// What a tab with neither a title nor an address (a fresh container tab) is called.
     public static let newTabTitle = "New Tab"
 
-    /// The URL's host without a leading `www.`; the whole string when there is no host.
+    /// `HostText`'s host (lowercased, no port, no leading `www.`, punycode as WebKit reports it); the whole string when
+    /// there is no web host.
     public static func address(for url: String) -> String {
-        host(of: url) ?? url
+        HostText.host(of: url) ?? url
     }
 
-    /// The first character of the host (without `www.`), else of the title, uppercased; `"?"` when both are empty.
+    /// One character: the first letter of the host, else of the title, uppercased; `"?"` when both are empty. A host whose
+    /// first label is punycode (`xn--`) gives way to the title (plan 5 question 4). Leading whitespace is skipped, and only
+    /// the first `Character` of the uppercased form is kept, so "ßeta" gives "S" and "ﬁsh" gives "F" (decision 4).
     public static func monogram(for tab: Tab) -> String {
-        let source = host(of: tab.url) ?? tab.title
-        guard let first = source.first else { return "?" }
-        return String(first).uppercased()
-    }
-
-    private static func host(of url: String) -> String? {
-        guard let host = URL(string: url)?.host, !host.isEmpty else { return nil }
-        let stripped = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        return stripped.isEmpty ? nil : stripped
+        let host = HostText.host(of: tab.url).flatMap { HostText.isPunycode($0) ? nil : $0 }
+        let source = (host ?? tab.title).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = source.uppercased().first else { return "?" }
+        return String(first)
     }
 }
 

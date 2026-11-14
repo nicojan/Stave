@@ -214,9 +214,9 @@ public final class BrowserWindowModel: CommandBarWindow {
         reload()
     }
 
-    /// 1-based. A number with no workspace does nothing.
+    /// 1-based. A number with no workspace does nothing. `number >= 1` is checked first so `Int.min` can't overflow.
     public func switchWorkspace(number: Int) {
-        guard workspaces.indices.contains(number - 1) else { return }
+        guard number >= 1, workspaces.indices.contains(number - 1) else { return }
         switchWorkspace(to: workspaces[number - 1].id)
     }
 
