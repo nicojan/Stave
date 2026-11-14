@@ -170,4 +170,40 @@ struct SidebarRowsTests {
         #expect(WorkspaceIcon(stored: "house") == .symbol("house"))
         #expect(WorkspaceIcon(stored: "") == .symbol("square.grid.2x2"))
     }
+    /// A tab row carries its tab's `faviconURL` (pinned rows too, never the pinned page's); a folder row carries none (Task 7).
+    @Test func tabRowsCarryTheirFavicon() throws {
+        let (_, snapshot, containers) = try home()
+        var shaped = snapshot
+        var pinned = tab(url: "https://example.org/p", title: "Pinned")
+        pinned.faviconURL = "https://example.org/now.ico"
+        pinned.pinnedURL = "https://example.org/p"
+        pinned.pinnedFaviconURL = "https://example.org/pinned.ico"
+        var regular = tab(url: "https://example.com/r", title: "Regular")
+        regular.faviconURL = "https://example.com/favicon.ico"
+        shaped.pinned = [.tab(pinned)]
+        shaped.regular = [regular, tab(url: "https://example.net/", title: "No icon")]
+        let rows = SidebarRows.build(shaped, containers: containers)
+        #expect(rows.map(\.faviconURL) == ["https://example.org/now.ico", "https://example.com/favicon.ico", nil])
+        let folders = SidebarRows.build(snapshot, containers: containers).filter { if case .folder = $0.kind { true } else { false } }
+        #expect(!folders.isEmpty)
+        #expect(folders.allSatisfy { $0.faviconURL == nil })
+    }
+
+    /// Decision 10 and Task 7 Step 3: a tab row with no cached favicon shows the monogram, the same letter as an Essential tile; a folder has none.
+    @Test func tabRowsCarryTheirMonogram() throws {
+        let (_, snapshot, containers) = try home()
+        var shaped = snapshot
+        var pinned = tab(url: "https://example.org/p", title: "Pinned")
+        pinned.pinnedURL = "https://example.org/p"
+        let regular = tab(url: "https://www.example.com/r", title: "Regular")
+        let untitled = tab(url: "", title: "Zebra")
+        shaped.pinned = [.tab(pinned)]
+        shaped.regular = [regular, untitled]
+        let rows = SidebarRows.build(shaped, containers: containers)
+        #expect(rows.map(\.monogram) == ["E", "E", "Z"])
+        #expect(rows.map(\.monogram) == [pinned, regular, untitled].map { DisplayText.monogram(for: $0) })
+        let folders = SidebarRows.build(snapshot, containers: containers).filter { if case .folder = $0.kind { true } else { false } }
+        #expect(!folders.isEmpty)
+        #expect(folders.allSatisfy { $0.monogram == nil })
+    }
 }

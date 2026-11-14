@@ -13,10 +13,16 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var title: String
     public var containerColorHex: String?
     public var accessibilityLabel: String
+    /// The tab's `faviconURL` (the page it shows now, also for a pinned tab); nil for a folder. The view shows the cached image when it
+    /// has one, and `monogram` otherwise (decision 10).
+    public var faviconURL: String?
+    /// `DisplayText.monogram` for a tab row, the favicon's fallback; nil for a folder.
+    public var monogram: String?
 
-    public init(id: SidebarItemID, kind: Kind, depth: Int, parentFolderID: UUID?, title: String, containerColorHex: String?, accessibilityLabel: String) {
+    public init(id: SidebarItemID, kind: Kind, depth: Int, parentFolderID: UUID?, title: String, containerColorHex: String?, accessibilityLabel: String, faviconURL: String? = nil, monogram: String? = nil) {
         self.id = id; self.kind = kind; self.depth = depth; self.parentFolderID = parentFolderID
         self.title = title; self.containerColorHex = containerColorHex; self.accessibilityLabel = accessibilityLabel
+        self.faviconURL = faviconURL; self.monogram = monogram
     }
 }
 
@@ -31,7 +37,8 @@ public enum SidebarRows {
             return SidebarRow(
                 id: .tab(tab.id), kind: .regularTab, depth: 0, parentFolderID: nil, title: title,
                 containerColorHex: container?.colorHex,
-                accessibilityLabel: SidebarLabels.regularTab(title: title, containerName: container?.name)
+                accessibilityLabel: SidebarLabels.regularTab(title: title, containerName: container?.name),
+                faviconURL: tab.faviconURL, monogram: DisplayText.monogram(for: tab)
             )
         }
         return pinned + regular
@@ -46,7 +53,8 @@ public enum SidebarRows {
                 return [SidebarRow(
                     id: .tab(tab.id), kind: .pinnedTab(drifted: drifted), depth: depth, parentFolderID: parent, title: title,
                     containerColorHex: tab.containerID.flatMap { containers[$0] }?.colorHex,
-                    accessibilityLabel: SidebarLabels.pinnedTab(title: title, drifted: drifted)
+                    accessibilityLabel: SidebarLabels.pinnedTab(title: title, drifted: drifted),
+                    faviconURL: tab.faviconURL, monogram: DisplayText.monogram(for: tab)
                 )]
             case .folder(let folder, let children):
                 let head = SidebarRow(

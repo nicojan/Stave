@@ -23,6 +23,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     private var pendingLoads: [UUID: PendingLoad] = [:]
     private var focusTask: Task<Void, Never>?
     private(set) var isClosed = false
+    /// This window's favicons, in memory only: nothing of a private window is written to disk, and they go with the window (decision 10).
+    private let favicons = FaviconLoader(cacheFolder: nil)
 
     var windowID: UUID { model.windowID }
     /// The profile this window was opened from. Private windows of a profile share one throwaway session while any is open, as in Chrome and
@@ -85,7 +87,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingView(rootView: PrivateWindowView(
             model: model, presenter: presenter, pageHost: environment.pageHost, downloads: environment.downloads,
             sidebarWidth: environment.sidebarWidth.width, actions: actions
-        ))
+        ).environment(\.favicons, favicons))
         hosting.sizingOptions = []
         window.contentView = hosting
         if let parent {
@@ -311,7 +313,7 @@ extension PrivateWindowController: PageLifecycle {
 /// A private page writes to the window's model only: its address and title show in the tab list, and its history stays in the web view.
 extension PrivateWindowController: PageWriter {
     func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) {
-        model.update(tabID, url: url, title: title)
+        model.update(tabID, url: url, title: title, faviconURL: faviconURL)
     }
 
     func writeInteractionState(tabID: UUID, _ state: Data?) {}

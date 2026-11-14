@@ -26,9 +26,13 @@ public struct CommandRow: Equatable, Sendable {
     public var title: String
     public var secondary: String?
     public var accessibilityLabel: String
+    /// The favicon address the page reported, for tab and archived rows; the view shows the cached image in place of the symbol when it
+    /// has one. A history visit stores none, so its row keeps the clock.
+    public var faviconURL: String?
 
-    public init(icon: CommandRowIcon, title: String, secondary: String?, accessibilityLabel: String) {
+    public init(icon: CommandRowIcon, title: String, secondary: String?, accessibilityLabel: String, faviconURL: String? = nil) {
         self.icon = icon; self.title = title; self.secondary = secondary; self.accessibilityLabel = accessibilityLabel
+        self.faviconURL = faviconURL
     }
 }
 
@@ -64,10 +68,10 @@ public enum CommandRows {
             let title = DisplayText.title(for: found.tab)
             let elsewhere = found.workspaceName.flatMap { found.workspaceID != currentWorkspaceID ? $0 : nil }
             let host = found.tab.url.isEmpty ? nil : DisplayText.address(for: found.tab.url)
-            return row(.tab, title, secondary: elsewhere ?? host, kind: "tab", workspace: elsewhere)
+            return row(.tab, title, secondary: elsewhere ?? host, kind: "tab", workspace: elsewhere, favicon: found.tab.faviconURL)
         case .archived(let archived):
             let title = DisplayText.title(title: archived.title, url: archived.url)
-            return row(.archived, title, secondary: CommandBarText.archivedSecondary, kind: "archived tab")
+            return row(.archived, title, secondary: CommandBarText.archivedSecondary, kind: "archived tab", favicon: archived.faviconURL)
         case .history(let visit):
             return row(.history, HistoryText.rowTitle(visit), secondary: HistoryText.rowAddress(visit), kind: "history")
         case .workspace(let workspace):
@@ -77,8 +81,8 @@ public enum CommandRows {
         }
     }
 
-    private static func row(_ icon: CommandRowIcon, _ title: String, secondary: String?, kind: String, workspace: String? = nil) -> CommandRow {
+    private static func row(_ icon: CommandRowIcon, _ title: String, secondary: String?, kind: String, workspace: String? = nil, favicon: String? = nil) -> CommandRow {
         let label = "\(title), \(kind)" + (workspace.map { ", in \($0)" } ?? "")
-        return CommandRow(icon: icon, title: title, secondary: secondary, accessibilityLabel: label)
+        return CommandRow(icon: icon, title: title, secondary: secondary, accessibilityLabel: label, faviconURL: favicon)
     }
 }

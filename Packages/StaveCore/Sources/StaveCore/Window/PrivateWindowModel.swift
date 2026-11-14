@@ -6,13 +6,18 @@ public struct PrivateTab: Equatable, Sendable, Identifiable {
     public let id: UUID
     public var url: String
     public var title: String
+    /// The favicon address the page reported, kept in memory only like the rest of the tab; the row shows the memory-only favicon, else
+    /// the monogram (decision 10).
+    public var faviconURL: String?
 
-    public init(id: UUID = UUID(), url: String, title: String = "") {
-        self.id = id; self.url = url; self.title = title
+    public init(id: UUID = UUID(), url: String, title: String = "", faviconURL: String? = nil) {
+        self.id = id; self.url = url; self.title = title; self.faviconURL = faviconURL
     }
 
-    /// The new value with the page's address and title.
-    func with(url: String, title: String) -> PrivateTab { PrivateTab(id: id, url: url, title: title) }
+    /// The new value with the page's address, title and favicon address.
+    func with(url: String, title: String, faviconURL: String?) -> PrivateTab {
+        PrivateTab(id: id, url: url, title: title, faviconURL: faviconURL)
+    }
 }
 
 /// What a private window shows and does (plan 3, decision 15): a plain tab list, held in memory only. It has no store, no archive and no
@@ -77,11 +82,12 @@ public final class PrivateWindowModel {
         if let old { pages?.tabDeselected(old) }
     }
 
-    /// The page's committed address and title. A tab already closed is ignored.
-    public func update(_ id: UUID, url: String, title: String) {
+    /// The page's committed address, title and favicon address. A tab already closed is ignored.
+    public func update(_ id: UUID, url: String, title: String, faviconURL: String? = nil) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        guard tabs[index].url != url || tabs[index].title != title else { return }
-        tabs = tabs.enumerated().map { offset, tab in offset == index ? tab.with(url: url, title: title) : tab }
+        let updated = tabs[index].with(url: url, title: title, faviconURL: faviconURL)
+        guard updated != tabs[index] else { return }
+        tabs = tabs.enumerated().map { offset, tab in offset == index ? updated : tab }
     }
 
     // MARK: - Command bar

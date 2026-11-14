@@ -87,7 +87,7 @@ struct CommandBarView: View {
 
     private func resultRow(_ row: CommandRow) -> some View {
         HStack(spacing: 10) {
-            icon(row.icon).frame(width: 20).foregroundStyle(.secondary).accessibilityHidden(true)
+            Favicon(url: row.faviconURL) { icon(row.icon) }.frame(width: 20).foregroundStyle(.secondary).accessibilityHidden(true)
             Text(row.title).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 8)
             if let secondary = row.secondary {

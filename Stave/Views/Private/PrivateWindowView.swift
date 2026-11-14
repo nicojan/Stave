@@ -78,6 +78,7 @@ struct PrivateWindowView: View {
     private func row(_ tab: PrivateTab) -> some View {
         let title = PrivateWindowText.title(for: tab)
         return HStack(spacing: 6) {
+            Favicon(url: tab.faviconURL) { Monogram(letter: DisplayText.monogram(url: tab.url, title: tab.title)) }
             Text(title).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 4)
             Button { model.close(tab.id) } label: { Image(systemName: "xmark") }

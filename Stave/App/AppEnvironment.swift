@@ -45,6 +45,8 @@ final class AppEnvironment {
     let popups = PopupRegistry()
     /// The one queue of camera and microphone questions, shown by whichever window shows the asking tab.
     let mediaQuestions = MediaQuestionCenter()
+    /// Favicons fetched without cookies, cached in `<data folder>/Favicons/<sha256 of URL>.png` (decision 10).
+    let favicons: FaviconLoader
     /// The rolling copies of the database in `<data folder>/Backups/`, started after launch maintenance.
     let backups: DatabaseBackups
 
@@ -111,6 +113,7 @@ final class AppEnvironment {
         // Lists that compile after pages were made are attached to them, taking effect from each page's next load.
         blocker.onReady = { [weak host] in host?.reattachRuleLists() }
         blocker.start()
+        self.favicons = FaviconLoader(cacheFolder: FaviconLoader.cacheFolder(dataDirectory: dataDirectory))
         let backups = DatabaseBackups(
             database: database,
             folder: dataDirectory.appendingPathComponent(BackupPolicy.folderName, isDirectory: true),

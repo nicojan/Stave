@@ -85,4 +85,16 @@ struct CommandRowTests {
         #expect(model.rows.first?.icon == .search)
         #expect(model.rows.first?.title == "Search for javascript:alert(1)")
     }
+    /// Tab and archived rows carry the page's favicon address for the view to look up in the cache (Task 7); other rows carry none. A
+    /// history visit stores no favicon address, so its row keeps the clock.
+    @Test func tabAndArchivedRowsCarryTheFavicon() {
+        let icon = "https://example.com/favicon.ico"
+        let open = CommandTab(tab: Tab(slotID: UUID(), url: "https://example.com/a", title: "Docs", faviconURL: icon), section: .regular, workspaceID: home, workspaceName: "Home")
+        #expect(row(.tab(open)).faviconURL == icon)
+        #expect(row(.archived(ArchivedTab(profileID: UUID(), url: "https://example.org/y", title: "Old", faviconURL: icon))).faviconURL == icon)
+        #expect(row(tab("Docs", workspace: home, name: "Home")).faviconURL == nil)
+        #expect(row(.history(HistoryVisit(profileID: UUID(), url: "https://example.net/", title: "Visit", visitedAt: Date()))).faviconURL == nil)
+        #expect(row(.open(url: "https://example.net")).faviconURL == nil)
+        #expect(row(.search(query: "exa")).faviconURL == nil)
+    }
 }

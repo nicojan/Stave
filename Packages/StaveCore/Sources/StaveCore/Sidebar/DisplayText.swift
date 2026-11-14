@@ -24,9 +24,12 @@ public enum DisplayText {
     /// One character: the first letter of the host, else of the title, uppercased; `"?"` when both are empty. A host whose
     /// first label is punycode (`xn--`) gives way to the title (plan 5 question 4). Leading whitespace is skipped, and only
     /// the first `Character` of the uppercased form is kept, so "ßeta" gives "S" and "ﬁsh" gives "F" (decision 4).
-    public static func monogram(for tab: Tab) -> String {
-        let host = HostText.host(of: tab.url).flatMap { HostText.isPunycode($0) ? nil : $0 }
-        let source = (host ?? tab.title).trimmingCharacters(in: .whitespacesAndNewlines)
+    public static func monogram(for tab: Tab) -> String { monogram(url: tab.url, title: tab.title) }
+
+    /// The same letter for anything with an address and a title (a private tab).
+    public static func monogram(url: String, title: String) -> String {
+        let host = HostText.host(of: url).flatMap { HostText.isPunycode($0) ? nil : $0 }
+        let source = (host ?? title).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let first = source.uppercased().first else { return "?" }
         return String(first)
     }

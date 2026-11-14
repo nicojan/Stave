@@ -1,7 +1,7 @@
 import SwiftUI
 import StaveCore
 
-/// The profile's Essentials as monogram tiles, at least 52 x 44 pt, as many across as fit. A tile can be dragged, and the gaps between tiles
+/// The profile's Essentials as favicon tiles (the monogram until a favicon is cached), at least 52 x 44 pt, as many across as fit. A tile can be dragged, and the gaps between tiles
 /// (and the empty grid) take drops; the planner decides what a drop does.
 struct EssentialsGrid: View {
     let model: BrowserWindowModel
@@ -25,12 +25,13 @@ struct EssentialsGrid: View {
         let title = DisplayText.title(for: tab)
         let isSelected = tab.id == model.selectedTabID
         return Button { select(tab.id) } label: {
-            Text(DisplayText.monogram(for: tab))
-                .font(.system(size: 17, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 10))
-                .overlay { if isSelected { RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor, lineWidth: 1.5) } }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+            Favicon(url: tab.faviconURL, side: 20) {
+                Text(DisplayText.monogram(for: tab)).font(.system(size: 17, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.25)) : AnyShapeStyle(.quaternary), in: RoundedRectangle(cornerRadius: 10))
+            .overlay { if isSelected { RoundedRectangle(cornerRadius: 10).stroke(Color.accentColor, lineWidth: 1.5) } }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .help(title)

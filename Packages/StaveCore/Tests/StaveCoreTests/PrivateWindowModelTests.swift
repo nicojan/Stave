@@ -32,6 +32,22 @@ struct PrivateWindowModelTests {
         #expect(counts.archived == 0)
     }
 
+    /// Decision 10: a private tab keeps its page's favicon address in memory, so its row can show the memory-only favicon, and the
+    /// monogram otherwise. A new favicon alone (same address and title) still updates the tab.
+    @Test func privateTabKeepsItsFaviconInMemory() {
+        let model = PrivateWindowModel()
+        let id = model.open(url: "https://example.com/a", below: nil, select: true)
+        #expect(model.tabs.first?.faviconURL == nil)
+        model.update(id, url: "https://example.com/a", title: "A", faviconURL: "https://example.com/a.ico")
+        #expect(model.tabs.first?.faviconURL == "https://example.com/a.ico")
+        model.update(id, url: "https://example.com/a", title: "A", faviconURL: "https://example.com/b.ico")
+        #expect(model.tabs.first?.faviconURL == "https://example.com/b.ico")
+        model.update(id, url: "https://example.org/", title: "Org", faviconURL: nil)
+        #expect(model.tabs.first?.faviconURL == nil)
+        #expect(DisplayText.monogram(url: "https://www.example.org/", title: "Zed") == "E")
+        #expect(DisplayText.monogram(url: "", title: "Zed") == "Z")
+    }
+
     @Test func linkOpensBelowOpener() {
         let model = PrivateWindowModel(newTabEdge: .top)
         let a = model.open(url: "https://example.com/a", below: nil, select: true)
