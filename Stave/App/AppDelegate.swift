@@ -273,6 +273,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// applies to that page only and is never remembered.
     func toggleContentBlocking() { if !privatePageCommand({ $0.toggleContentBlocking() }) { pageCommand { $0.toggleContentBlocking() } } }
 
+    // MARK: - Find (Edit ▸ Find, decision 11)
+
+    /// ⌘F, ⌘G, ⇧⌘G and ⌘E act on the key window's shown page: never while a sheet is up or the History view is in place of the page.
+    func showFind() { findCommand { $0.show() } }
+    func findNext() { findCommand { $0.findAgain(backwards: false) } }
+    func findPrevious() { findCommand { $0.findAgain(backwards: true) } }
+    func useSelectionForFind() { findCommand { $0.useSelection() } }
+
+    private func findCommand(_ run: (PageFind) -> Void) {
+        if privatePageCommand({ run($0.find) }) { return }
+        guard let controller = keyController, !isBusy(controller), !controller.model.isShowingHistory else { return }
+        run(controller.find)
+    }
+
     #if DEBUG
     /// Debug ▸ Crash Page Process: ends the key window's shown page's web content process through WebKit.
     func crashPage() { pageCommand { $0.crashPage() } }

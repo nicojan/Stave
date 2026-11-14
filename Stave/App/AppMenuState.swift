@@ -33,6 +33,8 @@ final class AppMenuState {
     var isBusy = false
     /// View ▸ Back, Forward, Reload Page and Stop for the key window's shown page.
     var pageMenu = PageMenuState.disabled
+    /// Edit ▸ Find for the key window's shown page (`FindMenuState`).
+    var findMenu = FindMenuState.disabled
     /// History ▸ Show All History and Clear History…: a free browser window is key (`HistoryText.isShowAllHistoryEnabled`).
     var canShowHistory = false
     /// Nil until the store is open.

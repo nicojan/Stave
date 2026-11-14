@@ -26,6 +26,8 @@ struct PageAreaActions {
     var openDroppedFile: (@MainActor @Sendable (URL) -> Void)?
     /// History ▸ Clear History…, from the History view's button. A private window has no History view and leaves it empty.
     var clearHistory: () -> Void = {}
+    /// The window's find in page; its bar shows above the page (decision 11).
+    var find: PageFind?
 }
 
 /// The content area: the selected tab's live page, the "showing in another window" snapshot, a blank tab, or no selection.
@@ -65,7 +67,7 @@ struct PageArea: View {
     }
 }
 
-/// One live page: the web view, a 2 pt progress bar while it loads, and the failure panel over it.
+/// One live page: the find bar when it shows, then the web view, a 2 pt progress bar while it loads, and the failure panel over it.
 struct PageContentView: View {
     let page: LivePage
     let actions: PageAreaActions
@@ -73,6 +75,16 @@ struct PageContentView: View {
     private static let barHeight: CGFloat = 2
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let find = actions.find, find.state(for: page.tabID).isVisible {
+                FindBar(find: find, tabID: page.tabID)
+            }
+            pageStack
+        }
+        .ignoresSafeArea()
+    }
+
+    private var pageStack: some View {
         ZStack(alignment: .top) {
             // No `parking:`. The engine's WebViewParking comes only from its own
             // WebViewPool, which Stave doesn't use, so a page that leaves this

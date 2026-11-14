@@ -25,6 +25,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
     private(set) var isClosed = false
     /// This window's favicons, in memory only: nothing of a private window is written to disk, and they go with the window (decision 10).
     private let favicons = FaviconLoader(cacheFolder: nil)
+    /// Find in page, as in a browser window (Safari finds in private windows too). Its text stays in memory with the window.
+    private(set) lazy var find = PageFind(window: window, shownPage: { [weak self] in self?.shownPage }, focusPage: { [weak self] in self?.focusPage($0) })
 
     var windowID: UUID { model.windowID }
     /// The profile this window was opened from. Private windows of a profile share one throwaway session while any is open, as in Chrome and
@@ -82,7 +84,8 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
         window.title = PrivateWindowText.windowTitle(selected: nil)
         let actions = PageAreaActions(
             reload: { [weak self] in self?.reloadPage() }, back: { [weak self] in self?.goBack() },
-            openAgain: { [weak self] in self?.openAgain() }, openDroppedFile: { [weak self] file in self?.openFile(file) }
+            openAgain: { [weak self] in self?.openAgain() }, openDroppedFile: { [weak self] file in self?.openFile(file) },
+            find: find
         )
         let hosting = NSHostingView(rootView: PrivateWindowView(
             model: model, presenter: presenter, pageHost: environment.pageHost, downloads: environment.downloads,
@@ -292,6 +295,7 @@ extension PrivateWindowController: PageLifecycle {
     func tabClosed(_ id: UUID) {
         prompts.end { $0.tabID == id }
         prompts.forget(id)
+        find.forget(id)
         environment.popups.closeAll(openedBy: id)
         pendingLoads[id] = nil
         pageHost.close(id)

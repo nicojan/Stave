@@ -54,8 +54,10 @@
 		C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */; };
 		C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */; };
 		C96A0E51911B33D8D1E18EC2 /* HistoryClearPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2527A6CB8EBE50648299A1D9 /* HistoryClearPrompt.swift */; };
+		CED9292C543EBB824037EF48 /* PageFind.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */; };
 		D19182FC2DFF3D88D75AFA34 /* StaveWeb in Frameworks */ = {isa = PBXBuildFile; productRef = B02055879054269311A54DBA /* StaveWeb */; };
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
+		DD235B3EA94856AC4F5251C8 /* FindBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4835396844D6668AA906D3E8 /* FindBar.swift */; };
 		F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */; };
 /* End PBXBuildFile section */
 
@@ -73,6 +75,7 @@
 		381B620D30A72B457FDC56E5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4301C5F96EF73A0EDEC6288D /* AddressField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressField.swift; sourceTree = "<group>"; };
 		46CEDA1E446463C3A7EFF293 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		4835396844D6668AA906D3E8 /* FindBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindBar.swift; sourceTree = "<group>"; };
 		4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSwitcher.swift; sourceTree = "<group>"; };
 		4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+PageEvents.swift"; sourceTree = "<group>"; };
 		58B224829A18DA2D3E0A2FF9 /* BrowserWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserWindowView.swift; sourceTree = "<group>"; };
@@ -88,6 +91,7 @@
 		95FBC22188EEA92B26C9E0CF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		995508A5262708F8EE5364E3 /* AppMenuState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMenuState.swift; sourceTree = "<group>"; };
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageFind.swift; sourceTree = "<group>"; };
 		B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorePageWriter.swift; sourceTree = "<group>"; };
 		BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCoordinator.swift; sourceTree = "<group>"; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
@@ -146,6 +150,7 @@
 		21A24A833C93DF9ED96A4030 /* Content */ = {
 			isa = PBXGroup;
 			children = (
+				4835396844D6668AA906D3E8 /* FindBar.swift */,
 				46CEDA1E446463C3A7EFF293 /* HistoryView.swift */,
 				F0514FA8A157CC9EE49809FB /* PageContentView.swift */,
 				7D8BC787394FE59027F03DE4 /* PageFailureView.swift */,
@@ -182,6 +187,7 @@
 				BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */,
 				F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */,
 				0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */,
+				A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */,
 				81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */,
 				68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */,
 				F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */,
@@ -383,6 +389,7 @@
 				32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */,
 				2F9223943913552679A1DF70 /* DownloadsPopover.swift in Sources */,
 				551B0EA268DCE9851D17EDAC /* EssentialsGrid.swift in Sources */,
+				DD235B3EA94856AC4F5251C8 /* FindBar.swift in Sources */,
 				4A6E8FB8ED8CC65D780164AD /* FirstRunView.swift in Sources */,
 				C96A0E51911B33D8D1E18EC2 /* HistoryClearPrompt.swift in Sources */,
 				23F6E20E9AA5179430CEE3F3 /* HistoryView.swift in Sources */,
@@ -392,6 +399,7 @@
 				0A72401CB50855852A482D81 /* PageContentView.swift in Sources */,
 				B207D8F4B94BD9461B0FAC74 /* PageEventsRouter.swift in Sources */,
 				0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */,
+				CED9292C543EBB824037EF48 /* PageFind.swift in Sources */,
 				4360D4C8CE0C05CB647EEE2D /* PagePrompts.swift in Sources */,
 				3A45E58A25EFCE4B95B8A42F /* PopupWindowController.swift in Sources */,
 				0CAE474AB3F75F2AACC5302C /* PrivateWindowController.swift in Sources */,

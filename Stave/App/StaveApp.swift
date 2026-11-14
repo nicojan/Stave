@@ -51,6 +51,24 @@ struct StaveApp: App {
                         .keyboardShortcut("w", modifiers: [.command, .shift])
                         .disabled(!state.isEnabled(.closeWindow))
                 }
+                // Replaces the system's text-editing group, so its Find items never sit beside these with the same keys. Literal keys
+                // until Task 10's StandardShortcuts table.
+                CommandGroup(replacing: .textEditing) {
+                    Menu(FindText.menu) {
+                        Button(FindText.findMenuItem) { delegate.showFind() }
+                            .keyboardShortcut("f", modifiers: .command)
+                            .disabled(!state.findMenu.canFind)
+                        Button(FindText.findNextMenuItem) { delegate.findNext() }
+                            .keyboardShortcut("g", modifiers: .command)
+                            .disabled(!state.findMenu.canFindAgain)
+                        Button(FindText.findPreviousMenuItem) { delegate.findPrevious() }
+                            .keyboardShortcut("g", modifiers: [.command, .shift])
+                            .disabled(!state.findMenu.canFindAgain)
+                        Button(FindText.useSelectionMenuItem) { delegate.useSelectionForFind() }
+                            .keyboardShortcut("e", modifiers: .command)
+                            .disabled(!state.findMenu.canUseSelection)
+                    }
+                }
                 CommandGroup(after: .sidebar) {
                     Toggle(CompactModeSetting.menuTitle, isOn: Binding(get: { delegate.menuState.isCompact }, set: { _ in delegate.toggleCompactMode() }))
                         .keyboardShortcut("s", modifiers: [.control, .command])

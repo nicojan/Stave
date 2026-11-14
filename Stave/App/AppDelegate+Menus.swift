@@ -38,6 +38,7 @@ extension AppDelegate {
         let canCrash = false
         #endif
         let moveTargets = model.moveTargets(for: model.sidebarHighlight)
+        let pageMenu = PageMenuState.from(status: controller.shownPage.map(Self.summary(of:)), sheetOpen: busy, historyShown: model.isShowingHistory)
         return MenuSnapshot(
             items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
             compact: model.isCompact,
@@ -50,7 +51,8 @@ extension AppDelegate {
             canMoveUp: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: -1, snapshot: model.snapshot),
             canMoveDown: SidebarMenus.canMove(highlight: model.sidebarHighlight, by: 1, snapshot: model.snapshot),
             busy: busy,
-            pageMenu: PageMenuState.from(status: controller.shownPage.map(Self.summary(of:)), sheetOpen: busy, historyShown: model.isShowingHistory),
+            pageMenu: pageMenu,
+            findMenu: FindMenuState.from(pageMenu: pageMenu, find: controller.find.current),
             canCrashPage: canCrash,
             canShowHistory: HistoryText.isShowAllHistoryEnabled(isPrivate: false, busy: busy)
         )
@@ -68,6 +70,7 @@ extension AppDelegate {
         if menuState.canMoveDown != menu.canMoveDown { menuState.canMoveDown = menu.canMoveDown }
         if menuState.isBusy != menu.busy { menuState.isBusy = menu.busy }
         if menuState.pageMenu != menu.pageMenu { menuState.pageMenu = menu.pageMenu }
+        if menuState.findMenu != menu.findMenu { menuState.findMenu = menu.findMenu }
         if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
         if menuState.canShowHistory != menu.canShowHistory { menuState.canShowHistory = menu.canShowHistory }
     }
@@ -75,7 +78,10 @@ extension AppDelegate {
     /// The menus for a key private window: only the page commands; no workspaces, tab actions or moves.
     private static func privateMenu(_ controller: PrivateWindowController, compact: Bool) -> MenuSnapshot {
         let busy = controller.window.attachedSheet != nil
-        return MenuSnapshot(compact: compact, busy: busy, pageMenu: PageMenuState.from(status: controller.shownPage.map(summary(of:)), sheetOpen: busy))
+        let pageMenu = PageMenuState.from(status: controller.shownPage.map(summary(of:)), sheetOpen: busy)
+        return MenuSnapshot(
+            compact: compact, busy: busy, pageMenu: pageMenu, findMenu: FindMenuState.from(pageMenu: pageMenu, find: controller.find.current)
+        )
     }
 
     /// A live page's status for the page menu. The blocking toggle applies only to a page with a web site (`PageMenuState.blockingState`).
@@ -98,6 +104,7 @@ extension AppDelegate {
         var canMoveDown = false
         var busy = false
         var pageMenu = PageMenuState.disabled
+        var findMenu = FindMenuState.disabled
         var canCrashPage = false
         /// False for a private window and with no browser window key (the defaults).
         var canShowHistory = false

@@ -23,6 +23,8 @@ public struct PageMenuState: Equatable, Sendable {
     public var canStop: Bool
     /// The blocking toggle's state, nil when the toggle is disabled.
     public var blockingOn: Bool?
+    /// Edit ▸ Find and its items (`FindMenuState`): a page the user can see.
+    public var canFind = false
 
     public static let disabled = PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil)
 
@@ -38,7 +40,7 @@ public struct PageMenuState: Equatable, Sendable {
         guard let status, status.hasPage, !sheetOpen, !historyShown else { return .disabled }
         return PageMenuState(
             canGoBack: status.canGoBack, canGoForward: status.canGoForward,
-            canReload: true, canStop: status.isLoading, blockingOn: status.blockingOn
+            canReload: true, canStop: status.isLoading, blockingOn: status.blockingOn, canFind: true
         )
     }
 }

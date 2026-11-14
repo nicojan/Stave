@@ -202,6 +202,7 @@ extension BrowserWindowController: PageLifecycle {
 
     func tabClosed(_ id: UUID) {
         endQuestionsEverywhere(for: id)
+        find.forget(id)
         pendingLoads[id] = nil
         pageHost.close(id)
     }

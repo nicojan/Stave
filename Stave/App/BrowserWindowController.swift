@@ -26,6 +26,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     /// Moves focus into the page once its web view is in this window.
     var focusTask: Task<Void, Never>?
     var snapshotTask: Task<Void, Never>?
+    /// Find in page for the page this window shows (Edit ▸ Find, decision 11).
+    private(set) lazy var find = PageFind(window: window, shownPage: { [weak self] in self?.shownPage }, focusPage: { [weak self] in self?.focusPage($0) })
     /// Page questions shown as sheets on this window; each resolves when answered, or when its tab or this window closes.
     let prompts: PagePrompts
     /// Set by the app delegate: the first-run sheet's Continue, and the import sheet's "Choose Another File…".
@@ -90,7 +92,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
             back: { [weak self] in self?.goBack() },
             openAgain: { [weak self] in self?.openAgain() },
             openDroppedFile: { [weak self] file in self?.openFile(file, origin: .commandBar) },
-            clearHistory: { [weak self] in self?.promptClearHistory() }
+            clearHistory: { [weak self] in self?.promptClearHistory() },
+            find: find
         )
         sidebarPresenter.drag.openDroppedFile = pageActions.openDroppedFile
         let hosting = NSHostingView(rootView: BrowserWindowView(model: model, presenter: sidebarPresenter, pageHost: environment.pageHost, downloads: environment.downloads, pageViewState: pageViewState, pageActions: pageActions, sidebarWidth: environment.sidebarWidth, shortcuts: environment.workspaceShortcuts, completeFirstRun: { [weak self] engine, importArc in self?.onCompleteFirstRun(engine, importArc) }, chooseAnotherFile: { [weak self] session in self?.onChooseAnotherFile(session) }).environment(\.favicons, environment.favicons))
