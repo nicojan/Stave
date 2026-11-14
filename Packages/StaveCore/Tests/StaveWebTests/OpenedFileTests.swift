@@ -239,16 +239,30 @@ struct OpenedFileTests {
         }
     }
 
-    /// Waits until WebKit has delivered a load failure after `before` earlier ones: the positive signal that the dropped navigation has
-    /// fully played out, so a silence check after it proves the late failure was seen and showed nothing. WebKit drops a `file:` navigation
-    /// outside the read access in the UI process (`WebPageProxy`, "outside the sandbox", WebKit r244670, 2019, so on macOS 15 and 26 too)
-    /// and reports it as a failed provisional load. Whatever error code a runner's WebKit uses for it (`WebKitInternal`/0 on macOS 27; a
-    /// policy-ignore 102 would be silent through `failure(for:)` anyway), the delivery itself is what this waits for. Returns the new failures;
-    /// a runner that delivered none fails the test here instead of passing a silence check that observed nothing.
-    func waitForLoadFailure(_ delegate: PageDelegate, after before: Int) async throws -> [NSError] {
-        let delivered = try await waitUntil(seconds: 10) { delegate.deliveredLoadFailures.count > before }
-        try #require(delivered, "WebKit delivered no load failure for the dropped navigation, so silence can't be checked")
-        return Array(delegate.deliveredLoadFailures.dropFirst(before))
+    /// Which way WebKit ended a dropped `file:` navigation outside the read access. WebKit drops it in the UI process before asking the
+    /// navigation delegate (`WebPageProxy`, "outside the sandbox", WebKit r244670, 2019). Newer WebKit (macOS 26 and 27 here) then delivers
+    /// a failed provisional load (`WebKitInternal`/0 on macOS 27); macOS 15's WebKit delivers nothing (CI run 43581379555). Both are valid.
+    enum DropEnding: CustomStringConvertible {
+        case lateFailure([NSError])
+        case nothingWithin(Duration)
+
+        var description: String {
+            switch self {
+            case .lateFailure(let errors): "late load failure delivered: " + errors.map { "\($0.domain)/\($0.code)" }.joined(separator: ", ")
+            case .nothingWithin(let wait): "no late load failure within \(wait)"
+            }
+        }
+    }
+
+    /// The bounded wait for WebKit's late failure. Where WebKit delivers one, this returns as soon as it arrives (the positive signal: a
+    /// check after it proves the failure was seen and showed nothing). Where it delivers none, the wait runs out and the check after it
+    /// covers that bounded time. Either path is printed, so the CI log says which one each runner took.
+    func waitForDropEnding(_ delegate: PageDelegate, after before: Int, in test: String) async throws -> DropEnding {
+        let wait = Duration.seconds(3)
+        let delivered = try await waitUntil(seconds: 3) { delegate.deliveredLoadFailures.count > before }
+        let ending: DropEnding = delivered ? .lateFailure(Array(delegate.deliveredLoadFailures.dropFirst(before))) : .nothingWithin(wait)
+        print("OpenedFileTests.\(test): \(ending)")
+        return ending
     }
 
     /// By-hand gap (fix round 2): WebKit drops a main-frame navigation to a `file:` URL outside the web process's read access before it
@@ -267,8 +281,9 @@ struct OpenedFileTests {
 
         try await click(page, in: window)
         #expect(try await waitUntil(seconds: 5) { page.status.failure != nil })
-        // Both the click report and WebKit's late failure have arrived, in whichever order: the panel is still the refused one.
-        _ = try await waitForLoadFailure(delegate, after: before)
+        // The panel comes from the click report, not from WebKit's failure. Where a late failure arrives (in either order), it doesn't
+        // replace the panel; where none does (macOS 15), the panel is still the refused one after the same bounded wait.
+        _ = try await waitForDropEnding(delegate, after: before, in: "clickedLinkOutside(\(href))")
         #expect(page.status.failure == .refused(url: target))
         #expect(page.webView.url?.lastPathComponent == "a.html")
     }
@@ -289,7 +304,7 @@ struct OpenedFileTests {
 
     /// The silent side of the same gap: a script's `file:` navigation outside the grant, and a ⌘-click on such a link (report ruling: a
     /// new-tab file link outside the grant is refused silently), show no panel at all, not even WebKit's own load failure. Each silence
-    /// check runs only after WebKit's failure for that navigation was delivered.
+    /// check runs once WebKit's late failure for that navigation arrives, or after the bounded wait where WebKit sends none (macOS 15).
     @Test func scriptOrCommandClickOutsideTheGrantIsSilent() async throws {
         let root = try makeLinkSite(href: "../outside/x.html")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -302,12 +317,12 @@ struct OpenedFileTests {
 
         var before = delegate.deliveredLoadFailures.count
         _ = try await page.webView.evaluateJavaScript("location.href = '../outside/x.html'; 1")
-        _ = try await waitForLoadFailure(delegate, after: before)
+        _ = try await waitForDropEnding(delegate, after: before, in: "scriptNavigationOutside")
         #expect(page.status.failure == nil)
 
         before = delegate.deliveredLoadFailures.count
         try await click(page, in: window, modifiers: .command)
-        _ = try await waitForLoadFailure(delegate, after: before)
+        _ = try await waitForDropEnding(delegate, after: before, in: "commandClickOutside")
         #expect(page.status.failure == nil)
         #expect(events.linkedFiles.isEmpty)
         #expect(events.linkedTabs.isEmpty)
