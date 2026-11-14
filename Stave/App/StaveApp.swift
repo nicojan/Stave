@@ -108,28 +108,7 @@ struct StaveApp: App {
                     Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
                         .disabled(state.pageMenu.blockingOn == nil)
                 }
-                CommandMenu(HistoryText.menu) {
-                    Button(HistoryText.showAllHistory) { delegate.showAllHistory() }
-                        .keyboardShortcut("y", modifiers: .command)
-                        .disabled(!state.canShowHistory)
-                    Button(HistoryText.clearHistoryMenuItem) { delegate.clearHistory() }
-                        .disabled(!state.canShowHistory)
-                }
-                // Always visible, with no setting (decision 14); each item is disabled when the private piece it needs is missing.
-                CommandMenu(PageMenuText.developMenu) {
-                    Button(PageMenuText.showWebInspector) { delegate.showWebInspector() }
-                        .keyboardShortcut("i", modifiers: [.command, .option])
-                        .disabled(!state.pageMenu.canInspect)
-                    Button(PageMenuText.showPageSource) { delegate.showPageSource() }
-                        .keyboardShortcut("u", modifiers: [.command, .option])
-                        .disabled(!state.pageMenu.canShowSource)
-                }
-                #if DEBUG
-                CommandMenu(PageMenuText.debugMenu) {
-                    Button(PageMenuText.crashPageProcess) { delegate.crashPage() }
-                        .disabled(!state.canCrashPage)
-                }
-                #endif
+                HistoryAndDevelopCommands(delegate: delegate)
                 CommandMenu(PageChromeText.tabMenu) {
                     // The keyboard route to the row and Essentials context menus: the same SidebarMenus lists, on the highlighted item.
                     ForEach(delegate.menuState.tabActions, id: \.self) { action in
@@ -184,5 +163,37 @@ struct StaveApp: App {
         } else {
             toggle
         }
+    }
+}
+
+/// The History, Develop and (in Debug builds) Debug menus. Their own `Commands` keeps `StaveApp`'s `.commands` within the ten
+/// children the result builder accepts on Xcode 26 (CI); Xcode 27 alone would take more.
+private struct HistoryAndDevelopCommands: Commands {
+    let delegate: AppDelegate
+    private var state: AppMenuState { delegate.menuState }
+
+    var body: some Commands {
+        CommandMenu(HistoryText.menu) {
+            Button(HistoryText.showAllHistory) { delegate.showAllHistory() }
+                .keyboardShortcut("y", modifiers: .command)
+                .disabled(!state.canShowHistory)
+            Button(HistoryText.clearHistoryMenuItem) { delegate.clearHistory() }
+                .disabled(!state.canShowHistory)
+        }
+        // Always visible, with no setting (decision 14); each item is disabled when the private piece it needs is missing.
+        CommandMenu(PageMenuText.developMenu) {
+            Button(PageMenuText.showWebInspector) { delegate.showWebInspector() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(!state.pageMenu.canInspect)
+            Button(PageMenuText.showPageSource) { delegate.showPageSource() }
+                .keyboardShortcut("u", modifiers: [.command, .option])
+                .disabled(!state.pageMenu.canShowSource)
+        }
+        #if DEBUG
+        CommandMenu(PageMenuText.debugMenu) {
+            Button(PageMenuText.crashPageProcess) { delegate.crashPage() }
+                .disabled(!state.canCrashPage)
+        }
+        #endif
     }
 }
