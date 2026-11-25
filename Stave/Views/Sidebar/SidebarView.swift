@@ -68,7 +68,10 @@ struct SidebarView: View {
             // A hidden sidebar must not keep the keyboard; showing it again gives the list the focus back.
             listFocused = !compact
         }
-        .onChange(of: model.snapshot.workspace.id) { slideIn() }
+        .onChange(of: model.snapshot.workspace.id) {
+            presenter.showDownloads = false // the popover belongs to the window's profile; a switch closes it
+            slideIn()
+        }
         .onChange(of: presenter.actionRequest) { _, request in
             if let request { self.request(request.action, on: request.item) }
         }
@@ -190,7 +193,10 @@ struct SidebarView: View {
                         model.restoreArchived(id)
                     })
                 }
-            DownloadsButton(downloads: downloads, owner: .profile(model.snapshot.profile.id))
+            DownloadsButton(
+                downloads: downloads, owner: .profile(model.snapshot.profile.id),
+                showing: Binding(get: { presenter.showDownloads }, set: { presenter.showDownloads = $0 })
+            )
             if WorkspaceMenus.showsProfileMenu(profileCount: model.profiles.count) {
                 ProfileMenu(model: model, presenter: presenter)
             }

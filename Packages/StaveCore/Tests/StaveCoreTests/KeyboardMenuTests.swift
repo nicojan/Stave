@@ -86,6 +86,15 @@ struct KeyboardMenuTests {
         for action in WorkspaceAction.allCases { #expect(!action.menuTitle.isEmpty) }
     }
 
+    /// Review fix 7: the fixed Pin Tab item (⌘D) replaces the highlight's own Pin only while it is enabled, so a blank or failed regular tab
+    /// can still be pinned from the menu bar.
+    @Test func highlightPinIsHiddenOnlyWhileTheFixedPinItemIsEnabled() {
+        let actions: [SidebarAction] = [.pin, .closeTab, .newFolder]
+        #expect(SidebarMenus.tabMenuActions(actions, fixedPinEnabled: true) == [.closeTab, .newFolder])
+        #expect(SidebarMenus.tabMenuActions(actions, fixedPinEnabled: false) == actions)
+        #expect(SidebarMenus.tabMenuActions([.unpin, .newFolder], fixedPinEnabled: true) == [.unpin, .newFolder])
+    }
+
     @Test func workspaceMenuAlwaysListsAllFourAndEnablesLikeTheContextMenu() {
         for (index, count) in [(0, 1), (0, 3), (1, 3), (2, 3)] {
             let items = WorkspaceMenus.menuItems(index: index, count: count)

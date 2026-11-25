@@ -19,6 +19,8 @@ final class SidebarPresenter {
     /// ... or as a sheet (anything else: keyboard, command bar, menu), which takes the keyboard where a popover does not.
     var showArchiveSheet = false
     var showNewProfile = false
+    /// The downloads popover, from its button or View ▸ Show Downloads (⌥⌘L).
+    var showDownloads = false
     /// The first-run or Arc import sheet on this window, if any.
     var sheet: WindowSheet?
     /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.

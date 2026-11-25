@@ -6,19 +6,28 @@ import StaveCore
 struct DownloadsButton: View {
     let downloads: DownloadList
     let owner: DownloadOwner
-
-    @State private var showing = false
+    /// Kept by the window's presenter, so View ▸ Show Downloads (⌥⌘L) opens the same popover.
+    @Binding var showing: Bool
 
     var body: some View {
-        if !downloads.items(for: owner).isEmpty {
-            Button { showing.toggle() } label: { Image(systemName: "arrow.down.circle") }
-                .buttonStyle(.borderless)
-                .help(DownloadRowText.buttonLabel)
-                .accessibilityLabel(DownloadRowText.buttonLabel)
-                .popover(isPresented: $showing, arrowEdge: .trailing) {
-                    DownloadsPopover(downloads: downloads, owner: owner)
-                }
+        // The flag outlives the button (Clear empties the list, a profile switch changes the owner), so it is reset here: otherwise the
+        // popover would reopen by itself the next time a download brought the button back. `hasItems` flips only when a row is added or removed.
+        // A ZStack, not a Group: a Group's modifiers attach to its children, so with no button there'd be nothing to hold the onChange.
+        ZStack {
+            if downloads.hasItems(for: owner) {
+                Button { showing.toggle() } label: { Image(systemName: "arrow.down.circle") }
+                    .buttonStyle(.borderless)
+                    .help(DownloadRowText.buttonLabel)
+                    .accessibilityLabel(DownloadRowText.buttonLabel)
+                    .popover(isPresented: $showing, arrowEdge: .trailing) {
+                        DownloadsPopover(downloads: downloads, owner: owner)
+                    }
+            }
         }
+        .onChange(of: downloads.hasItems(for: owner)) { _, hasItems in
+            if !hasItems { showing = false }
+        }
+        .onChange(of: owner) { _, _ in showing = false }
     }
 }
 

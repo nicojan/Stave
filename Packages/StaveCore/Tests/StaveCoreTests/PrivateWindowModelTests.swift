@@ -13,6 +13,7 @@ struct PrivateWindowModelTests {
         func tabUnloaded(_ id: UUID) {}
         func tabDeselected(_ id: UUID) { deselected.append(id) }
         func tabNavigated(_ id: UUID) {}
+        func tabOpenedByUser(_ id: UUID) {}
     }
 
     @Test func privateTabsLiveInMemoryOnly() throws {

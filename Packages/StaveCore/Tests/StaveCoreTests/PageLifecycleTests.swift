@@ -12,6 +12,8 @@ private final class FakePages: PageLifecycle {
     func tabDeselected(_ id: UUID) { deselected.append(id) }
     var navigated: [UUID] = []
     func tabNavigated(_ id: UUID) { navigated.append(id) }
+    var openedByUser: [UUID] = []
+    func tabOpenedByUser(_ id: UUID) { openedByUser.append(id) }
 }
 
 @MainActor

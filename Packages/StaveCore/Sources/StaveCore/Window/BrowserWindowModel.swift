@@ -13,6 +13,9 @@ public protocol PageLifecycle: AnyObject {
     /// The tab's stored address and history were replaced from outside its page (Back to Pinned Page): a live page must
     /// follow the store instead of writing its old page back.
     func tabNavigated(_ id: UUID)
+    /// The user opened the tab just now (⇧⌘T): the next page made for it is user-opened (`PageRequest.openedByUser`), so it can download
+    /// without waiting for a click. Told before the tab is selected.
+    func tabOpenedByUser(_ id: UUID)
 }
 
 /// What one browser window shows and does. Views read it and call it; every write goes through `perform(_:)`,
@@ -555,8 +558,12 @@ public final class BrowserWindowModel: CommandBarWindow {
     }
 
     /// Restores into this workspace and selects the tab.
-    public func restoreArchived(_ id: UUID) {
+    public func restoreArchived(_ id: UUID) { restoreArchived(id, openedByUser: false) }
+
+    /// `openedByUser`: the page host hears it (before the selection makes the page), as ⇧⌘T needs.
+    func restoreArchived(_ id: UUID, openedByUser: Bool) {
         guard let tab = perform({ try store.restoreArchivedTab(id, workspaceID: snapshot.workspace.id) }) else { return }
+        if openedByUser { pages?.tabOpenedByUser(tab.id) }
         select(tab.id)
     }
 

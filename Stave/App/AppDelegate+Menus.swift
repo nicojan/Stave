@@ -24,7 +24,10 @@ extension AppDelegate {
 
     /// What the menus show now. With no browser window key (Settings in front) the compact checkmark follows the setting itself.
     private func currentMenu() -> MenuSnapshot {
-        if let keyPrivate { return Self.privateMenu(keyPrivate, compact: environment?.compactMode.isEnabled ?? false) }
+        if let keyPrivate {
+            let hasDownloads = environment?.downloads.hasItems(for: .privateWindow(keyPrivate.windowID)) ?? false
+            return Self.privateMenu(keyPrivate, compact: environment?.compactMode.isEnabled ?? false, hasDownloads: hasDownloads)
+        }
         guard let controller = keyController, let shortcuts = environment?.workspaceShortcuts else {
             return MenuSnapshot(compact: environment?.compactMode.isEnabled ?? false)
         }
@@ -38,7 +41,11 @@ extension AppDelegate {
         let canCrash = false
         #endif
         let moveTargets = model.moveTargets(for: model.sidebarHighlight)
-        let pageMenu = PageMenuState.from(status: controller.shownPage.map(Self.summary(of:)), sheetOpen: busy, historyShown: model.isShowingHistory)
+        let section = model.selectedSection
+        let pageMenu = PageMenuState.from(
+            status: controller.shownPage.map { Self.summary(of: $0, section: section) }, sheetOpen: busy, historyShown: model.isShowingHistory
+        )
+        let hasDownloads = environment?.downloads.hasItems(for: .profile(model.snapshot.profile.id)) ?? false
         return MenuSnapshot(
             items: WorkspaceMenus.switchItems(workspaces: workspaces, currentID: model.snapshot.workspace.id, shortcutsEnabled: shortcuts.isEnabled),
             compact: model.isCompact,
@@ -54,7 +61,8 @@ extension AppDelegate {
             pageMenu: pageMenu,
             findMenu: FindMenuState.from(pageMenu: pageMenu, find: controller.find.current),
             canCrashPage: canCrash,
-            canShowHistory: HistoryText.isShowAllHistoryEnabled(isPrivate: false, busy: busy)
+            canShowHistory: HistoryText.isShowAllHistoryEnabled(isPrivate: false, busy: busy),
+            tabKeys: TabShortcutMenuState.from(busy: busy, isPrivate: false, tabCount: model.tabsInSidebarOrder.count, hasDownloads: hasDownloads)
         )
     }
 
@@ -73,37 +81,29 @@ extension AppDelegate {
         if menuState.findMenu != menu.findMenu { menuState.findMenu = menu.findMenu }
         if menuState.canCrashPage != menu.canCrashPage { menuState.canCrashPage = menu.canCrashPage }
         if menuState.canShowHistory != menu.canShowHistory { menuState.canShowHistory = menu.canShowHistory }
+        if menuState.tabKeys != menu.tabKeys { menuState.tabKeys = menu.tabKeys }
     }
 
     /// The menus for a key private window: only the page commands; no workspaces, tab actions or moves.
-    private static func privateMenu(_ controller: PrivateWindowController, compact: Bool) -> MenuSnapshot {
+    private static func privateMenu(_ controller: PrivateWindowController, compact: Bool, hasDownloads: Bool) -> MenuSnapshot {
         let busy = controller.window.attachedSheet != nil
-        let pageMenu = PageMenuState.from(status: controller.shownPage.map(summary(of:)), sheetOpen: busy)
+        let pageMenu = PageMenuState.from(status: controller.shownPage.map { summary(of: $0, isPrivate: true) }, sheetOpen: busy)
         return MenuSnapshot(
-            compact: compact, busy: busy, pageMenu: pageMenu, findMenu: FindMenuState.from(pageMenu: pageMenu, find: controller.find.current)
+            compact: compact, busy: busy, pageMenu: pageMenu, findMenu: FindMenuState.from(pageMenu: pageMenu, find: controller.find.current),
+            tabKeys: TabShortcutMenuState.from(busy: busy, isPrivate: true, tabCount: controller.model.tabs.count, hasDownloads: hasDownloads)
         )
     }
 
     /// A live page's status for the page menu. The blocking toggle applies only to a page with a web site (`PageMenuState.blockingState`).
-    static func summary(of page: LivePage) -> PageStatusSummary {
+    /// `section` is where the selected tab sits, for ⌘D's rule; a private window's page has none.
+    static func summary(of page: LivePage, section: SlotSection? = nil, isPrivate: Bool = false) -> PageStatusSummary {
         PageStatusSummary(
             isLoading: page.status.isLoading, canGoBack: page.status.canGoBack, canGoForward: page.status.canGoForward,
             hasPage: true, blockingOn: PageMenuState.blockingState(url: page.status.url, isOn: page.isContentBlockingOn),
             hasFailure: page.status.failure != nil, isBlank: PageMenuState.isBlank(url: page.status.url), zoom: page.zoom,
-            inspectorAvailable: PageTools.canShowInspector(page.webView), sourceAvailable: PageTools.canShowPageSource(page.webView)
+            inspectorAvailable: PageTools.canShowInspector(page.webView), sourceAvailable: PageTools.canShowPageSource(page.webView),
+            selectedSection: section, isPrivate: isPrivate
         )
-    }
-
-    /// ⌘= zooms in like ⌘+ (Safari answers both; on most layouts + needs Shift). A SwiftUI menu item takes one key, so ⌘= is caught before
-    /// the menus and sent to the same command, only while Zoom In is enabled; otherwise the key goes on as usual.
-    func installZoomKeyAlternate() {
-        guard zoomKeyMonitor == nil else { return }
-        zoomKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers == "=", self.menuState.pageMenu.canZoomIn else { return event }
-            self.zoomIn()
-            return nil
-        }
     }
 
     /// Everything the menus show for the key window, read in one observation pass.
@@ -122,10 +122,11 @@ extension AppDelegate {
         var canCrashPage = false
         /// False for a private window and with no browser window key (the defaults).
         var canShowHistory = false
+        var tabKeys = TabShortcutMenuState.disabled
     }
 
     func observeKeyWindow() {
-        installZoomKeyAlternate()
+        installHiddenShortcuts()
         let center = NotificationCenter.default
         keyObservers = [
             NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,

@@ -4,6 +4,10 @@ import Foundation
 public enum MenuCommand: CaseIterable, Sendable {
     case newTab, openLocation, newWindow, closeTab, closeWindow, switchWorkspace, moveRow, newWorkspace, importFromArc, toggleCompactMode
     case workspaceAction, sidebarAction, showArchive, showHistory
+    /// The shown page's commands (Back, Reload, zoom, Print, the Develop menu); find has its own.
+    case pageCommand, find
+    /// ⌘1–9, ⌃Tab and ⌃⇧Tab; ⇧⌘T; ⌘D; ⌥⌘L (decision 16).
+    case selectTab, reopenClosedTab, pinTab, showDownloads
 }
 
 public enum MenuCommandGate {

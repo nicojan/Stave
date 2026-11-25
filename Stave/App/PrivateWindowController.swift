@@ -310,6 +310,8 @@ extension PrivateWindowController: PageLifecycle {
     }
 
     func tabNavigated(_ id: UUID) {}
+    /// Nothing reopens into a private window (it has no archive); its new tabs are user-opened already.
+    func tabOpenedByUser(_ id: UUID) {}
 }
 
 // MARK: - PageWriter

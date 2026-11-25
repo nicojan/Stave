@@ -23,6 +23,8 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
     /// What to load in a tab whose page did not exist yet (a typed address, an opened file, a refused link); the page is made empty and
     /// given it as its first load.
     var pendingLoads: [UUID: PendingLoad] = [:]
+    /// Tabs the user just opened (⇧⌘T) whose page is not made yet: the next page made for each is user-opened (`tabOpenedByUser`).
+    var openedByUserTabs: Set<UUID> = []
     /// Moves focus into the page once its web view is in this window.
     var focusTask: Task<Void, Never>?
     var snapshotTask: Task<Void, Never>?

@@ -30,7 +30,7 @@ public enum SidebarAction: Hashable, Sendable, CaseIterable {
     /// The title in the Tab menu, where an item that asks for a name ends in an ellipsis and the target is spelled out.
     public var menuTitle: String {
         switch self {
-        case .pin: "Pin Tab"
+        case .pin: ShortcutText.pinTabTitle
         case .unpin: "Unpin Tab"
         case .renameFolder: "Rename Folder…"
         case .newFolderInside: "New Folder Inside…"
@@ -129,6 +129,12 @@ public enum SidebarMenus {
             target = []
         }
         return target.filter { $0 != .closeTab } + pinnedHeaderActions
+    }
+
+    /// The highlight's actions as the Tab menu lists them. The fixed Pin Tab item (⌘D) stands in for `.pin` only while it is enabled; when it
+    /// is not (a blank tab or a failure panel is selected), the highlight's own Pin stays, so such a tab can still be pinned from the menu bar.
+    public static func tabMenuActions(_ actions: [SidebarAction], fixedPinEnabled: Bool) -> [SidebarAction] {
+        fixedPinEnabled ? actions.filter { $0 != .pin } : actions
     }
 
     /// Whether ⌥⌘↑ (`by: -1`) or ⌥⌘↓ (`by: 1`) has somewhere to move the highlighted item. Nothing highlighted: no.

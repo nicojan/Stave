@@ -148,3 +148,22 @@ public enum PrivateWindowText {
         return "\(title(for: selected)) — \(windowTitle)"
     }
 }
+
+// MARK: - Tab shortcuts
+
+extension PrivateWindowModel {
+    /// ⌘1–⌘8 the nth tab of the list, ⌘9 the last (question 17).
+    /// Returns whether there was a tab to select.
+    @discardableResult
+    public func selectTab(number: Int) -> Bool {
+        guard let id = TabOrder.tab(number: number, in: tabs.map(\.id)) else { return false }
+        select(id)
+        return true
+    }
+
+    /// ⌃Tab (+1) and ⌃⇧Tab (-1): the next or previous tab, wrapping.
+    public func selectAdjacentTab(_ delta: Int) {
+        guard let id = TabOrder.adjacent(to: selectedTabID, by: delta, in: tabs.map(\.id)) else { return }
+        select(id)
+    }
+}

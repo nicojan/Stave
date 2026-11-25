@@ -18,16 +18,21 @@ public struct PageStatusSummary: Equatable, Sendable {
     public var inspectorAvailable: Bool
     /// The inspector can open on the page's source.
     public var sourceAvailable: Bool
+    /// Where the selected tab sits; nil with no tab selected. ⌘D pins only a regular tab (question 18).
+    public var selectedSection: SlotSection?
+    /// The page is in a private window, which has nothing to pin to.
+    public var isPrivate: Bool
 
     public init(
         isLoading: Bool = false, canGoBack: Bool = false, canGoForward: Bool = false, hasPage: Bool = false, blockingOn: Bool? = nil,
         hasFailure: Bool = false, isBlank: Bool = false, zoom: Double = ZoomLevels.defaultLevel, inspectorAvailable: Bool = false,
-        sourceAvailable: Bool = false
+        sourceAvailable: Bool = false, selectedSection: SlotSection? = nil, isPrivate: Bool = false
     ) {
         self.isLoading = isLoading; self.canGoBack = canGoBack; self.canGoForward = canGoForward
         self.hasPage = hasPage; self.blockingOn = blockingOn
         self.hasFailure = hasFailure; self.isBlank = isBlank; self.zoom = zoom
         self.inspectorAvailable = inspectorAvailable; self.sourceAvailable = sourceAvailable
+        self.selectedSection = selectedSection; self.isPrivate = isPrivate
     }
 }
 
@@ -50,6 +55,8 @@ public struct PageMenuState: Equatable, Sendable {
     /// Develop ▸ Show Web Inspector and Show Page Source (decision 14): the piece each needs is there, and no failure panel hides the page.
     public var canInspect = false
     public var canShowSource = false
+    /// Tab ▸ Pin Tab (⌘D, question 18): a regular tab's web page in a normal window. Never on a pinned tab or an Essential, so ⌘D never unpins.
+    public var canPinSelected = false
 
     public static let disabled = PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil)
 
@@ -76,7 +83,8 @@ public struct PageMenuState: Equatable, Sendable {
             canZoomOut: hasContent && ZoomLevels.canZoomOut(from: status.zoom),
             canResetZoom: hasContent && !ZoomLevels.isDefault(status.zoom),
             canInspect: visible && status.inspectorAvailable,
-            canShowSource: hasContent && status.sourceAvailable
+            canShowSource: hasContent && status.sourceAvailable,
+            canPinSelected: hasContent && status.selectedSection == .regular && !status.isPrivate
         )
     }
 }

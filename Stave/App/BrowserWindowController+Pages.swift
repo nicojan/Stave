@@ -30,6 +30,7 @@ extension BrowserWindowController: PageLifecycle {
         let pending = pendingLoads.removeValue(forKey: tab.id)
         if pageHost.existingPage(tab.id) == nil {
             guard pending != nil || !tab.url.isEmpty, let request = request(for: tab, typed: pending != nil) else { return }
+            openedByUserTabs.remove(tab.id)
             _ = pageHost.page(for: request, writer: environment.pageWriter)
         }
         if let pending { pending.run(in: tab.id, host: pageHost) }
@@ -46,7 +47,7 @@ extension BrowserWindowController: PageLifecycle {
 
     /// The request for a tab's page: its container's or profile's persistent store, and the window's profile for site settings. A page made
     /// for a typed address (or an opened file, or a refused link) starts empty (no stored address, no state), so that load is its first, and
-    /// the user opened it.
+    /// the user opened it. So did a tab the model reported as user-opened (⇧⌘T), which restores its stored page.
     private func request(for tab: StaveCore.Tab, typed: Bool) -> PageRequest? {
         let storeID: UUID
         do {
@@ -58,7 +59,7 @@ extension BrowserWindowController: PageLifecycle {
         return PageRequest(
             tabID: tab.id, store: .persistent(storeID), siteSettingsProfileID: model.snapshot.profile.id,
             url: typed ? "" : tab.url, title: typed ? "" : tab.title, faviconURL: typed ? nil : tab.faviconURL,
-            interactionState: typed ? nil : tab.interactionState, openedByUser: typed
+            interactionState: typed ? nil : tab.interactionState, openedByUser: typed || openedByUserTabs.contains(tab.id)
         )
     }
 
@@ -204,10 +205,12 @@ extension BrowserWindowController: PageLifecycle {
         endQuestionsEverywhere(for: id)
         find.forget(id)
         pendingLoads[id] = nil
+        openedByUserTabs.remove(id)
         pageHost.close(id)
     }
 
     func tabUnloaded(_ id: UUID) {
+        openedByUserTabs.remove(id)
         endQuestionsEverywhere(for: id)
         pageHost.unload(id)
     }
@@ -227,9 +230,15 @@ extension BrowserWindowController: PageLifecycle {
         showSelected()
     }
 
+    /// The user opened the tab (⇧⌘T): the page this window makes for it next is user-opened, so it can download without waiting for a click.
+    func tabOpenedByUser(_ id: UUID) {
+        openedByUserTabs.insert(id)
+    }
+
     /// Keeps a snapshot for "showing in another window" and writes the page's pending state. The page stays shown when another window
     /// took it over.
     func tabDeselected(_ id: UUID) {
+        openedByUserTabs.remove(id) // a reopened tab left before its page was made is no longer "just opened by the user"
         prompts.hide(id)
         pageHost.captureSnapshot(id)
         pageHost.flushAll() // the host flushes every page or none; a flush with nothing pending writes nothing

@@ -31,6 +31,9 @@ public struct DownloadItem: Identifiable, Equatable, Sendable {
 @MainActor @Observable
 public final class DownloadList {
     private var rows: [DownloadItem] = []   // oldest first; `items(for:)` reverses
+    /// The owners that have at least one row. It changes only when a row is added or removed, never on a progress or state update, so the
+    /// menus read it (`hasItems(for:)`) instead of `items(for:)` and do not rebuild on every progress tick.
+    private var ownersWithItems: Set<DownloadOwner> = []
     @ObservationIgnored public var onCancel: ((UUID) -> Void)?
 
     public init() {}
@@ -39,9 +42,13 @@ public final class DownloadList {
         rows.filter { $0.owner == owner }.reversed()
     }
 
+    /// Whether the owner has any row. Observers of this are told only when that flips.
+    public func hasItems(for owner: DownloadOwner) -> Bool { ownersWithItems.contains(owner) }
+
     public func begin(owner: DownloadOwner, filename: String, sourceHost: String?) -> UUID {
         let id = UUID()
         rows.append(DownloadItem(id: id, owner: owner, filename: filename, sourceHost: sourceHost, state: .running(fraction: nil)))
+        if !ownersWithItems.contains(owner) { ownersWithItems.insert(owner) }
         return id
     }
 
@@ -60,6 +67,7 @@ public final class DownloadList {
 
     public func clearFinished(owner: DownloadOwner) {
         rows.removeAll { $0.owner == owner && $0.state.hasEnded }
+        refreshHasItems(owner)
     }
 
     /// Cancels every row of the owner that is still running, each through `cancel` (so `onCancel` stops its download). A private window
@@ -71,6 +79,11 @@ public final class DownloadList {
 
     public func dropOwner(_ owner: DownloadOwner) {
         rows.removeAll { $0.owner == owner }
+        refreshHasItems(owner)
+    }
+
+    private func refreshHasItems(_ owner: DownloadOwner) {
+        if !rows.contains(where: { $0.owner == owner }), ownersWithItems.contains(owner) { ownersWithItems.remove(owner) }
     }
 
     /// Returns true when the row was running and changed.

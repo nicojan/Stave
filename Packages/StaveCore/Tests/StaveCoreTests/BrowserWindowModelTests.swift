@@ -638,4 +638,5 @@ private final class SpyPages: PageLifecycle {
     func tabUnloaded(_ id: UUID) { calls = calls + ["unloaded \(id)"] }
     func tabDeselected(_ id: UUID) { calls = calls + ["deselected \(id)"] }
     func tabNavigated(_ id: UUID) { calls = calls + ["navigated \(id)"] }
+    func tabOpenedByUser(_ id: UUID) { calls = calls + ["opened \(id)"] }
 }

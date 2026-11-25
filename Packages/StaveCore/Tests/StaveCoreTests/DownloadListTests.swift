@@ -1,6 +1,10 @@
 import Foundation
+import Observation
 import Testing
 @testable import StaveCore
+
+/// `onChange` runs synchronously on the mutating thread, so a plain box is enough.
+final class ChangeCounter: @unchecked Sendable { var count = 0 }
 
 @Suite struct DownloadListTests {
     /// A private window closing cancels its running rows only: a finished row and another owner's running row are left alone.
@@ -19,6 +23,44 @@ import Testing
         #expect(list.items(for: window).first { $0.id == running }?.state == .cancelled)
         #expect(list.items(for: window).first { $0.id == done }?.state == .finished(URL(fileURLWithPath: "/tmp/b.bin")))
         #expect(list.items(for: profile).first { $0.id == other }?.state == .running(fraction: nil))
+    }
+
+    /// Review fix 4: the menu reads `hasItems(for:)`, which changes only when a row is added or removed, never on a progress tick.
+    @MainActor @Test func ownersWithItemsChangeOnlyWhenARowIsAddedOrRemoved() {
+        let list = DownloadList()
+        let owner = DownloadOwner.profile(UUID())
+        let other = DownloadOwner.privateWindow(UUID())
+        #expect(!list.hasItems(for: owner))
+
+        let counter = ChangeCounter()
+        func watch() {
+            withObservationTracking { _ = list.hasItems(for: owner) } onChange: { counter.count += 1 }
+        }
+        watch()
+        let id = list.begin(owner: owner, filename: "a.bin", sourceHost: nil)
+        #expect(counter.count == 1)
+        #expect(list.hasItems(for: owner) && !list.hasItems(for: other))
+
+        counter.count = 0
+        watch()
+        list.progress(id, fraction: 0.25)
+        list.progress(id, fraction: 0.5)
+        list.finish(id, at: URL(fileURLWithPath: "/tmp/a.bin"))
+        #expect(counter.count == 0, "a progress update or a finish leaves the set unchanged")
+        _ = list.begin(owner: owner, filename: "b.bin", sourceHost: nil)
+        #expect(counter.count == 0, "a second row of the same owner leaves it unchanged")
+
+        list.clearFinished(owner: owner)
+        #expect(list.hasItems(for: owner), "the running row stays")
+        list.cancel(list.items(for: owner)[0].id)
+        list.clearFinished(owner: owner)
+        #expect(!list.hasItems(for: owner))
+        #expect(counter.count == 1)
+
+        _ = list.begin(owner: other, filename: "c.bin", sourceHost: nil)
+        #expect(list.hasItems(for: other))
+        list.dropOwner(other)
+        #expect(!list.hasItems(for: other))
     }
 
     @Test func filenamesAreSanitized() {

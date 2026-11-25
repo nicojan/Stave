@@ -18,8 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let menuState = AppMenuState()
     var menuGeneration = 0
     var keyObservers: [NSObjectProtocol] = []
-    /// ⌘= as a hidden alternate of View ▸ Zoom In (⌘+), as in Safari (`installZoomKeyAlternate`).
-    var zoomKeyMonitor: Any?
+    /// The table's hidden alternate keys, such as ⌘= for View ▸ Zoom In (⌘+), as in Safari (`installHiddenShortcuts`).
+    var alternateKeyMonitor: Any?
     private(set) var importCoordinator: ImportCoordinator?
     /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
     private var pageEvents: PageEventsRouter?
@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The default quit handler would refuse with a sheet up, and the first-run sheet cannot be dismissed, so ours ends the sheets first.
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // Stave has its own tabs: native window tabbing would add a second Show Next/Previous Tab (⌃⇧⇥) and "Merge All Windows" to the
+        // Window menu. Set once, before any window opens.
+        NSWindow.allowsAutomaticWindowTabbing = false
         NSAppleEventManager.shared().setEventHandler(
             self, andSelector: #selector(handleQuitEvent(_:withReplyEvent:)),
             forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEQuitApplication)

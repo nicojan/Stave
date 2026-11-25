@@ -46,7 +46,10 @@ struct PrivateWindowView: View {
             list
             HStack {
                 Spacer()
-                DownloadsButton(downloads: downloads, owner: .privateWindow(model.windowID))
+                DownloadsButton(
+                    downloads: downloads, owner: .privateWindow(model.windowID),
+                    showing: Binding(get: { presenter.showDownloads }, set: { presenter.showDownloads = $0 })
+                )
             }
             .padding(10)
         }
