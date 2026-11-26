@@ -16,7 +16,9 @@ struct PageDialogCoordinatorTests {
         let tab = UUID()
         window.shownTabs = [tab]
         queues.register(window)
-        return (PageDialogCoordinator(queues: queues), queues, window, tab, Page())
+        // A fixed clock: PageDialogGate counts dialogs within a 10 s window, which a loaded CI runner can outlast between rounds.
+        let fixed = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        return (PageDialogCoordinator(queues: queues, now: { fixed }), queues, window, tab, Page())
     }
 
     /// Long enough for a loaded CI runner; a miss records an issue instead of hanging the suite.
