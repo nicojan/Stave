@@ -130,8 +130,8 @@ struct AuthQuestionGateTests {
             #expect(await task.value == nil)
         }
         #expect(hand.asked == 3)
-        let space = space
-        let refused = await releasedOutcome(of: { await gate.ask(space, document: 1) { await hand.perform() } }, hand: hand)
+        let refusedSpace = space
+        let refused = await releasedOutcome(of: { await gate.ask(refusedSpace, document: 1) { await hand.perform() } }, hand: hand)
         #expect(refused == nil)
         let other = AuthSpace(host: "example.org", scheme: "https", realm: nil, method: NSURLAuthenticationMethodHTTPBasic, isProxy: false)
         let refusedOther = await releasedOutcome(of: { await gate.ask(other, document: 1) { await hand.perform() } }, hand: hand)
@@ -216,8 +216,8 @@ struct AuthQuestionGateTests {
             #expect(await task.value == nil)
         }
         #expect(hand.asked == 5)
-        let space = space
-        let refused = await releasedOutcome(of: { await gate.ask(space, document: 1) { await hand.perform() } }, hand: hand)
+        let refusedSpace = space
+        let refused = await releasedOutcome(of: { await gate.ask(refusedSpace, document: 1) { await hand.perform() } }, hand: hand)
         #expect(refused == nil)
         #expect(hand.asked == 5)
     }
