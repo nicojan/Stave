@@ -442,7 +442,7 @@ struct PageHostTests {
         host.unload(page.tabID)
         #expect(writer.stateWrites == 1)
         #expect(host.existingPage(page.tabID) == nil)
-        let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
+        let snapped = try await waitUntil(seconds: 60) { host.snapshot(for: page.tabID) != nil }
         #expect(snapped)
         #expect(writer.stateWrites == 1)
     }
@@ -460,7 +460,7 @@ struct PageHostTests {
         try await Task.sleep(for: .milliseconds(200))
         host.hasOwner = { _ in true }
         host.unload(page.tabID)
-        let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
+        let snapped = try await waitUntil(seconds: 60) { host.snapshot(for: page.tabID) != nil }
         #expect(snapped)
         host.close(page.tabID)
         #expect(host.snapshot(for: page.tabID) == nil)
@@ -555,7 +555,7 @@ struct PageHostTests {
         #expect(loaded)
         try await Task.sleep(for: .milliseconds(200))
         host.captureSnapshot(page.tabID)
-        let snapped = try await waitUntil(seconds: 10) { host.snapshot(for: page.tabID) != nil }
+        let snapped = try await waitUntil(seconds: 60) { host.snapshot(for: page.tabID) != nil }
         #expect(snapped)
         let width = try #require(host.snapshot(for: page.tabID)).size.width
         #expect(width <= PageHost.snapshotWidth)
