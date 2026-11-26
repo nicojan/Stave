@@ -23,7 +23,13 @@ final class FakeQuestionWindow: PageQuestionWindow {
     private(set) var externalShown: [(host: String?, appName: String)] = []
     var externalFinish: ((WaitingQuestions<Bool>.Result) -> Void)?
 
-    func canAsk(_ tabID: UUID) -> Bool { !sheetUp && shownTabs.contains(tabID) }
+    /// Every tab the queues asked this window about, in order: a question is queued by the time its tab shows up here (test seam).
+    private(set) var askProbes: [UUID] = []
+
+    func canAsk(_ tabID: UUID) -> Bool {
+        askProbes.append(tabID)
+        return !sheetUp && shownTabs.contains(tabID)
+    }
 
     func showMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool, finish: @escaping (WaitingQuestions<MediaAnswer>.Result) -> Void) -> Bool {
         guard canAsk(tabID) else { return false }

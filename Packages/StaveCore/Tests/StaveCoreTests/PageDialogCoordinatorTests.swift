@@ -19,6 +19,44 @@ struct PageDialogCoordinatorTests {
         return (PageDialogCoordinator(queues: queues), queues, window, tab, Page())
     }
 
+    /// Long enough for a loaded CI runner; a miss records an issue instead of hanging the suite.
+    private static let deadline: Duration = .seconds(20)
+
+    /// Yields until `condition` holds. Records an issue and returns false when it doesn't within the deadline.
+    @discardableResult
+    private func wait(for what: String, sourceLocation: SourceLocation = #_sourceLocation, until condition: () -> Bool) async -> Bool {
+        let end = ContinuousClock.now.advanced(by: Self.deadline)
+        while !condition() {
+            if ContinuousClock.now >= end {
+                Issue.record("Timed out waiting for \(what)", sourceLocation: sourceLocation)
+                return false
+            }
+            await Task.yield()
+        }
+        return true
+    }
+
+    /// Waits until the window has shown `count` dialogs in all, so the one to answer is really up.
+    @discardableResult
+    private func waitForDialog(_ window: FakeQuestionWindow, count: Int, sourceLocation: SourceLocation = #_sourceLocation) async -> Bool {
+        await wait(for: "dialog number \(count) to be shown", sourceLocation: sourceLocation) { window.dialogsShown.count >= count }
+    }
+
+    private final class Done { var isDone = false }
+
+    /// The task's value, or nil (with an issue recorded) when it hasn't finished within the deadline.
+    private func finish<T: Sendable>(_ task: Task<T, Never>, sourceLocation: SourceLocation = #_sourceLocation) async -> T? {
+        let done = Done()
+        let watcher = Task { @MainActor in
+            let value = await task.value
+            done.isDone = true
+            return value
+        }
+        guard await wait(for: "the question to resolve", sourceLocation: sourceLocation, until: { done.isDone }) else { return nil }
+        return await watcher.value
+    }
+
+    /// Answers the dialog that is up. Callers wait for it to be shown first (`waitForDialog`), so this never answers a previous one.
     private func answer(_ window: FakeQuestionWindow, _ reply: DialogReply) async {
         window.sheetUp = false
         window.dialogFinish?(.answered(reply))
@@ -28,11 +66,11 @@ struct PageDialogCoordinatorTests {
     @Test func confirmMapsTheReply() async {
         let (coordinator, _, window, tab, page) = make()
         let asked = Task { await coordinator.confirm(tabID: tab, page: page, navigation: 1, origin: nil, message: "m", isStale: { false }) }
-        await Task.yield()
+        await waitForDialog(window, count: 1)
         await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: false))
         #expect(await asked.value == true)
         let cancelled = Task { await coordinator.confirm(tabID: tab, page: page, navigation: 1, origin: nil, message: "m", isStale: { false }) }
-        await Task.yield()
+        await waitForDialog(window, count: 2)
         await answer(window, DialogReply(accepted: false, text: nil, stopDialogs: false))
         #expect(await cancelled.value == false)
     }
@@ -43,15 +81,15 @@ struct PageDialogCoordinatorTests {
             Task { await coordinator.prompt(tabID: tab, page: page, navigation: 1, origin: nil, message: "m", defaultText: "d", isStale: { false }) }
         }
         var task = ask()
-        await Task.yield()
+        await waitForDialog(window, count: 1)
         await answer(window, DialogReply(accepted: true, text: "typed", stopDialogs: false))
         #expect(await task.value == "typed")
         task = ask()
-        await Task.yield()
+        await waitForDialog(window, count: 2)
         await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: false))
         #expect(await task.value == "", "OK with no text is the empty string, not nil")
         task = ask()
-        await Task.yield()
+        await waitForDialog(window, count: 3)
         await answer(window, DialogReply(accepted: false, text: "ignored", stopDialogs: false))
         #expect(await task.value == nil, "Cancel is nil whatever was typed")
     }
@@ -62,20 +100,20 @@ struct PageDialogCoordinatorTests {
         let (coordinator, _, window, tab, page) = make()
         for round in 1...PageDialogGate.threshold {
             let asked = Task { await coordinator.alert(tabID: tab, page: page, navigation: 1, origin: nil, message: "m\(round)", isStale: { false }) }
-            await Task.yield()
+            await waitForDialog(window, count: round)
             let last = round == PageDialogGate.threshold
+            #expect(window.dialogsShown.count == round)
             #expect(window.dialogsShown.last?.offerToStop == last)
             await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: last))
             await asked.value
         }
         let shownBefore = window.dialogsShown.count
         let again = Task { await coordinator.alert(tabID: tab, page: page, navigation: 1, origin: nil, message: "again", isStale: { false }) }
-        await Task.yield()
+        _ = await finish(again)
         #expect(window.dialogsShown.count == shownBefore, "stopped: returns at once, shows nothing")
         if window.dialogsShown.count != shownBefore { await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: false)) }
-        await again.value
         let next = Task { await coordinator.alert(tabID: tab, page: page, navigation: 2, origin: nil, message: "new doc", isStale: { false }) }
-        await Task.yield()
+        await waitForDialog(window, count: shownBefore + 1)
         #expect(window.dialogsShown.count == shownBefore + 1, "a new document asks again")
         await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: false))
         await next.value
@@ -85,12 +123,12 @@ struct PageDialogCoordinatorTests {
     @Test func aRemadePageHasAFreshGate() async {
         let (coordinator, _, window, tab, page) = make()
         let first = Task { await coordinator.alert(tabID: tab, page: page, navigation: 1, origin: nil, message: "m", isStale: { false }) }
-        await Task.yield()
+        await waitForDialog(window, count: 1)
         await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: true))
         await first.value
         let remade = Page()
         let second = Task { await coordinator.alert(tabID: tab, page: remade, navigation: 1, origin: nil, message: "m", isStale: { false }) }
-        await Task.yield()
+        await waitForDialog(window, count: 2)
         #expect(window.dialogsShown.count == 2)
         await answer(window, DialogReply(accepted: true, text: nil, stopDialogs: false))
         await second.value
@@ -133,7 +171,8 @@ struct PageDialogCoordinatorTests {
         let hidden = UUID()
         let dialog = Task { await coordinator.confirm(tabID: hidden, page: page, navigation: 1, origin: nil, message: "m", isStale: { false }) }
         let external = Task { await queues.askExternalApp(tabID: hidden, host: nil, url: URL(string: "mailto:a@example.com")!, appName: "Mail", isStale: { false }) }
-        await Task.yield()
+        // Both questions are queued once the window has been asked about the hidden tab for each (it can't show either).
+        await wait(for: "both hidden-tab questions to be queued") { window.askProbes.filter { $0 == hidden }.count >= 2 }
         #expect(window.dialogsShown.isEmpty)
         coordinator.cancelDialogs(tabID: hidden)
         #expect(await dialog.value == false)
