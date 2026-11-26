@@ -13,6 +13,7 @@ private final class LoadWaiter: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finished = true }
 }
 
+extension WebKitTests {
 @MainActor
 @Suite("Page tools")
 struct PageToolsTests {
@@ -79,4 +80,5 @@ struct PageToolsTests {
         // `isInspectable` stays off: the in-app inspector doesn't need it (decision 14).
         #expect(!inspectable.isInspectable)
     }
+}
 }

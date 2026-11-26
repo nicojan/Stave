@@ -26,7 +26,7 @@ final class BlockingProbe: @unchecked Sendable {
 
 /// The first-ever download froze the app while macOS asked about the Downloads folder: WebKit made the folder's sandbox extension on the
 /// main thread, the first time Stave touched it (walkthrough fix 3). Stave now touches the folder first, off the main thread.
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     func askForDestination(_ page: LivePage, named name: String) async throws -> URL? {
         try await askForDestination(page, download: await newDownload(page), named: name)
     }

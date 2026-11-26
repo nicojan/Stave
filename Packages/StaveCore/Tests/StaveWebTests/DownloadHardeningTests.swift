@@ -13,7 +13,7 @@ extension PageHost {
 }
 
 /// Plan 3's Carried download fixes (plan 5 Task 14): quarantine, partial files, and same-name downloads.
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     /// The first mark, made when WebKit's first bytes arrived, took. A refresh at the end that throws must not delete the finished file or
     /// fail its row.
     @Test func finishedFileSurvivesARemarkFailure() async throws {

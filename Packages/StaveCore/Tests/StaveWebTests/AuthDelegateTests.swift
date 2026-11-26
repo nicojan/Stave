@@ -13,7 +13,7 @@ final class ChallengeSender: NSObject, URLAuthenticationChallengeSender, @unchec
 }
 
 /// HTTP auth through the delegate's own method (plan 5, Task 11). Hand-made challenges, so nothing loads and nothing touches the network.
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     func challenge(host: String, port: Int = 443, scheme: String = "https", realm: String? = "test", method: String = NSURLAuthenticationMethodHTTPBasic, failures: Int = 0) -> URLAuthenticationChallenge {
         let space = URLProtectionSpace(host: host, port: port, protocol: scheme, realm: realm, authenticationMethod: method)
         return URLAuthenticationChallenge(protectionSpace: space, proposedCredential: nil, previousFailureCount: failures, failureResponse: nil, error: nil, sender: ChallengeSender())

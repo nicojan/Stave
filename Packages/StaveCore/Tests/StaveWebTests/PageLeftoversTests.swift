@@ -7,7 +7,7 @@ import WebKit
 @testable import StaveWeb
 
 /// Plan 5, Task 15: the external-app question's heading and lifetime, hibernation, coalesced title writes and the menu's page fields.
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     /// The sheet names the frame that clicked when WebKit gives it, not the top page: an ad frame can't borrow the page's name, and a
     /// frame can't hide behind it. With no frame information the top page's site is named, as before.
     @Test func externalQuestionNamesTheClickingFrame() async throws {
@@ -177,7 +177,7 @@ private final class DoneFlag {
 }
 
 @MainActor
-extension PageHostTests {
+extension WebKitTests.PageHostTests {
     /// Runs `work` on its own task and waits for it with the generous event-driven wait, so a call that never returns fails the test
     /// instead of hanging it.
     private func finishes(_ work: @escaping @MainActor () async -> Void) async throws -> Bool {

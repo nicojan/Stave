@@ -7,7 +7,7 @@ import WebKit
 /// WebKit finds delegate methods by Objective-C selector. A Swift method whose name doesn't map to one is never called, and nothing
 /// warns: the camera and microphone method was named after the selector instead of WebKit's async Swift name, so WebKit showed its own
 /// prompt with no "Remember for this site" and nothing was stored (walkthrough fix 1).
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     static let delegateSelectors = [
         // Navigation
         "webView:decidePolicyForNavigationAction:decisionHandler:",

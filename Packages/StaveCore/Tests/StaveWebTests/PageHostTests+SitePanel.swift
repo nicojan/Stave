@@ -9,7 +9,7 @@ import WebKit
 
 /// The per-site panel's sources (plan 5, Task 13): a profile's wraps the settings source, a private session's keeps memory only; both apply
 /// a change to the host's live pages at once.
-extension PageHostTests {
+extension WebKitTests.PageHostTests {
     private func panelHost() -> (PageHost, FakeEvents) {
         let host = makeHost()
         let events = FakeEvents()

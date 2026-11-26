@@ -252,6 +252,7 @@ extension PageDelegate {
 
 // MARK: Tests
 
+extension WebKitTests {
 @MainActor
 @Suite("Page delegate")
 struct PageDelegateTests {
@@ -1329,4 +1330,5 @@ struct PageDelegateTests {
         #expect(events.severalDownloadsQuestions.count == 2)
         host.close(page.tabID)
     }
+}
 }

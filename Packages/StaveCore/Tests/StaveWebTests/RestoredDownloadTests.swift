@@ -8,7 +8,7 @@ import WebKit
 
 /// A page Stave reopens by itself (a tab restored at launch, or any stored tab shown again) downloads nothing until the user acts on it:
 /// the restored `double.html` saved a file at relaunch with no click (walkthrough fix 2).
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     /// A page for a stored tab, kept off the network.
     func storedPage(_ host: PageHost, url: String = "https://example.com/files", openedByUser: Bool = false) async throws -> LivePage {
         host.testRuleLists = [try await blockAllRuleList()]

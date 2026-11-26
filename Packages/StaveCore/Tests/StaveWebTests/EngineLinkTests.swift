@@ -4,6 +4,7 @@ import WebKit
 
 @testable import StaveWeb
 
+extension WebKitTests {
 @MainActor
 @Suite("Engine link")
 struct EngineLinkTests {
@@ -51,4 +52,5 @@ struct EngineLinkTests {
         }
         #expect(title == "t")
     }
+}
 }

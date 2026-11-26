@@ -36,18 +36,30 @@ enum StoreCleanup {
         await remove(ids)
     }
 
-    /// Removes each store and records an issue unless it really is gone afterwards.
+    /// How many removals a store gets before it counts as left behind.
+    private static let removalPasses = 3
+
+    /// Removes each store and records an issue unless it really is gone afterwards. A store a test only created has no files yet, and WebKit
+    /// can make them after a removal that came first (seen on macos-15), so the store is listed again; one more removal clears it, as the
+    /// launch check (`StoreRemoval.verifyAtLaunch`) does in the app. The store must be gone after the last pass.
     static func remove(_ ids: [UUID]) async {
         for id in ids {
-            do {
-                try await serialized { try await WebDataStores().remove(id, inUse: false) }
-            } catch {
-                Issue.record("could not remove the test store \(id): \(error)")
-            }
-            let listed = await withCheckedContinuation { continuation in
-                WKWebsiteDataStore.fetchAllDataStoreIdentifiers { continuation.resume(returning: $0.contains(id)) }
+            var listed = true
+            for _ in 0..<removalPasses where listed {
+                do {
+                    try await serialized { try await WebDataStores().remove(id, inUse: false) }
+                } catch {
+                    Issue.record("could not remove the test store \(id): \(error)")
+                }
+                listed = await isListed(id)
             }
             #expect(!listed, "the test store \(id) is still listed after its removal")
+        }
+    }
+
+    private static func isListed(_ id: UUID) async -> Bool {
+        await withCheckedContinuation { continuation in
+            WKWebsiteDataStore.fetchAllDataStoreIdentifiers { continuation.resume(returning: $0.contains(id)) }
         }
     }
 }

@@ -7,6 +7,7 @@ import WebKit
 
 @testable import StaveWeb
 
+extension WebKitTests {
 /// An HTML file opened from Finder, dropped on a window or chosen with File ▸ Open File… (decision 6, question 13): it loads with read access
 /// to its folder, a clicked link inside that folder opens, and nothing else on disk does. Uses a temp folder only; never the network.
 @MainActor
@@ -371,4 +372,5 @@ struct OpenedFileTests {
         #expect(events.linkedTabs.isEmpty)
         #expect(page.status.failure == nil)
     }
+}
 }

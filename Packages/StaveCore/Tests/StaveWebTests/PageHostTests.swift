@@ -92,6 +92,7 @@ final class TestClock {
     var date = Date(timeIntervalSinceReferenceDate: 800_000_000)
 }
 
+extension WebKitTests {
 @MainActor
 @Suite("Page host")
 struct PageHostTests {
@@ -839,4 +840,5 @@ struct PageHostTests {
         let properties = try #require(values.quarantineProperties)
         #expect(properties[kLSQuarantineAgentNameKey as String] as? String == "Stave")
     }
+}
 }

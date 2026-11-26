@@ -14,7 +14,7 @@ final class FakeMenuTarget: NSObject {
 }
 
 /// "Open Link in New Tab" and "Open Link in New Window" in a page's link menu (walkthrough fix 4; the window one opens a real window).
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     /// A link menu as WebKit builds it: the items carry WebKit's identifiers, and "Open Link in New Window" goes to WebKit's target.
     func linkMenu(target: FakeMenuTarget) -> NSMenu {
         let menu = NSMenu()

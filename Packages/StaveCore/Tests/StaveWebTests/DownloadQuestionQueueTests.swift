@@ -6,7 +6,7 @@ import WebKit
 @testable import StaveWeb
 
 /// Downloads that arrive while a download question is up wait for its answer and follow it (Chrome queues them behind the prompt).
-extension PageDelegateTests {
+extension WebKitTests.PageDelegateTests {
     /// Starts a download on the page's delegate and returns the task its destination decision runs in.
     func decideInTask(_ delegate: PageDelegate, on page: LivePage, named name: String) -> Task<URL?, Never> {
         Task { @MainActor in

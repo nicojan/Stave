@@ -6,6 +6,7 @@ import WebKit
 
 @testable import StaveWeb
 
+extension WebKitTests {
 /// Removing a profile's or container's persistent store (decisions 18 and 19, Review Focus 3). These tests open real persistent stores
 /// under fresh identifiers and remove them again, so nothing is left behind. The suite is serialized: two removals in flight at once make
 /// WebKit fail one of them ("Failed to delete files on disk"), the same race `StoreRemoval` rules out in the app.
@@ -213,4 +214,5 @@ struct WebDataStoresTests {
     }
 
     private struct TransientFailure: Error {}
+}
 }
