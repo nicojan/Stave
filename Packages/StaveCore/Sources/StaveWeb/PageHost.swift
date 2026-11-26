@@ -59,6 +59,11 @@ public final class PageHost {
     @ObservationIgnored var privateSiteValues: [PrivateSiteValueKey: Data] = [:]
     /// Whether pages in private windows get `developerExtrasEnabled` and so the inspector (decision 14, Task 9's spike).
     static let privateWindowsInspect = false
+    /// Seam for tests: finds the other browsers and hands them a page's address (View ▸ Open in Safari / Chrome, decision 25).
+    @ObservationIgnored var browserLauncher = BrowserLauncher.system { didSet { installedBrowsersCache = nil } }
+    /// The installed browsers as last looked up: LaunchServices is asked when the panel opens and when the app becomes active, not on every
+    /// menu evaluation (`refreshInstalledBrowsers`).
+    @ObservationIgnored var installedBrowsersCache: [OpenElsewhereApp]?
     /// Seam for tests: finds and opens apps for non-web links.
     @ObservationIgnored var externalApps = ExternalApps.system
     /// Test-only seam: extra rule lists added to every page this host makes (a block-all list keeps tests off the network).
@@ -102,6 +107,8 @@ public final class PageHost {
         insert(page)
         // Before `start`: the delegate gates the restore navigation too (ruling R7).
         installDelegate(on: page)
+        // A stored address or a restored tab loads with its site's agent already on (decision 24), not set while the policy runs.
+        updateUserAgent(for: page, navigatingTo: request.url)
         page.start(request)
         return page
     }
@@ -136,6 +143,8 @@ public final class PageHost {
                 page.status.failure = .refused(url: address)
                 return
             }
+            // Before the load, not in the policy check: the request is built first (WebKit bug 313542, fixed only on newer systems).
+            updateUserAgent(for: page, navigatingTo: address)
             page.webView.load(URLRequest(url: url))
         case .refuse(let failure):
             page.status.failure = failure ?? .refused(url: address)
@@ -454,6 +463,23 @@ public final class PageHost {
         let stored = page.siteKey.flatMap { siteValue(for: page, host: $0, key: .zoom, as: Double.self) }
         let level = ZoomLevels.sanitized(stored)
         if page.zoom != level || page.webView.pageZoom != level { page.setZoom(level) }
+    }
+
+    // MARK: User agent (decision 24)
+
+    /// Before every main-frame load: the destination site's stored agent, or WebKit's own string when none is stored (a file, a blank page
+    /// and any other scheme have no site), so an agent never leaks to another site. Loads Stave starts itself (typed, stored, restored,
+    /// linked tabs) call it before `load`, because the request's User-Agent header is built before the navigation policy runs on some systems
+    /// (WebKit bug 313542). A page-started navigation is judged in `PageDelegate`, which sets it for the destination there (correct on macOS 27 and later, see `allowMainFrame`).
+    func updateUserAgent(for page: LivePage, navigatingTo url: String) {
+        page.setUserAgent(userAgentString(in: page.siteScope, url: url))
+    }
+
+    /// The `customUserAgent` a page of the scope gets for an address: nil for the default.
+    func userAgentString(in scope: SiteScope, url: String) -> String? {
+        guard let site = SiteHost.normalized(url) else { return nil }
+        let agent = SiteUserAgent(stored: siteValue(in: scope, host: site, key: .userAgent, as: String.self))
+        return UserAgent.string(for: agent, applicationName: applicationName, now: now())
     }
 
     // MARK: Site values

@@ -46,7 +46,7 @@ struct SitePanelModelTests {
         source.choices = [.camera: .allow, .microphone: .block, .contentBlocking: .block]
         source.values = [.zoom: Data("1.5".utf8)]
         let model = SitePanelModel(source: source, host: "example.com")
-        #expect(model.rows.map(\.kind) == [.permission(.camera), .permission(.microphone), .permission(.contentBlocking), .zoom])
+        #expect(model.rows.map(\.kind) == [.permission(.camera), .permission(.microphone), .permission(.contentBlocking), .zoom, .userAgent])
         #expect(selected(model, .permission(.camera)) == "allow")
         #expect(selected(model, .permission(.microphone)) == "block")
         // Content blocking's own values: a stored deny is "Off", no row is "On".
@@ -105,17 +105,78 @@ struct SitePanelModelTests {
         #expect(source.value(.zoom, as: Double.self) == 1.75)
     }
 
+    @Test func userAgentRowSetsAndResets() {
+        let source = FakeSiteSource()
+        let model = SitePanelModel(source: source, host: "example.com")
+        let row = model.rows.first { $0.kind == .userAgent }
+        #expect(row?.label == "User agent")
+        #expect(row?.label == WebsiteEntryText.label(.value(.userAgent)))
+        #expect(row?.options.map(\.title) == ["Default", "Safari", "Chrome on Mac"])
+        #expect(row?.options.map(\.id) == ["standard", "safari", "chrome"])
+        #expect(row?.selectedTitle == "Default")
+        #expect(!model.hasStoredValues)
+
+        model.choose(.userAgent, optionID: "chrome")
+        #expect(source.value(.userAgent, as: String.self) == "chrome")
+        #expect(selected(model, .userAgent) == "chrome")
+        #expect(model.rows.first { $0.kind == .userAgent }?.selectedTitle == "Chrome on Mac")
+        #expect(model.hasStoredValues)
+        model.choose(.userAgent, optionID: "safari")
+        #expect(source.value(.userAgent, as: String.self) == "safari")
+        // Default stores nothing, and an ID the row doesn't offer is ignored.
+        model.choose(.userAgent, optionID: "netscape")
+        #expect(selected(model, .userAgent) == "safari")
+        model.choose(.userAgent, optionID: "standard")
+        #expect(source.values[.userAgent] == nil)
+        #expect(!model.hasStoredValues)
+        #expect(source.writes == ["userAgent=value", "userAgent=value", "userAgent=nil"])
+
+        // A stored value nobody offers reads as Default (hostile or stale rows never crash the panel).
+        source.values[.userAgent] = Data("\"netscape\"".utf8)
+        model.refresh()
+        #expect(selected(model, .userAgent) == "standard")
+
+        model.choose(.userAgent, optionID: "chrome")
+        model.resetSite()
+        #expect(source.resets == 1)
+        #expect(selected(model, .userAgent) == "standard")
+        #expect(!model.hasStoredValues)
+    }
+
+    /// The panel's "Open in …" buttons: only the apps it was given, and opening an app it wasn't given does nothing.
+    @Test func panelOpensOnlyOfferedApps() {
+        var opened: [OpenElsewhereApp] = []
+        let model = SitePanelModel(source: FakeSiteSource(), host: "example.com", openElsewhere: [.chrome], openIn: { opened.append($0) })
+        #expect(model.openElsewhere == [.chrome])
+        model.open(in: .safari)
+        #expect(opened.isEmpty)
+        model.open(in: .chrome)
+        #expect(opened == [.chrome])
+        #expect(SitePanelModel(source: FakeSiteSource(), host: "example.com").openElsewhere.isEmpty)
+        // A private window's panel offers none, and opens none.
+        var privateOpened: [OpenElsewhereApp] = []
+        let priv = SitePanelModel(source: FakeSiteSource(), host: "example.com", isPrivate: true, openElsewhere: [.chrome, .safari], openIn: { privateOpened.append($0) })
+        #expect(priv.openElsewhere.isEmpty)
+        priv.open(in: .chrome)
+        #expect(privateOpened.isEmpty)
+    }
+
     @Test func resetSiteClearsEveryKey() {
         let source = FakeSiteSource()
         source.choices = [.camera: .allow, .microphone: .block, .contentBlocking: .block]
-        source.values = [.zoom: Data("2.0".utf8), .userAgent: Data("\"Safari\"".utf8)]
+        source.values = [.zoom: Data("2.0".utf8), .userAgent: Data("\"chrome\"".utf8)]
         let model = SitePanelModel(source: source, host: "example.com")
         #expect(model.hasStoredValues)
+        #expect(selected(model, .userAgent) == "chrome")
         model.resetSite()
         #expect(source.resets == 1)
         #expect(source.choices.isEmpty && source.values.isEmpty)
         for row in model.rows {
-            let expected = row.kind == .zoom ? WebsiteEntryText.zoomPercent(1) : "ask"
+            let expected = switch row.kind {
+            case .zoom: WebsiteEntryText.zoomPercent(1)
+            case .userAgent: "standard"
+            case .permission: "ask"
+            }
             #expect(row.selectedID == expected)
         }
         #expect(!model.hasStoredValues)

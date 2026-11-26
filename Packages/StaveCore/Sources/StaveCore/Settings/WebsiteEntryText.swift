@@ -30,8 +30,14 @@ public enum WebsiteEntryText {
         case .setting: entry.stored == SiteDecision.allow.rawValue ? allow : block
         case .value(.zoom):
             Double(entry.stored).map(zoomPercent) ?? entry.stored
-        case .value(.userAgent): entry.stored.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        case .value(.userAgent): userAgentWords(entry.stored)
         }
+    }
+
+    /// A stored agent as its title; text no agent has (an older or foreign row) shows as stored, without JSON quotes.
+    private static func userAgentWords(_ stored: String) -> String {
+        let text = stored.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        return SiteUserAgent(rawValue: text)?.title ?? text
     }
 
     /// What the row shows beside the host: "Camera: Allow".

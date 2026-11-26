@@ -54,6 +54,10 @@ struct SitePanel: View {
                     .accessibilityLabel(SitePanelText.pickerLabel(row: row.label, host: model.host))
                 }
             }
+            // Only for apps that are installed, as in View ▸ Open in … (decision 25).
+            ForEach(model.openElsewhere, id: \.self) { app in
+                Button(app.menuTitle) { model.open(in: app) }
+            }
             if let note = model.note {
                 Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }

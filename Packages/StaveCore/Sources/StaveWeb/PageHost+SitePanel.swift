@@ -28,7 +28,35 @@ extension PageHost {
     /// The panel itself for the tab's page, on the site the page shows now; nil as `siteSource(for:)` is.
     public func sitePanelModel(for tabID: UUID) -> SitePanelModel? {
         guard let page = pages[tabID], let site = page.panelSiteKey, let source = siteSource(for: tabID) else { return nil }
-        return SitePanelModel(source: source, host: site, isPrivate: page.siteSettingsProfileID == nil)
+        // The panel opening is a moment to look the other browsers up again.
+        refreshInstalledBrowsers()
+        return SitePanelModel(
+            source: source, host: site, isPrivate: page.siteSettingsProfileID == nil,
+            openElsewhere: installedBrowsers(), openIn: { [weak self] app in self?.openElsewhere(app, tabID: tabID) }
+        )
+    }
+
+    /// The other browsers installed, for View ▸ Open in … and the panel: the last lookup (made at first use), so a menu that is evaluated
+    /// often never asks LaunchServices. `refreshInstalledBrowsers` looks again.
+    public func installedBrowsers() -> [OpenElsewhereApp] {
+        installedBrowsersCache ?? refreshInstalledBrowsers()
+    }
+
+    /// Looks the other browsers up now (the panel opens, the app becomes active).
+    @discardableResult
+    public func refreshInstalledBrowsers() -> [OpenElsewhereApp] {
+        let found = OpenElsewhere.available(installed: Set(OpenElsewhereApp.allCases.map(\.bundleID).filter(browserLauncher.isInstalled)))
+        installedBrowsersCache = found
+        return found
+    }
+
+    /// Hands the tab's committed web address, and nothing else, to the app (never a typed address still loading). Nothing happens for a
+    /// page with no committed web address, an app that isn't installed, or a private window's page (the other browser would keep the
+    /// address in its history).
+    public func openElsewhere(_ app: OpenElsewhereApp, tabID: UUID) {
+        guard installedBrowsers().contains(app), let page = pages[tabID], !page.isClosed, page.siteSettingsProfileID != nil,
+              let committed = page.lastCommittedURL, let url = OpenElsewhere.url(forPageURL: committed) else { return }
+        browserLauncher.open(url, app.bundleID)
     }
 
     /// The same for a private page only: its answers and zoom live in memory for the session, and nothing is written to the store.
@@ -43,6 +71,17 @@ extension PageHost {
         for page in sitePages(in: scope, site: site) where page.zoom != level || page.webView.pageZoom != level {
             page.setZoom(level)
         }
+    }
+
+    /// Puts the site's stored agent on the panel's own page and reloads it when its string changed, so the change shows at once
+    /// (`navigator.userAgent` is fixed per document). Other open pages of the site are left alone: setting their agent without a reload
+    /// would make their requests and `navigator.userAgent` disagree; they take it on their next navigation. With no own page (a change made in Settings) nothing is touched.
+    func applyUserAgent(in scope: SiteScope, site: String, ownTab: UUID? = nil) {
+        guard let ownTab, let page = pages[ownTab], !page.isClosed, page.siteScope == scope, page.panelSiteKey == site else { return }
+        let wanted = userAgentString(in: scope, url: page.status.url)
+        guard page.customUserAgent != wanted else { return }
+        page.setUserAgent(wanted)
+        page.webView.reload()
     }
 
     /// Switches content blocking on every open page of the site and scope to what is remembered for it, and reloads the ones that changed
@@ -71,6 +110,7 @@ extension PageHost {
         }
         applyZoom(in: scope, site: site)
         applyBlocking(in: scope, site: site, ownTab: ownTab)
+        applyUserAgent(in: scope, site: site, ownTab: ownTab)
     }
 
     /// The open pages of the site, by the address each shows (`panelSiteKey`), the same field the panel's host comes from (R1-H2).
@@ -112,6 +152,7 @@ final class PageSiteSource: SitePanelSource {
         guard let host else { return }
         host.setSiteValue(value, in: scope, host: site, key: key)
         if key == .zoom { host.applyZoom(in: scope, site: site) }
+        if key == .userAgent { host.applyUserAgent(in: scope, site: site, ownTab: tabID) }
     }
 
     func resetSite() {

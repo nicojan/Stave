@@ -362,18 +362,41 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         return dropped
     }
 
+    /// A destination that is the committed address plus a `#fragment`: WebKit scrolls, nothing loads, and the page keeps its agent.
+    static func isSameDocument(_ destination: String, as committed: String?) -> Bool {
+        guard let committed, var target = URLComponents(string: destination), var shown = URLComponents(string: committed),
+              target.fragment != nil else { return false }
+        target.fragment = nil
+        shown.fragment = nil
+        return target.string == shown.string
+    }
+
+    /// A main-frame navigation that was allowed (and set its destination's agent) but won't commit: back to the committed page's agent, so
+    /// its later requests never carry the other site's.
+    private func restoreCommittedAgent(page: LivePage) {
+        host?.updateUserAgent(for: page, navigatingTo: page.lastCommittedURL ?? "")
+    }
+
     /// Content blocking follows the site being opened, before its load starts (ruling R6).
     private func allowMainFrame(_ url: String, page: LivePage) {
         pendingURL = URL(string: url)
         mainFrameProvisional = true
         provisionalNavigation = nil
         host?.updateBlocking(for: page, navigatingTo: url)
+        // Set for what the navigation sends. On macOS 15 and 26 the first request of a page-started navigation is built before this runs and
+        // still carries the previous agent (WebKit bug 313542, fixed in 27; accepted, a reload fixes it). A `#fragment` move on the shown page
+        // loads nothing, so its agent stays.
+        if !Self.isSameDocument(url, as: page.lastCommittedURL) { host?.updateUserAgent(for: page, navigatingTo: url) }
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
         // A subframe never starts a download by itself.
         guard navigationResponse.isForMainFrame else { return navigationResponse.canShowMIMEType ? .allow : .cancel }
-        if !navigationResponse.canShowMIMEType || Self.isAttachment(navigationResponse.response) { return .download }
+        if !navigationResponse.canShowMIMEType || Self.isAttachment(navigationResponse.response) {
+            // The page stays as it was, so the agent allowed for the download's site goes back to the shown page's.
+            if let page { restoreCommittedAgent(page: page) }
+            return .download
+        }
         return .allow
     }
 
@@ -445,6 +468,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             mainFrameProvisional = false
             provisionalNavigation = nil
             if let site { events?.cancelWaitingAuthQuestions(tabID: tabID, site: site) }
+            // A load that fails or is stopped leaves the committed page shown: its site's agent goes back on.
+            if let page { restoreCommittedAgent(page: page) }
         }
         loadFailed(error)
     }

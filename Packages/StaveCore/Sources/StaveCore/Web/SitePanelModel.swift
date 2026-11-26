@@ -55,6 +55,7 @@ public struct SitePanelRow: Identifiable, Equatable, Sendable {
     public enum Kind: Hashable, Sendable {
         case permission(SitePanelKey)
         case zoom
+        case userAgent
     }
 
     public struct Option: Identifiable, Equatable, Sendable {
@@ -71,8 +72,8 @@ public struct SitePanelRow: Identifiable, Equatable, Sendable {
     public var selectedTitle: String { options.first { $0.id == selectedID }?.title ?? "" }
 }
 
-/// The per-site panel (decision 20): camera, microphone, content blocking and zoom, each with its own choices, and Reset This Site.
-/// The user-agent row is added by Task 16. Holds no state of its own: every change goes to the source and the rows are read back.
+/// The per-site panel (decision 20): camera, microphone, content blocking, zoom and user agent, each with its own choices, and Reset This Site.
+/// Holds no state of its own: every change goes to the source and the rows are read back.
 @MainActor
 @Observable
 public final class SitePanelModel {
@@ -81,11 +82,20 @@ public final class SitePanelModel {
     /// The panel is for a private window's session: its changes are kept in memory only.
     public let isPrivate: Bool
     @ObservationIgnored private let source: any SitePanelSource
+    /// The other browsers the panel offers "Open in …" for (only installed ones), and what opening one does with the page's address.
+    public let openElsewhere: [OpenElsewhereApp]
+    @ObservationIgnored private let openIn: @MainActor (OpenElsewhereApp) -> Void
 
-    public init(source: any SitePanelSource, host: String, isPrivate: Bool = false) {
+    public init(
+        source: any SitePanelSource, host: String, isPrivate: Bool = false,
+        openElsewhere: [OpenElsewhereApp] = [], openIn: @escaping @MainActor (OpenElsewhereApp) -> Void = { _ in }
+    ) {
         self.source = source
         self.host = host
         self.isPrivate = isPrivate
+        // A private window's address never goes to another browser's history (decision 25).
+        self.openElsewhere = isPrivate ? [] : openElsewhere
+        self.openIn = openIn
         refresh()
     }
 
@@ -110,6 +120,12 @@ public final class SitePanelModel {
         refresh()
     }
 
+    /// A user agent; the default stores nothing.
+    public func setUserAgent(_ agent: SiteUserAgent) {
+        source.setValue(.userAgent, agent.storedValue)
+        refresh()
+    }
+
     /// What a picker reports: the row and the option's ID. An ID the row doesn't offer is ignored.
     public func choose(_ kind: SitePanelRow.Kind, optionID: String) {
         guard let row = rows.first(where: { $0.kind == kind }), row.options.contains(where: { $0.id == optionID }) else { return }
@@ -118,7 +134,15 @@ public final class SitePanelModel {
             if let choice = SiteChoice(rawValue: optionID) { set(key, choice) }
         case .zoom:
             if let level = ZoomLevels.levels.first(where: { Self.zoomID($0) == optionID }) { setZoom(level) }
+        case .userAgent:
+            if let agent = SiteUserAgent(rawValue: optionID) { setUserAgent(agent) }
         }
+    }
+
+    /// "Open in Safari" / "Open in Chrome": only for an app the panel was given.
+    public func open(in app: OpenElsewhereApp) {
+        guard openElsewhere.contains(app) else { return }
+        openIn(app)
     }
 
     public func resetSite() {
@@ -128,7 +152,7 @@ public final class SitePanelModel {
 
     /// Re-reads every row from the source (after a change, and when Settings changed the same rows).
     public func refresh() {
-        rows = SitePanelKey.allCases.map(permissionRow) + [zoomRow]
+        rows = SitePanelKey.allCases.map(permissionRow) + [zoomRow, userAgentRow]
         let anyAnswer = SitePanelKey.allCases.contains { source.choice($0) != .ask }
         let anyValue = source.value(.zoom, as: Double.self) != nil || source.value(.userAgent, as: String.self) != nil
         hasStoredValues = anyAnswer || anyValue
@@ -163,6 +187,14 @@ public final class SitePanelModel {
             kind: .zoom, label: WebsiteEntryText.label(.value(.zoom)),
             options: ZoomLevels.levels.map { .init(id: Self.zoomID($0), title: Self.zoomTitle($0)) },
             selectedID: Self.zoomID(level)
+        )
+    }
+
+    private var userAgentRow: SitePanelRow {
+        SitePanelRow(
+            kind: .userAgent, label: WebsiteEntryText.label(.value(.userAgent)),
+            options: SiteUserAgent.allCases.map { .init(id: $0.rawValue, title: $0.title) },
+            selectedID: SiteUserAgent(stored: source.value(.userAgent, as: String.self)).rawValue
         )
     }
 

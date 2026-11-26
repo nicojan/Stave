@@ -61,6 +61,8 @@ public struct PageMenuState: Equatable, Sendable {
     public var canPinSelected = false
     /// View ▸ Settings for This Website (decision 20): a page with a web site. A failure panel keeps it, so a bad answer can be undone.
     public var canShowSitePanel = false
+    /// View ▸ Open in Safari / Open in Chrome (decision 25): a page with a web address, never in a private window (the other browser would keep it in its history). The app being installed is the app's question.
+    public var canOpenElsewhere = false
 
     public static let disabled = PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil)
 
@@ -89,7 +91,8 @@ public struct PageMenuState: Equatable, Sendable {
             canInspect: visible && status.inspectorAvailable,
             canShowSource: hasContent && status.sourceAvailable,
             canPinSelected: hasContent && status.selectedSection == .regular && !status.isPrivate,
-            canShowSitePanel: status.hasSite
+            canShowSitePanel: status.hasSite,
+            canOpenElsewhere: status.hasSite && !status.isPrivate
         )
     }
 }

@@ -120,7 +120,7 @@ public final class LivePage {
     /// The site whose content-blocking setting the page's rule lists follow (ruling R6).
     @ObservationIgnored var blockingHost: String?
     /// The last URL written as committed; a URL change with nothing loading is a same-document one.
-    @ObservationIgnored private var lastCommittedURL: String?
+    @ObservationIgnored private(set) var lastCommittedURL: String?
     /// How many main-frame commits this page has seen: a new value is a new document (the app's dialog gate resets on it).
     @ObservationIgnored public private(set) var commitCount = 0
     @ObservationIgnored var isShown = false
@@ -246,6 +246,16 @@ public final class LivePage {
     func setZoom(_ level: Double) {
         zoom = level
         webView.pageZoom = level
+    }
+
+    /// Sets the string the next requests carry (`customUserAgent`); nil goes back to WebKit's own with Stave's application name.
+    func setUserAgent(_ string: String?) {
+        if customUserAgent != string { webView.customUserAgent = string }
+    }
+
+    /// The string set with `setUserAgent`, nil for the default (WebKit reports an unset agent as an empty string).
+    var customUserAgent: String? {
+        webView.customUserAgent.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// The site key (`SiteHost.normalized`) of the document the web view holds, else of the address shown; nil with no web site.

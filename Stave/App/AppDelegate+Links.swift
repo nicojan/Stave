@@ -147,8 +147,12 @@ extension AppDelegate {
     /// The answer can change in System Settings or another browser while Stave runs: it is read again whenever Stave becomes active.
     func observeDefaultBrowser() {
         refreshDefaultBrowser()
+        refreshInstalledBrowsers()
         keyObservers.append(NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshDefaultBrowser() }
+            MainActor.assumeIsolated {
+                self?.refreshDefaultBrowser()
+                self?.refreshInstalledBrowsers()
+            }
         })
     }
 }

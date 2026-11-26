@@ -21,6 +21,8 @@ final class AppMenuState {
     var backups: DatabaseBackups?
     /// Whether macOS opens `http` links with this build; read when Settings appears and when Stave becomes active.
     var isDefaultBrowser = false
+    /// The other browsers installed (View ▸ Open in …); looked up when Stave becomes active, never while a menu is evaluated.
+    var installedBrowsers: [OpenElsewhereApp] = []
     /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.
     var isCompact = false
     /// Workspaces ▸ Edit / Move / Delete for the key window's current workspace; empty with no browser window key.

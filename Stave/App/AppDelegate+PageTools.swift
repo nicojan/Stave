@@ -28,6 +28,18 @@ extension AppDelegate {
         }
     }
 
+    /// Looks the other browsers up again (View ▸ Open in Safari / Open in Chrome, decision 25): when Stave becomes active and when the
+    /// store opens. The menu reads `menuState.installedBrowsers`, so building it never asks LaunchServices.
+    func refreshInstalledBrowsers() {
+        let found = environment?.pageHost.refreshInstalledBrowsers() ?? []
+        if menuState.installedBrowsers != found { menuState.installedBrowsers = found }
+    }
+
+    /// View ▸ Open in Safari / Open in Chrome: the key window's shown page's address, and nothing else.
+    func openInBrowser(_ app: OpenElsewhereApp) {
+        pageToolCommand(\PageMenuState.canOpenElsewhere) { page, _ in self.environment?.pageHost.openElsewhere(app, tabID: page.tabID) }
+    }
+
     /// Develop ▸ Show Web Inspector (⌥⌘I) and Show Page Source (⌥⌘U).
     func showWebInspector() { pageToolCommand(\PageMenuState.canInspect) { page, _ in PageTools.showInspector(page.webView) } }
     func showPageSource() { pageToolCommand(\PageMenuState.canShowSource) { page, _ in PageTools.showPageSource(page.webView) } }

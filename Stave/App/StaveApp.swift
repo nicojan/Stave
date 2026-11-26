@@ -111,8 +111,8 @@ private struct PageNavigationItems: View {
     }
 }
 
-/// View ▸ Content Blocking and Settings for This Website: the page's per-site items, kept in their own view so the View group stays
-/// under the result builder's ten-child limit as later tasks add more (Task 16's user agent).
+/// View ▸ Content Blocking, Settings for This Website, and Open in Safari / Chrome (only for an app that is installed): the page's per-site
+/// items, kept in their own view so the View group stays under the result builder's ten-child limit.
 private struct SiteItems: View {
     let delegate: AppDelegate
     private var state: AppMenuState { delegate.menuState }
@@ -122,6 +122,10 @@ private struct SiteItems: View {
             .disabled(state.pageMenu.blockingOn == nil)
         Button(SitePanelText.menuItem) { delegate.showSitePanel() }
             .disabled(!state.pageMenu.canShowSitePanel)
+        ForEach(state.installedBrowsers, id: \.self) { app in
+            Button(app.menuTitle) { delegate.openInBrowser(app) }
+                .disabled(!state.pageMenu.canOpenElsewhere)
+        }
     }
 }
 
