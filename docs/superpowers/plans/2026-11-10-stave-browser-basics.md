@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Status: questions answered 2026-11-13; Part A is being built on `feat/browser-basics`.** Nico answered every open question on 2026-11-13 (each answer is under its question in "Open questions for Nico"). Tasks 17, 18 and 19 are not built in that session: they are marked [TCC], [Chorus] and [Apple]. Part B is not started. On 2026-11-14 Nico answered every item in "Written down for Nico" with Claude's recommendation, except the one-frame compact-mode flash (question 12), which still waits on his by-hand check.
+> **Status: Part A is built on `feat/browser-basics` (Outcome below, 2026-11-26); Tasks 17, 18 and 19 were skipped by decision; Part B moved to `2026-11-10-stave-release.md` and is not started.** Nico answered every open question on 2026-11-13 (each answer is under its question in "Open questions for Nico"). Tasks 17, 18 and 19 are not built in that session: they are marked [TCC], [Chorus] and [Apple]. Part B is not started. On 2026-11-14 Nico answered every item in "Written down for Nico" with Claude's recommendation, except the one-frame compact-mode flash (question 12), which still waits on his by-hand check.
 
 **Goal:** Stave becomes a browser Nico can set as his default and live in, then a signed, notarized, self-updating public beta. Part A (browser basics) adds what every browser has and Stave still lacks: default-browser registration, history, favicons, find, zoom, print, Web Inspector, HTTP sign-in prompts, the full standard shortcut set, a real Settings window (profiles and containers included), a per-site settings panel, rolling database backups, and the review leftovers from plans 1–4. Part B (release) adds Sparkle, Developer ID signing, notarization, the Homebrew cask and the "beta is ready when" gate.
 
@@ -151,11 +151,7 @@ Site compatibility:
 24. **Per-site user agent:** Default, Safari, or Chrome on Mac, stored as a site value and applied as `customUserAgent` before each main-frame navigation to that host. The Chrome string names the current stable major version, kept in one constant that Part B's release checklist bumps.
 25. **"Open in Safari" and "Open in Chrome"** appear in the page's View menu and the site panel only when that app is installed (`NSWorkspace.urlForApplication(withBundleIdentifier:)`). They pass the current URL and nothing else.
 
-Release (Part B):
-
-26. **Distribution copies Chorus's setup** (spec): a notarized, stapled DMG attached to a GitHub release tagged `vX.Y.Z`, a signed `docs/appcast.xml`, Sparkle 2.x in the app target, and a cask `stave.rb` in `nicojan/tap` (repo `nicojan/homebrew-tap`). Sparkle's update check sends no identifier, and Sparkle's system profiling stays off. The feed URL is `https://updates.nicojan.com/stave/appcast.xml` from the very first signed build, served by a Cloudflare Worker built like Chorus's: it passes through `docs/appcast.xml` from GitHub Pages and counts distinct machines per day with no install ID (as Chrome counts update checks). The Worker stores only a one-way hash of address, user agent and date with a secret salt, kept 48 hours, plus daily totals by version. Automatic update checks are on by default, with a Settings switch to turn them off. The README says plainly what a check sends (the app name and version in the User-Agent, and the Mac's IP address, which Cloudflare receives), what is stored and for how long, the free tier's ceiling of roughly 1,000 a day, and that counting never blocks an update. Updates also download in the background and install when Stave quits, on by default, with a second Settings switch (Nico, 2026-11-14), so turning off the download and install doesn't turn off checks. (question 25, answered 2026-11-13)
-27. **The Sparkle feed URL chosen for the first public build is permanent.** Chorus learned that every build ever shipped asks its first feed forever. So Part B picks the final URL before the first signed build, never a temporary one.
-28. **Signing and notarizing run from a local script, not CI.** No certificate or notary password goes into GitHub. CI keeps building Debug and Release unsigned.
+Release (Part B), decisions 26–28: moved to `2026-11-10-stave-release.md`.
 
 From the answers (2026-11-13):
 
@@ -216,14 +212,9 @@ Nico answered all 29 on 2026-11-13: "Let's go with your recommendation for all o
     - **Answered 2026-11-13:** Chrome and Firefox both offer developer tools with no setting, so Stave does too: `developerExtrasEnabled` on every page gives Inspect Element and the in-app inspector, and an always-visible Develop menu uses Safari's names and keys (Show Web Inspector ⌥⌘I, Show Page Source ⌥⌘U). `isInspectable` stays off unless the spike shows the in-app inspector needs it. A missing private piece leaves its menu item disabled. Ruling, accepted by Nico on 2026-11-14: the in-app inspector's own front end keeps its state in WebKit's default persistent store under the app's bundle ID; Stave itself never calls `WKWebsiteDataStore.default()` and no page's data goes there, so normal windows get the inspector. Private windows get it only if the spike shows that opening it writes nothing that names the page; otherwise Inspect is off there and the gap is written down (decision 14, Task 9).
 22. **Keeping the downloads list across restarts.** Plan 3 keeps it in memory. Safari, Chrome and Firefox keep it. *Recommend:* keep it per profile in the database (never for private windows), clearing finished rows by the same ranges as history. *Alternatives:* keep it in memory.
     - **Answered 2026-11-13:** keep the downloads list per profile in the database (migration `v7` `downloadRecord`), never for a private window. Clear History removes ended download rows in the same range (Safari and Firefox). Settings ▸ General gets Safari's "Remove download list items": After one day (default), When Stave quits, Upon successful download, Manually. Removing a row never touches the file; a finished row whose file is gone shows "File not found" with Show in Finder disabled; a download still running at quit shows as stopped after relaunch (no resume in the beta) (decision 33, Task 14).
-23. **A third bundle ID for betas** (foundation Carried: the `.debug` data-folder mapping). *Recommend:* no beta bundle ID; the beta is the normal `com.nicojan.Stave` app at a 0.x version, so the mapping and the passkey identity stay as they are. *Alternatives:* `com.nicojan.Stave.beta` with its own data folder (a separate identity for Apple's passkey and Passwords approvals).
-    - **Answered 2026-11-13:** no beta bundle ID; the beta is `com.nicojan.Stave` at 0.x, as Safari (0.8) and Chrome (0.2) shipped their first public betas. A pre-release channel offered later next to a stable release would get `com.nicojan.Stave.beta` and `Application Support/Stave-beta`, as Chrome's side-by-side Beta does, and only then does the data-folder mapping change.
-24. **The Sparkle signing key.** *Recommend:* a new EdDSA key for Stave, backed up like Chorus's, so a leak of one doesn't cover both apps. *Alternatives:* reuse the Chorus and WatchMeType key.
-    - **Answered 2026-11-13:** a new EdDSA key for Stave alone, in its own Keychain account `stave`, backed up the way the existing key is. Every `generate_keys`, `sign_update` and `generate_appcast` run for Stave passes `--account stave`, because without it the tools quietly use the existing shared key (Tasks 21–23).
-25. **The update feed and counting.** The spec's call: count anonymously, like Chorus, and say so. *Recommend:* `https://updates.nicojan.com/stave/appcast.xml` through the same Cloudflare Worker pattern from the very first build (decision 27), passing through `docs/appcast.xml` served by GitHub Pages; README states that daily checks are counted with no identifier. *Alternatives:* GitHub Pages only, no counting.
-    - **Answered 2026-11-13:** the Worker feed URL with ID-free daily counting, as recommended (following Chrome; Firefox uses a per-profile ID). Automatic checks are on by default with a switch to turn them off; Sparkle's system profiling stays off; the README says what a check sends and what the Worker keeps (decision 26). Automatic download-and-install of updates is a separate decision the question didn't ask; Nico decided it on 2026-11-14: updates download in the background and install on quit, on by default, with a Settings switch (decision 26, Task 21).
-26. **The first public version number.** *Recommend:* `0.1.0` labelled "beta" in the release notes and About box, with `CURRENT_PROJECT_VERSION` counting up for Sparkle. *Alternatives:* `0.9.0`; `1.0.0-beta.1`.
-    - **Answered 2026-11-13:** `0.1.0`, labelled "beta" in the release notes and the About window; later betas go up through 0.x and the label goes away at 1.0.0, as Safari, Chrome and Firefox did. `CURRENT_PROJECT_VERSION` (`CFBundleVersion`) is a plain integer that goes up by one for every build given to anyone, because Sparkle compares it. `1.0.0-beta.1` is not a valid marketing version on Apple's platforms. The About label is built at run time from `CFBundleShortVersionString`, adding "beta" while the major version is 0, so no version number is typed by hand (Task 21).
+
+Questions 23–26 (a third bundle ID for betas, the Sparkle signing key, the update feed and counting, the first public version number) and their answers moved to `2026-11-10-stave-release.md`.
+
 27. **Auto-archiving idle tabs** (spec: a setting, off by default). *Draft recommendation (changed by the answer):* leave it until after the beta, since it is off by default. *Alternatives:* build it in Part A.
     - **Answered 2026-11-13:** build it in Part A as a small task after Task 16, following Arc (the three mainstream browsers lack it on the Mac), but off by default as the spec says. Settings ▸ Tabs gets "Archive idle tabs after": Never (default), 12 hours, 1 day, 7 days, 30 days. Pinned tabs, Essentials, a tab shown in any window, private windows, and a tab playing media, holding pop-ups or downloading are never archived. "Not viewed" counts from when the tab was last left, not when it was selected. The check runs at launch and every 15 minutes (decision 34, Task 16b).
 28. **Containers in the beta.** The spec's cut line puts containers after the beta, but nothing in the app can create a named container yet, so deletion has nothing to delete. *Draft recommendation (refined by the answer: Edit, not Rename):* the small Settings pane in decision 19 (create, rename, delete), since "New Tab in ‹container›" already exists. *Alternatives:* hide containers until after the beta.
@@ -294,7 +285,6 @@ Packages/StaveCore/Sources/StaveCore/
 ├── Web/UserAgent.swift                     # T16 (per-site choices)
 ├── Session/AutoArchivePolicy.swift         # T16b: which idle tabs to archive (question 27)
 ├── OrganizationStore+AutoArchive.swift     # T16b
-├── Settings/VersionText.swift              # T21: About label from CFBundleShortVersionString (question 26)
 Packages/StaveCore/Sources/StaveWeb/
 ├── FaviconLoader.swift                     # T7
 ├── PageTools.swift                         # T8, T9: find, zoom, print, developer tools
@@ -304,7 +294,6 @@ Packages/StaveCore/Sources/StaveWeb/
 Stave/App/
 ├── AppDelegate+Links.swift                 # T5 (also moves private-window routing out of AppDelegate, T4)
 ├── AutoArchiveTimer.swift                  # T16b: at launch and every 15 minutes
-├── Updater.swift                           # T21
 Stave/Views/
 ├── Content/HistoryView.swift               # T6 (question 16)
 ├── Content/FindBar.swift                   # T8
@@ -312,10 +301,8 @@ Stave/Views/
 ├── Settings/SettingsView.swift             # T12 (panes)
 ├── Settings/ProfilesPane.swift, ContainersPane.swift, WebsitesPane.swift, AdvancedPane.swift   # T12
 ├── Sidebar/SitePanel.swift                 # T13
-Stave/Info.plist                            # T5 URL and document types; T17 location; T21 SUFeedURL, SUPublicEDKey
-release/                                    # T22–T23: DISTRIBUTION.md, ExportOptions.plist, release.sh, homebrew/stave.rb
-docs/appcast.xml                            # T22
-THIRD_PARTY_NOTICES.md, README.md           # T1 (README backup and restore steps), T21, T24
+Stave/Info.plist                            # T5 URL and document types; T17 location
+THIRD_PARTY_NOTICES.md, README.md           # T1 (README backup and restore steps)
 ```
 
 ---
@@ -700,64 +687,6 @@ Leftovers (answered 2026-11-14): renaming a blank-titled folder starts with an e
 - [ ] **Step 3: Write the Outcome** with a Nico checks list. The default-browser switch comes first, then pointer, real sites and VoiceOver, and the checks named in "Written down for Nico (from the answers)". Record that the two-week daily-driver clock starts the day Nico sets Stave as his default browser (question 1). Write Part A's Carried section, including the items already known (listed under "Carried into later plans").
 - [ ] **Step 4: Move Part B and commit.** Move Part B into `2026-11-10-stave-release.md`: Tasks 21–25, decisions 26–28, questions 23–26 with their answers, and the File structure entries tagged T21–T24 (such as `Stave/Info.plist`'s "T21 SUFeedURL, SUPublicEDKey"). Leave a one-line pointer here. The branch note under "Stacks on PR #4" (`feat/release`) stays. Commit `docs: plan 5 part A outcome, and Part B in its own plan`.
 
-# Part B: release
-
-### Task 21: Version, update feed and Sparkle (questions 23–26, answered 2026-11-13)
-
-**Files:**
-- Create: `Stave/App/Updater.swift`, `Sources/StaveCore/Settings/VersionText.swift`; `Tests/StaveCoreTests/VersionTextTests.swift`
-- Modify: `project.yml` (Sparkle 2.x from `https://github.com/sparkle-project/Sparkle`, app target only; `MARKETING_VERSION` stays `0.1.0` (already set); `CURRENT_PROJECT_VERSION` goes up by one for every build given out, question 26), `Stave/Info.plist` (`SUFeedURL` = `https://updates.nicojan.com/stave/appcast.xml`, `SUPublicEDKey`, `SUEnableAutomaticChecks` = YES, `SUAutomaticallyUpdate` = YES, no `SUEnableSystemProfiling`; question 25), `Stave/App/StaveApp.swift` (Stave ▸ Check for Updates…; Stave ▸ About Stave calls `orderFrontStandardAboutPanel(options:)` with `.applicationVersion` from `VersionText`), `Settings/SettingsCopy.swift` (Settings ▸ General ▸ "Check for updates automatically" and a second switch, "Download and install updates automatically", so turning off the download and install doesn't turn off checks), `THIRD_PARTY_NOTICES.md` (Sparkle, MIT), `README.md` (what the update check sends and what is counted, per decision 26)
-
-**Interfaces:**
-- Produces: `VersionText.aboutVersion(shortVersion: String) -> String`, built from `CFBundleShortVersionString` at run time, adding " beta" while the major version is 0 (question 26). No literal "0.1.0 beta" anywhere.
-
-- [ ] **Step 1: Nico** runs `generate_keys --account stave` (question 24; never the default account, which already holds the shared key and would only print it), exports a backup with `generate_keys --account stave -x <file>` and keeps it safe, and gives only the public key (`generate_keys --account stave -p`) for `Info.plist`. **[Apple account not needed; Nico's Keychain]**
-- [ ] **Step 2: Implement** the updater gated so Debug builds never check (`#if !DEBUG`), the menu item, the setting and the About version. Test `aboutVersionAddsBeta` (`0.1.0` → "0.1.0 beta", `1.0.0` → "1.0.0"). Updates download in the background and install on quit, on by default, with that Settings switch (Nico, 2026-11-14, question 25); the switch drives `SUAutomaticallyUpdate` and is independent of the check switch. The feed URL is the final one (decision 27).
-- [ ] **Step 3: Verify:** both builds; the Release build's `Info.plist` holds the final feed URL and the key, and has no `SUEnableSystemProfiling` (`plutil -p`); its `SUPublicEDKey` differs from Chorus's; a Debug build makes no request to the feed (Little Snitch or `nettop`, Nico's call).
-- [ ] **Step 4: Commit** `feat: Sparkle updates`
-
-### Task 22: Signing, notarization and the release script [Apple]
-
-**Files:**
-- Create: `release/DISTRIBUTION.md` (adapted from Chorus's, Stave's values; Chorus's default-account `sign_update` line is not carried over), `release/ExportOptions.plist` (Developer ID, team from Nico), `release/release.sh`, `docs/appcast.xml` (empty feed)
-
-- [ ] **Step 1: Write `release.sh`:** archive the Release build, export with Developer ID, `xcrun notarytool submit --wait` with Nico's stored keychain profile (never a password in the script), `xcrun stapler staple`, `hdiutil create` the DMG, notarize and staple the DMG, print its SHA-256. It refuses to run with a dirty tree or a bundle ID other than `com.nicojan.Stave`.
-- [ ] **Step 2: Nico runs it** for a first test build (not published). Verify: `spctl -a -vv Stave.app` says "Notarized Developer ID"; `codesign -d --entitlements - Stave.app` shows the camera, audio-input (and location, if Task 17 shipped) entitlements; the app launches on a clean user account with Gatekeeper on.
-- [ ] **Step 3: Nico** (Cloudflare account) deploys the Stave Worker route before the first signed build, since the URL is permanent (decision 27). Verify with `curl -sI https://updates.nicojan.com/stave/appcast.xml`, and after deploy confirm the real Sparkle User-Agent shape the Worker sees, as Chorus's README warns. Commit `chore: release script, distribution notes and empty appcast`
-
-### Task 23: GitHub release, appcast and the Homebrew cask
-
-**Files:**
-- Create: `release/homebrew/stave.rb`
-- Modify: `release/DISTRIBUTION.md` (the release checklist), `docs/appcast.xml`
-
-- [ ] **Step 1: Write the checklist** in `DISTRIBUTION.md`: bump both versions (`MARKETING_VERSION` when it changes, and `CURRENT_PROJECT_VERSION` always; `CFBundleVersion` never repeats); bump `UserAgent.chromeMajorVersion` if Chrome moved; run `release.sh`; `gh release create vX.Y.Z` with the DMG; sign and regenerate `docs/appcast.xml` with Sparkle's `generate_appcast`; every `sign_update` and `generate_appcast` call passes `--account stave`, because without it they quietly use the shared key (question 24); if `gh release create` marks the release as a GitHub pre-release, check that the cask's livecheck still sees it, since GitHub's "latest release" leaves pre-releases out; put the version and SHA-256 into `release/homebrew/stave.rb`, copy it to `Casks/stave.rb` in `nicojan/homebrew-tap`, and run `brew style`, `brew livecheck` and `brew audit --cask --online`.
-- [ ] **Step 2: Write the cask** (`app "Stave.app"`, `depends_on macos: ">= :sequoia"`, `zap` naming `~/Library/Application Support/Stave` and the WebKit folder for `com.nicojan.Stave`, never Stave-debug).
-- [ ] **Step 3: Verify** with a test release Nico can delete: `brew install --cask nicojan/tap/stave` installs it; an older build updates through Sparkle.
-- [ ] **Step 4: Commit** `chore: Homebrew cask and the release checklist`
-
-### Task 24: The beta gate and release notes
-
-**Files:**
-- Modify: `README.md` (install; privacy: what leaves the Mac, including what an update check sends, what the Worker stores and for how long, that Cloudflare sees the address, the free tier's ceiling of roughly 1,000 a day, and that counting never blocks an update (question 25); the backup and restore steps from Task 1, checked; the Arc file note), `docs/release-notes/0.1.0.md` (new), this plan (Outcome)
-
-- [ ] **Step 1: Release notes** in plain words: what works, what doesn't yet (passkeys if not granted, notifications if the tag isn't out, location where Task 17 found no route, IDN hosts shown as punycode, containers' limits), "keep a copy of Arc's `StorableSidebar.json` before 2026-12-22" (plan 2's risk), and how to report a bug.
-- [ ] **Step 2: Walk the gate** (spec, "The beta is ready when"), recording each line with a date:
-  - Nico has used Stave as his default browser for two weeks with no lost tab, pinned tab or workspace.
-  - The sign-in checklist: Google, Microsoft, Apple, an Okta-style SSO pop-up, GitHub; Google Docs, Google Meet with camera and mic, YouTube, and a DRM site on another FairPlay stream (result recorded even if it fails; plan 3's Bitmovin demo spun in Safari too).
-  - `kill -9` mid-use and relaunch restores every window, workspace and tab (and the hourly backup exists).
-  - The Arc import on every available sample, including the synthetic fixtures, with an accurate report.
-  - No crash in the last week of daily use.
-- [ ] **Step 3: Nico** publishes the first release with Task 23's checklist.
-- [ ] **Step 4: Next steps written down:** ask Apple to add `com.nicojan.Stave` to the Passwords helper's allow-list (spec, Apple approvals 2) and find out the process **[Apple]**.
-- [ ] **Step 5: Commit** `docs: beta release notes and gate results`
-
-### Task 25: Housekeeping
-
-- [ ] Delete `.superpowers/sdd/2026-10-31-stave-web-layer/` and this plan's ledger once the PRs merge (plan 3's Carried).
-- [ ] Update the foundation roadmap: entries 3 and 4 still say "waiting on Nico's checks" and give old test counts and CI targets.
-- [ ] Commit `docs: roadmap status after plan 5`
-
 ## Engine changes Stave would use (requests to Chorus, not edited here)
 
 Each one goes to Chorus as its own change, comes back through a new tag, and Stave moves its `exact:` pin only after reading ENGINE.md's "Engine API changes by release". Stave stays on 1.5.36 until then.
@@ -766,12 +695,120 @@ Each one goes to Chorus as its own change, comes back through a new tag, and Sta
 2. **A public way to make a `WebViewParking` and choose its pages.** Not needed for the beta (settled: no parking).
 3. Public `DownloadCenter.begin`, `setDestination` and `fail`; `WebSurface.DataStore.nonPersistent`; a logger subsystem parameter; an option on `DataStoreManager` to keep ITP on. Not needed for the beta.
 
-## Outcome (filled when built)
+## Outcome (2026-11-26)
 
-## Carried into later plans (filled when built)
+Part A is built on `feat/browser-basics`: Tasks 1–16b and 20, in 27 commits after the answers commit (`fec5af9..8283386`). Tasks 17 (location), 18 (web notifications) and 19 (passkeys) were skipped by decision, not by failure: they are marked [TCC], [Chorus] and [Apple] and the unattended sessions that built Part A did not take those. Part B (Tasks 21–25) is not started and now lives in `2026-11-10-stave-release.md`. Nothing was merged and no PR was opened: PR #3 and PR #4 are still drafts and this branch stacks on them. Every task ran the same loop: a builder writes the code and a report, a qa-reviewer reads it with spec, quality and safety lenses, fix rounds follow until the review is clean, a by-hand check runs on a throwaway folder, and the controller commits named paths. Most commits were checked on CI before the next one; the exceptions are `0de6b66`, committed while `0cb2068` was still red on macos-26, and `04f406f`, which had no run of its own (`fcf8623` covered it).
 
-Already known from the answers (2026-11-13), for Task 20 to carry:
+Tests at the end (`8283386`): Task 20 Step 1 ran there, with StaveCore 1065 and StaveWeb 259 passing, 1324 in all, up from 804 at the start of the plan (the ledger's baseline, 114 + 690), and Debug and Release both building. CI at `8283386` is green on macos-15 and macos-26 (run 45835843033). Eight commits had a red run on the way, each with its fix:
+
+- `425677f`: red on macos-15 (run 43581379555); fixed by `b8b2341`.
+- `8db272c`: red on both runners (favicon timing tests under load); fixed by `c09ef2b`.
+- `cfcabd6`: failed to build on both runners (Xcode 26 builder, 10 children); fixed by `9a9ed28`.
+- `6c15d2b`: tests failed to compile on both runners (a `let` shadowing after a capturing closure); fixed by `0268511`.
+- `0cb2068`: red twice on macos-26 (run 45792079559 and its rerun); fixed by `fcf8623`.
+- `17adfd4`: red once on macos-26 (`PageHostTests.unloadFlushesThenTearsDown`, a snapshot wait); the rerun was green (run 45722176157) and `4de8e7c` raised the wait.
+- `5201e8b`: red on macos-15 (`PageDialogCoordinatorTests`, flaky under load); fixed by `dfa7ce7`, green on both runners (run 45827336080).
+- `08eefdb`: red on macos-26 (the same test, different cause); fixed by `8283386`.
+
+What was built, by task (commit SHA, then what it does):
+
+- **Task 1, rolling database backups** (`9d60a1f`): online copies at launch, hourly and before a migration, kept 10 hourly plus 3 daily plus the newest pre-migration copy; copies leave out history and the downloads list; README restore steps.
+- **Task 2, one host rule and display text** (`c2dd5ea`, leftovers fix `22cdbc7`): `HostText` for every host display and key, one-letter monograms, "Untitled Folder" for blank folders, a blank-folder rename that starts empty, and trimmed Essential labels.
+- **Task 3, store tidy-ups and the tests deferred from plans 1–4** (`78bd55b`).
+- **Task 4, page chrome text in StaveCore and app-side leftovers** (`4a08631`): Stave stays open with no windows, the window follows a moved selected tab, Move to Workspace, `AppDelegate` split into `+Private`, `+Menus` and `+Launch`.
+- **Task 5, Stave as the default browser and links from other apps** (`425677f`, test fix `b8b2341`): `http`, `https` and HTML files declared, the Settings button, queued pre-launch links, `NavigationSource.openedFile` with folder read access, a refused panel for an outside-folder file link.
+- **Task 6, history** (`a95a7f8`): one row per visit, command bar history source, the History view on ⌘Y, Clear History with the ranges and "Also remove cookies and website data" ticked by default, retention setting, daily trim.
+- **Task 7, favicons** (`8db272c`, timing test fix `c09ef2b`): fetched without cookies, capped, cached on disk, kept in memory for private windows.
+- **Task 8, find in page** (`2fc2737`): Stave's own find bar, because `performTextFinderAction` does not exist on macOS 27 (the spike); no match count.
+- **Task 9, zoom per site, print and Web Inspector** (`cfcabd6`, build fix `9a9ed28`): Safari's zoom levels per host, print, always-on developer tools with Safari's Develop menu names; private windows get no inspector. The build fix moved History, Develop and Debug into their own `Commands` struct because Xcode 26's builder accepts at most 10 children.
+- **Task 10, the standard shortcut set** (`17adfd4`, snapshot wait fix `4de8e7c`): one `StandardShortcuts` table with a no-duplicates test; ⌘1–9, ⌃Tab, ⇧⌘T, ⌘D pins, ⌘+ shown and ⌘= hidden.
+- **Task 11, HTTP sign-in prompts** (`6c15d2b`, compile fix `0268511`): one sheet per protection space, credentials for the session, three user Cancels stop the document asking, proxy challenges handled.
+- **Task 12, the Settings window** (`0cb2068`): six panes, profile rename and delete, container create, edit and delete, a Websites pane; stores are removed only after their rows, with a pending-removal list retried at launch.
+- **Task 13, settings for this website** (`0de6b66`): the site panel from the address field, Remember keeps Block as well as Allow.
+- **Task 14, downloads hardening and the kept downloads list** (`10413db`): held several-files question, `v7` `downloadRecord`, "Remove download list items", a popover that sits inside the window. WebKit held two downloads for 352 s headless and both completed after the answer, so no fallback was needed.
+- **Task 15, prompts and pages leftovers** (`04f406f`): `PageDialogCoordinator`, background-tab dialogs that wait, a title kept when a tab closes, typed `mailto:` and `tel:` ask, hibernation skips pages with a waiting dialog.
+- **Task 16, site-compatibility tools** (`5201e8b`): per-site user agent (Default, Safari, Chrome on Mac) and Open in Safari or Chrome.
+- **Task 16b, archive idle tabs** (`08eefdb`): Settings ▸ Tabs, Never by default; the timer, the launch check after restore, a clock-jump guard, ⇧⌘T skips auto-archived rows.
+- **Task 20, this write-up:** the full suite and both builds, CI, the by-hand regression, and Part B moved out.
+
+The two test-infrastructure fixes:
+
+- **`fcf8623`, the WebKit suites run one at a time.** `0cb2068` failed twice on macos-26: about 35 WebKit load waits failed together. An investigation (not a production bug, and not store removal) found a main-thread stall in `WKWebView`'s process launch, in `registerUserInstalledFonts`, an XPC call to the font server, when many web content processes launch at once. The parallel page suites did exactly that and `0268511` was already near the edge. The fix is one parent `.serialized` suite, `WebKitTests`, nesting every suite that creates pages (PageHost, PageDelegate, PageTools, EngineLink, OpenedFile, WebDataStores and the Task 13–15 files), and `StoreCleanup` retrying a removal up to three times. CI was green on both runners twice before it came onto this branch (45808504514, 45808534731) and again at `fcf8623`. There is no production change.
+- **`dfa7ce7` and `8283386`, the dialog coordinator tests.** `PageDialogCoordinatorTests.stoppedPageResolvesAtOnceUntilANewDocument` failed on macos-15 (`5201e8b`) and again on macos-26 (`08eefdb`). First cause: a single `Task.yield` assumed the dialog was already shown (13.6 s under load); `dfa7ce7` waits for the dialog it answers (30 of 30 runs quiet, 25 of 25 loaded). Real cause: `PageDialogGate`'s 10 s window ran on the wall clock and expired under load; `8283386` uses the coordinator's existing clock seam with a fixed `Date`. No production code changed in either.
+
+Rulings that Nico can overturn are in the ledger (`.superpowers/sdd/2026-11-10-stave-browser-basics/progress.md`) and in each task's review files beside it. The ones that matter most: the History cookies box is ticked by default (Nico, 2026-11-14); credentials last for the session (`.forSession`, as Safari does); a client certificate request continues without one; ⌘1–9 are hidden from the menus, as in Safari; the Task 16 reissue of a first request after a cross-site link was removed after review found it leaked referrer and history, so on macOS 15 and 26 that one request keeps the previous site's user agent header.
+
+By-hand run (Step 2, `08eefdb`, throwaway folder `/private/tmp/stave-partA`, keyboard and accessibility only): no FAIL. Tasks 1, 2, 4–11, 13–16b pass; Task 12 is partial (the panes are labelled and a rename persists; create, delete and keyboard traversal were not re-run, they passed earlier the same day); Task 3 has no UI. Tasks 10 and 11 were checked separately on 2026-11-26 (11 PASS, 0 FAIL). One plan wording gap: Task 16b Step 5 must also move `autoArchiveEnabledAt` back, not only a tab's `lastActiveAt`, or the first-enable guard keeps the tab. Screenshots stayed in the session scratchpad.
+
+**The two-week daily-driver clock starts the day Nico sets Stave as his default browser** (question 1), not before. Part B's gate ("two weeks as the default browser with no lost tab, pinned tab or workspace") counts from that day.
+
+### Nico checks
+
+Not seen by any build session. Everything here needs the real Mac, a pointer, an account or a real site. Do the first item first, because the clock starts with it.
+
+1. **Default browser (first).** Daily-driving needs a Release build: it uses bundle `com.nicojan.Stave` and keeps its data in `~/Library/Application Support/Stave`, while a Debug build uses `Stave-debug` and its data won't carry over. The Release build that Part B ships uses the same bundle ID and data folder, so data from a locally built Release carries over. Building and signing for daily use is Part B's job; until then Nico can run a local Release build from Xcode. Settings ▸ General ▸ "Make Stave your default browser" and accept macOS's confirmation. Check that `https` follows `http`; links from Mail, Slack and Messages open a new selected tab in the last-used window; a link while Stave is closed opens after the saved windows come back; `mailto:` still goes to Mail; an HTML file opened from Finder or dropped on a window loads. Desktop, Documents and Downloads files may bring up macOS's folder prompt, and so may "Open Again" there. Set it back and forth once to see the Debug build shows as "Stave Debug" in the list.
+2. **Pointer.** Clicking the already-selected tab while History is showing; clicks on the find bar (it sits under the transparent title bar), the find bar when switching tabs, and in compact layout; right-click Inspect Element; the inspector's dock buttons; print to PDF (⌘P); the site panel from the address field (a popover on a mouse click, a sheet from the keyboard or the View menu); the mouse-opened archive popover; container sign-out after Clear History; the downloads popover seam against the sidebar edge in light and dark.
+3. **Real sites.** Basic-auth sites (the sheet, wrong password, three cancels, a self-reloading 401 page); Google Meet with camera and microphone (macOS's camera prompt comes first, so Stave's sheet and "Remember" cannot be seen until it is answered); Open in Safari and Open in Chrome actually opening; a site that reacts to the Chrome user agent; Mail, Slack and other `https` links from other apps; a favicon-heavy site (plain-http favicons are probably blocked by ATS, SVG favicons don't show).
+4. **VoiceOver.** The find bar's "Not found"; the Clear History checkbox (its description is empty); the Settings panes and the Archive idle tabs control; the rename sheet and "Untitled Folder"; the blank-folder row.
+5. **Keyboard.** The shortcuts in a real page with the Dvorak–QWERTY⌘ layout (⌘]) and an AZERTY layout (⌘1–9 may fail because the key monitor drops Shift); full keyboard access traversal of Settings; ⌥⌘L including compact mode. WeChat seems to own ⇧⌘W globally on this Mac.
+6. **The "Written down for Nico" checks.** Safari and `user@host` links are settled (kept, no warning sheet). Still his to see: the folder-access prompts for opened files (item 1), the Downloads-folder prompt including its Don't Allow half, and whether a private window gets typed text in its command bar after ⌘L (it didn't land in two agent runs; a human try decides whether it is a harness effect). The compact-mode one-frame flash (question 12) still waits on his by-hand check; nothing is built until he reports one. Still open, because nothing in the answers or the ledger settled them: the Account Holder role (Apple's entitlement page asks for the Account Holder of an organization's account, which matters if his account is an individual one); the several-downloads answer per site (Stave keeps it for the document only; a candidate site-panel row after the beta); a typed `file:` URL (Task 15 keeps it as a search, where all three browsers open it); and ⌘Y in a private window (disabled there as Stave's choice, the mainstream browsers not checked).
+7. **Everything marked NOT RUN or "for Nico" in the ledger, grouped:**
+   - Task 6 and 7 behaviour: the Clear History banner says "cleared" even when the clear itself failed; pushState navigations record no history visit (Safari and Chrome do); the favicon cache survives Clear History (Safari clears it); the command bar fetches favicons for archived tabs.
+   - Task 2: the rename sheet can stack over the welcome sheet.
+   - Task 9: whether private windows should get the inspector (they get none: the spike ran on macOS 27 and a normal-window page only, so it couldn't prove the private case); the inspector spike on macOS 15 and 26; the inspector docking on ChorusEngine's `WebViewHostView` (detach workaround only).
+   - Task 10: where ⇧⌘T puts the reopened tab (the by-hand run saw the top of the regular tabs); ⌥⌘L and the downloads popover staying closed after Clear plus a new download, in a normal and a private window; menu screenshots; collapsed-folder skip for ⌘1–9.
+   - Task 11: unknown authentication methods now ask for sign-in (WebKit maps an unknown method to Default); the WebKit callback order start → redirect → fail (assumed from WebKit's source, never logged); a client-certificate-optional site; AutoFill and Save Password only when the user starts them; `NSURLErrorClientCertificateRequired` shows the generic "not private" panel; whether a self-reloading 401 page should also stop after three cancels per host and realm across documents.
+   - Task 12: closing a private window on delete; keyboard-only traversal; Remove All with rows; deleting a profile with the real account.
+   - Task 13: the camera question steps (macOS camera TCC blocks before Stave's delegate); Tab order in the site sheet.
+   - Task 14: Show in Finder selection; the real macOS prompt's Don't Allow half; ZWJ and ZWNJ stripping breaks emoji and Persian names (spec); `kMDItemWhereFroms` ("Where from") is not written.
+   - Task 15: a tab waiting on a dialog listed by a window that then switches workspace stays busy; a typed `http` address while the tab shows in another window navigates that window's page; hide-and-return with a window-modal sheet up.
+   - Task 16 and 16b: the Safari user agent is the same string as Default; the macOS 15 and 26 first-request header gap; a clock change while Stave is quit is not caught; a stuck "running" download row blocks idle archiving for its whole profile; media, dialog and pop-up busy paths with an old stamp; whether "never archived while a download of the profile runs" is too broad; Chrome's real release cadence (152 on 1 Sep, 154 on 23 Sep, 157 on 3 Nov) is shorter than the 28 days the derived version assumes.
+   - macOS 15 and 26: every check above ran on macOS 27.2 only. CI proves what the tests cover on 15 and 26; the inspector, the reissue-free header behaviour, and the window and focus behaviour are untested there by hand.
+
+## Carried into later plans
+
+From Part A's build, for the next plan. Part B itself is in `2026-11-10-stave-release.md`.
+
+Skipped by decision, not built:
+
+- **Task 17, location permission** [TCC]: the plan text above stands. It starts with the delegate spike on macOS 15, 26 and 27.
+- **Task 18, web notifications** [Chorus] [TCC]: waits on the Chorus tag with engine change 1; Stave stays on 1.5.36 until then, and the release notes say so.
+- **Task 19, passkeys** [Apple]: the notice is not built; the entitlement request is Nico's, outside the tasks.
+- **Part B, Tasks 21–25:** Sparkle, signing and notarization, the GitHub release, appcast and cask, the beta gate and housekeeping, with decisions 26–28 and questions 23–26, in `2026-11-10-stave-release.md` on `feat/release`. It should pick up this list too, since the release notes name what is missing.
+
+Data and storage:
+
+- **Favicon cache is flat.** Profile deletion leaves `Favicons/` alone because the cache is keyed by URL hash, not profile; delete it per profile only if the cache becomes per-profile.
+- **Quarantine records carry no source URL.** macOS stores none here (`QuarantineEventsV2` URL columns are empty for every agent, Chrome included), so Gatekeeper cannot name the site; `kMDItemWhereFroms` is not written either.
+- **ZWJ and ZWNJ stripping** in download names (the spec's rule) breaks emoji sequences and Persian names; revisit the spec.
+- **Backups keep a deleted profile's data** for up to 3 days and in the newest pre-migration copy until the next migration; the deletion question says so.
+- **Task 1 open Mediums:** quick relaunches or a launch crash loop fill the 10 hourly slots and prune every copy from before the bug; the pre-migration copy (backup, VACUUM, quick_check) runs synchronously on the main thread inside `applicationDidFinishLaunching`. The rest of Task 1's 18 minors are in `task-1-minors.txt` in the ledger folder.
+- **Task 12 open Lows:** `listing()` has no timeout; the L5 test uses a new instance; the 120 s run timeout can mark removed IDs failed; no live-row guard on removal; `StoreCleanup` skips cleanup when its body throws; Sendable captures in the `StoreRemoval` Task closures may trip Xcode 26; shared error message across panes; the Websites picker defaults to the first profile.
+- **Task 3 and 4 leftovers:** `SidebarMenus.moveTargets` lists targets for an Essential and a stale highlight although the drop refuses them (hide or disable); the minors files per task in the ledger folder.
+
+Behaviour gaps:
+
+- **User agent header on macOS 15 and 26.** The first request after a page-started cross-site navigation into a site with a different stored agent carries the previous page's agent (WebKit bug 313542, fixed in macOS 27); `navigator.userAgent` and later requests are right and a reload fixes the first. The in-page reissue was removed after review (it leaked referrer, history and `noreferrer`). CI proves the header tests on 15 and 26; nothing here proves them by hand. "Safari" and "Default" give the same string today by decision 24.
+- **⇧⌘T position.** A reopened tab goes to the top of the regular tabs; Safari and Chrome restore the old position. It also skips rows auto-archived by Task 16b.
+- **Task 15 open Lows:** the unfinished-check set in `PageHost`, keyed by `ObjectIdentifier`, is never cleared on close or unload; `isListed` is O(tabs² × windows) on window close; a stored `mailto:` in a restored tab is still refused; typed `zoommtg:`, `sms:` and similar stay searches; private windows have no Bring It Here handling; a tab waiting on a dialog listed by a window that switches workspace stays busy; a typed `http` address while the tab shows elsewhere navigates the other window's page.
+- **Task 16b notes:** a clock change while Stave is quit is not caught (the first check after launch has no reference reading); a stuck "running" download row blocks idle archiving for the whole profile, because downloads are per owner, not per tab.
+- **Task 11 open Lows:** a replaced navigation's sign-in sheet can stay up as an orphan; a navigation allowed but stopped before it starts keeps its host's right to ask until commit; a self-reloading 401 page resets the three-cancel count each time.
+- **Task 5 re-review Lows:** capture-phase `defaultPrevented`, `area` and shadow-DOM links, symlink allow-then-drop, VoiceOver unverified.
+- **Task 6 and 7 minors:** the banner says "History was cleared" when the clear failed too; a command-bar close focus race; pushState visits not recorded; container stores cached for the life of the app (Task 12 evicts on deletion only); the checkbox accessibility description is empty.
+- **Task 9 minors:** zoom during a pending navigation is keyed to the destination host; Show Page Source's path; private windows get no inspector; ChorusEngine's `WebViewHostView` cannot show an attached inspector, so the inspector is detached.
+- **The View group room note (R1-L7).** The View `CommandGroup` was at 10 children before Task 16 and has room for one more child only; Xcode 26's builder accepts at most 10. Add the next View item as its own `Commands` struct, as History, Develop and Debug already are.
+- **Untested on macOS 15 and 26 by hand:** the Task 9 inspector spike, the Task 16 header gap, window and focus behaviour. Every by-hand check ran on macOS 27.2.
+- **Plan wording gap, Task 16b Step 5:** the by-hand step must also move `autoArchiveEnabledAt` back as well as a tab's `lastActiveAt`; otherwise the first-enable guard keeps the tab. Fix it in the step if the task is ever re-run.
+- **Task 16 and 16b notes:** Chrome's current stable major is derived from an anchor (157 on 3 Nov 2026) plus one per 28 days, floored at the anchor, so it lags a shorter real cadence; Part B's checklist bumps `UserAgent.chromeMajorVersion`. Open in Safari and Open in Chrome were never exercised by hand.
+- **Builder rules learnt on CI,** worth copying into every brief: a `.commands` builder takes at most 10 children on Xcode 26, and a `let x = x` declared after a closure that captures `x` fails to compile on Xcode 26 though Xcode 27 accepts it.
+- **Process:** a builder once killed a process named Stave through System Events during a menu check (the workflow script now forbids killing Stave by name; quit with osascript or a saved PID); a Little Snitch alert and macOS TCC prompts were left on screen during two by-hand runs for Nico.
+
+Already known from the answers (2026-11-13), carried from the plan's draft:
 
 - **IDN Unicode display** (question 4), post-beta: decode with the public ICU calls in the macOS SDK (`uidna_nameToUnicode`, and `u_getIntPropertyValue` with `UCHAR_SCRIPT`) through a small C module that links `icucore`, with a Firefox-style Moderately Restrictive or WebKit allowed-script check and punycode as the fallback. Chrome's confusable check needs `uspoof`, which the SDK doesn't expose. `SiteHost` keys stay punycode.
 - **`user@host` links** (question 6): Chrome loads them silently and hides the user name; Firefox asks first; Safari 5 (2010) warned, but Safari 27.2's string tables, searched on this Mac on 2026-11-13 (read-only, Safari not launched), contain no such warning, nor do its shared frameworks or WebKit's. Settled 2026-11-14: Nico keeps opening them, with no warning sheet.
 - **Opened-file gaps** (question 13): resources and links outside the opened file's folder are refused, and a restored `file:` tab doesn't reload by itself; the three browsers do both.
+
+# Part B: release
+
+Tasks 21–25 (version, update feed and Sparkle; signing and notarization; GitHub release, appcast and cask; the beta gate; housekeeping) moved to `2026-11-10-stave-release.md` on 2026-11-26 by Task 20 Step 4. Part B is not started.

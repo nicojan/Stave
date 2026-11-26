@@ -9,8 +9,8 @@ In development, no release yet. The design is in `docs/superpowers/specs/2026-10
 - **Done:** the organization model and its storage. That covers profiles, workspaces, Essentials, pinned tabs and folders, regular tabs, the archive, containers and window restore, all stored in SQLite.
 - **Done:** an importer for Arc's sidebar (spaces, pinned tabs and folders, Favorites, profiles), with its import screens.
 - **Done:** the window and sidebar, command bar, compact mode, drag and drop (including drag to reorder workspaces), keyboard moves, first run (search engine choice) and the Arc import UI.
-- **Built, in review:** web pages on Chorus's shared engine (`ChorusEngine`): a page per tab with restore, pop-ups tied to their opener, a separate data store per profile, container and private window, content blocking, downloads, camera and microphone questions, and JavaScript dialogs.
-- **Not yet:** settings, history, find, zoom, default-browser registration and a release. These are drafted as plan 5, waiting for review.
+- **Built on `feat/browser-basics`, no PR yet:** web pages on Chorus's shared engine (`ChorusEngine`) with a page per tab, restore, pop-ups, a data store per profile, container and private window, content blocking, downloads, camera and microphone questions and JavaScript dialogs (plan 3); then the browser basics (plan 5, Part A): default-browser registration and links from other apps, history with a History view, favicons, find in page, zoom per site, print, Web Inspector, HTTP sign-in prompts, the standard shortcuts, a Settings window with profiles, containers and websites, a per-site panel, a kept downloads list, per-site user agent, Open in Safari or Chrome, an optional archive of idle tabs and rolling database backups.
+- **Not yet:** location, web notifications and passkeys, and a release (Sparkle updates, signing, notarization, Homebrew). The release is plan 5, Part B (`docs/superpowers/plans/2026-11-10-stave-release.md`).
 
 ## Backups
 
