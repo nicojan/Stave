@@ -817,19 +817,53 @@ struct PageDelegateTests {
         }
     }
 
-    /// Stopgap until a per-site settings panel exists: a Don't Allow is never stored, even with "Remember for this site" ticked.
-    @Test func mediaDontAllowIsNeverRemembered() async throws {
+    /// Decision 32: with "Remember for this site" ticked, Don't Allow is stored as Block for every key asked (the stopgap that stored nothing
+    /// is over), and the next request is denied without a sheet.
+    @Test func mediaDontAllowWithRememberStoresBlock() async throws {
         try await withProfile { profile in
             let host = makeHost()
             let page = host.page(for: request(profile: profile), writer: writer)
             let delegate = try delegate(of: page)
             events.mediaAnswer = (false, true)
             #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
-            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
-            #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == nil)
-            // The next load asks again.
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == .deny)
+            // The next load is denied without asking, even if the user would now say yes.
+            events.mediaAnswer = (true, true)
             #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
+            #expect(events.mediaQuestions.count == 1)
+            host.close(page.tabID)
+        }
+    }
+
+    /// A Don't Allow without the box stores nothing, so the next load asks again.
+    @Test func mediaDontAllowWithoutRememberStoresNothing() async throws {
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            events.mediaAnswer = (false, false)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
             #expect(events.mediaQuestions.count == 2)
+            host.close(page.tabID)
+        }
+    }
+
+    /// A stored Block (set here as the site panel sets it) is undone by Ask, which removes the row: the next request asks again.
+    @Test func mediaAskAfterBlockAsksAgain() async throws {
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            settings.setDecision(profileID: profile, host: "example.com", key: .camera, .deny)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
+            #expect(events.mediaQuestions.isEmpty)
+            settings.setDecision(profileID: profile, host: "example.com", key: .camera, nil)
+            events.mediaAnswer = (true, false)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .grant)
+            #expect(events.mediaQuestions.count == 1)
             host.close(page.tabID)
         }
     }

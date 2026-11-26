@@ -91,6 +91,15 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
             NSLog("Stave: could not save a site value: \(error)")
         }
     }
+
+    /// One removal for everything stored for the host (Reset This Site), then a bump so an open Settings window re-reads.
+    func removeSite(profileID: UUID, host: String) {
+        do {
+            try siteWrites.removeSite(profileID: profileID, host: host)
+        } catch {
+            NSLog("Stave: could not reset a site's settings: \(error)")
+        }
+    }
 }
 
 /// The writer of pages that are no store tabs (pop-ups): nothing they do is written, so they leave no rows and are never restored.

@@ -190,6 +190,23 @@ struct StoreRemovalTests {
         #expect(model.siteEntries(profileID: keep.id).map(\.host).sorted() == ["a.example", "b.example", "c.example"])
     }
 
+    /// Reset This Site (the per-site panel) goes through `SiteSettingWrites.removeSite`, so an open Settings window re-reads.
+    @Test func removeSiteInvalidatesTheWebsitesListing() throws {
+        let (store, _, keep, _) = try fixture()
+        let revision = StoreRevision()
+        let model = makeModel(store, Log(), revision: revision)
+        let writes = SiteSettingWrites(store: store, revision: revision)
+        try writes.setDecision(profileID: keep.id, host: "a.example", key: .camera, .allow)
+        try writes.setValue(profileID: keep.id, host: "a.example", key: .zoom, 1.5)
+        #expect(model.siteEntries(profileID: keep.id).count == 2)
+
+        let removed = Flag()
+        withObservationTracking { _ = model.siteEntries(profileID: keep.id) } onChange: { removed.fired = true }
+        #expect(try writes.removeSite(profileID: keep.id, host: "a.example") == 2)
+        #expect(removed.fired)
+        #expect(model.siteEntries(profileID: keep.id).isEmpty)
+    }
+
     // MARK: - R1-BH5 and R1-BH6
 
     @Test func clearingTheMessageForgetsAnOlderPanesFailure() throws {

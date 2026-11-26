@@ -38,8 +38,8 @@ public enum QuestionAnswer: Sendable {
     /// has acted on yet. Asked only while the tab is shown; otherwise `unasked`. Navigating takes its sheet down (`unasked`).
     func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer
     /// "Allow ‹host› to use your camera?". A question that can't be shown yet (the tab isn't shown, another sheet is up) waits until it can
-    /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` is
-    /// honoured for an Allow only (`mediaDecision`).
+    /// (it is not denied at once). It resolves with deny, remembering nothing, when the tab goes away or the window closes. `remember` stores
+    /// the answer, an Allow as Allow and a Don't Allow as Block (`mediaDecision`).
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
     /// The tab's page went away (closed or unloaded) or committed a new main-frame document: the questions still waiting for it, and a media
     /// or sign-in sheet up for it, are dropped (denied or cancelled, remembering nothing). They never appear over a page that did not ask.

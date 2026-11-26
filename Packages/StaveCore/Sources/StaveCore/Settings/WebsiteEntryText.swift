@@ -2,6 +2,15 @@ import Foundation
 
 /// How Settings ▸ Websites words one stored answer or value.
 public enum WebsiteEntryText {
+    /// The words for a stored answer; the per-site panel reads the same ones.
+    public static let allow = "Allow"
+    public static let block = "Block"
+    public static let on = "On"
+    public static let off = "Off"
+
+    /// A zoom factor as a percentage: 1.5 reads "150%".
+    public static func zoomPercent(_ level: Double) -> String { "\(Int((level * 100).rounded()))%" }
+
     /// What the row is about: "Camera", "Microphone", "Content blocking", "Zoom", "User agent".
     public static func label(_ kind: SiteEntry.Kind) -> String {
         switch kind {
@@ -17,10 +26,10 @@ public enum WebsiteEntryText {
     /// anything else as its stored text without JSON quotes.
     public static func value(_ entry: SiteEntry) -> String {
         switch entry.kind {
-        case .setting(.contentBlocking): entry.stored == SiteDecision.deny.rawValue ? "Off" : "On"
-        case .setting: entry.stored == SiteDecision.allow.rawValue ? "Allow" : "Block"
+        case .setting(.contentBlocking): entry.stored == SiteDecision.deny.rawValue ? off : on
+        case .setting: entry.stored == SiteDecision.allow.rawValue ? allow : block
         case .value(.zoom):
-            Double(entry.stored).map { "\(Int(($0 * 100).rounded()))%" } ?? entry.stored
+            Double(entry.stored).map(zoomPercent) ?? entry.stored
         case .value(.userAgent): entry.stored.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
         }
     }

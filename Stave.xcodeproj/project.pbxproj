@@ -65,6 +65,7 @@
 		CED9292C543EBB824037EF48 /* PageFind.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */; };
 		D19182FC2DFF3D88D75AFA34 /* StaveWeb in Frameworks */ = {isa = PBXBuildFile; productRef = B02055879054269311A54DBA /* StaveWeb */; };
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
+		DA6B611DBEB1E0CA983490CB /* SitePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6D0CAD17860FE4B362A4EA5 /* SitePanel.swift */; };
 		DD235B3EA94856AC4F5251C8 /* FindBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4835396844D6668AA906D3E8 /* FindBar.swift */; };
 		F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */; };
 		FB1DB824B4638F21B4AD2727 /* ProfilesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED534804EA2CBABE55C1A8B7 /* ProfilesPane.swift */; };
@@ -115,6 +116,7 @@
 		BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportCoordinator.swift; sourceTree = "<group>"; };
 		BD3BA1703865C93D34246435 /* StaveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaveApp.swift; sourceTree = "<group>"; };
 		BE092AF52ED81A9E996EF1C0 /* BrowserWindowController+Pages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserWindowController+Pages.swift"; sourceTree = "<group>"; };
+		C6D0CAD17860FE4B362A4EA5 /* SitePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SitePanel.swift; sourceTree = "<group>"; };
 		C7C0F9B1806E7F1C7A10F109 /* PrivateWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateWindowView.swift; sourceTree = "<group>"; };
 		C81BBB8D6BF636D5428804CE /* FirstRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstRunView.swift; sourceTree = "<group>"; };
 		CC23353CB79C824619134179 /* NamePromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamePromptSheet.swift; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 				18ED4A7CC355527D69901F64 /* SidebarRowDrop.swift */,
 				DD86DD835E09A6113A128904 /* SidebarRowView.swift */,
 				ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */,
+				C6D0CAD17860FE4B362A4EA5 /* SitePanel.swift */,
 				FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */,
 				35949971D03A0BCD6CA538C1 /* WorkspaceEditor.swift */,
 				4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */,
@@ -449,6 +452,7 @@
 				C8FB7EBE2DD56D227CB89121 /* SidebarRowDrop.swift in Sources */,
 				019C68D69E15CA6023935959 /* SidebarRowView.swift in Sources */,
 				D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */,
+				DA6B611DBEB1E0CA983490CB /* SitePanel.swift in Sources */,
 				59ADD72178E1D17CBE112A27 /* StandardShortcutKeys.swift in Sources */,
 				2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */,
 				44899E6CC9B3AD9E19EA129F /* StorePageWriter.swift in Sources */,

@@ -125,8 +125,8 @@ final class PagePrompts: PageQuestionWindow {
         }
     }
 
-    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). Only an
-    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). Called by `PageQuestionQueues` when this window can ask now;
+    /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). With the box
+    /// ticked, an Allow is stored as Allow and a Don't Allow as Block (decision 32, `mediaDecision`). Called by `PageQuestionQueues` when this window can ask now;
     /// `finish` hears how the sheet ended: answered, sent back (its tab was hidden), or cancelled.
     func showMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool, finish: @escaping (WaitingQuestions<MediaAnswer>.Result) -> Void) -> Bool {
         guard let window, canAsk(tabID) else { return false }

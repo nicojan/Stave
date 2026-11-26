@@ -13,6 +13,8 @@ public protocol SiteSettingsSource: AnyObject {
     @MainActor func siteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, as type: V.Type) -> V?
     /// Stores a per-site value; nil removes it. Never called for a private page.
     @MainActor func setSiteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, _ value: V?)
+    /// Removes every stored answer and value for the profile and host (the site panel's Reset This Site), in one write.
+    @MainActor func removeSite(profileID: UUID, host: String)
 }
 
 /// Stave's own page pool, keyed by tab ID (plan 3, decisions 2, 3, 8, 10 and 16).
@@ -25,7 +27,7 @@ public final class PageHost {
 
     @ObservationIgnored private let stores: WebDataStores
     @ObservationIgnored private let contentBlocker: ContentBlockerManager
-    @ObservationIgnored private let siteSettings: SiteSettingsSource
+    @ObservationIgnored let siteSettings: SiteSettingsSource
     @ObservationIgnored private let applicationName: String
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private lazy var faviconRelay = FaviconRelay(host: self)
@@ -50,11 +52,11 @@ public final class PageHost {
     /// One per page; kept here because WebKit holds its delegates weakly.
     @ObservationIgnored private var delegates: [UUID: PageDelegate] = [:]
     @ObservationIgnored private let activeDownloads = ActiveDownloads()
-    /// A private session's camera/microphone answers, in memory only (decision 11); they go with the session's last window.
-    @ObservationIgnored private var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
+    /// A private session's camera, microphone and content-blocking answers, in memory only (decision 11); they go with the session's last window.
+    @ObservationIgnored var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
     /// A private session's site values (its zoom), JSON in memory only: a private window writes no site values. They go with the session,
     /// like `privateMediaAnswers`.
-    @ObservationIgnored private var privateSiteValues: [PrivateSiteValueKey: Data] = [:]
+    @ObservationIgnored var privateSiteValues: [PrivateSiteValueKey: Data] = [:]
     /// Whether pages in private windows get `developerExtrasEnabled` and so the inspector (decision 14, Task 9's spike).
     static let privateWindowsInspect = false
     /// Seam for tests: finds and opens apps for non-web links.
@@ -212,7 +214,7 @@ public final class PageHost {
     }
 
     /// A private window of the profile closed (its pages are closed by then, which drops their snapshots). When it was the last, the
-    /// session's store and its camera and microphone answers go, so the next private window starts fresh.
+    /// session's store and its in-memory site answers and values go, so the next private window starts fresh.
     public func leavePrivateSession(profileID: UUID) {
         // The session ID is read before the store registry drops it.
         let sessionID = stores.privateSessionID(profileID: profileID)
@@ -221,7 +223,7 @@ public final class PageHost {
         }
     }
 
-    /// Drops one session's in-memory camera and microphone answers and site values. Runs when the session's last window closes (`leavePrivateSession`).
+    /// Drops one session's in-memory site answers (camera, microphone, content blocking) and site values. Runs when the session's last window closes (`leavePrivateSession`).
     func forgetPrivate(sessionID: UUID) {
         let store = DataStoreKey.privateSession(sessionID)
         privateMediaAnswers = privateMediaAnswers.filter { $0.key.store != store }
@@ -311,8 +313,9 @@ public final class PageHost {
     /// Turns blocking on or off for the page's site, remembers it for the profile, and reloads.
     public func setContentBlocking(_ on: Bool, for tabID: UUID) {
         guard let page = pages[tabID] else { return }
-        if let profileID = page.siteSettingsProfileID, let host = SiteHost.normalized(page.status.url) {
-            siteSettings.setDecision(profileID: profileID, host: host, key: .contentBlocking, on ? nil : .deny)
+        // A profile's choice is stored; a private session's is kept in memory, so the next page of the site in that session follows it.
+        if let host = SiteHost.normalized(page.status.url) {
+            setRemembered(on ? nil : .deny, in: page.siteScope, host: host, key: .contentBlocking)
         }
         page.isContentBlockingOn = on
         attachRuleLists(to: page)
@@ -328,19 +331,19 @@ public final class PageHost {
     }
 
     func blockingWanted(for request: PageRequest) -> Bool {
-        blockingWanted(profileID: request.siteSettingsProfileID, url: request.url)
+        blockingWanted(in: SiteScope(profileID: request.siteSettingsProfileID, store: request.store), url: request.url)
     }
 
-    func blockingWanted(profileID: UUID?, url: String) -> Bool {
-        guard let profileID, let host = SiteHost.normalized(url) else { return true }
-        return siteSettings.decision(profileID: profileID, host: host, key: .contentBlocking) != .deny
+    func blockingWanted(in scope: SiteScope, url: String) -> Bool {
+        guard let host = SiteHost.normalized(url) else { return true }
+        return rememberedDecision(in: scope, host: host, key: .contentBlocking) != .deny
     }
 
     /// Before a main-frame load to a new site, turns the page's rule lists on or off for that site (ruling R6).
     func updateBlocking(for page: LivePage, navigatingTo url: String) {
         guard let site = SiteHost.normalized(url), site != page.blockingHost else { return }
         page.blockingHost = site
-        let wanted = blockingWanted(profileID: page.siteSettingsProfileID, url: url)
+        let wanted = blockingWanted(in: page.siteScope, url: url)
         guard wanted != page.isContentBlockingOn else { return }
         // TODO(R10): a pop-up or linked tab shares its opener's WKUserContentController (WebKit's configuration
         // carries it over), so switching one's lists would silently switch the other's. Such pages keep the
@@ -350,12 +353,12 @@ public final class PageHost {
         attachRuleLists(to: page)
     }
 
-    private func sharesContentController(_ page: LivePage) -> Bool {
+    func sharesContentController(_ page: LivePage) -> Bool {
         let content = page.webView.configuration.userContentController
         return pages.values.contains { $0 !== page && $0.webView.configuration.userContentController === content }
     }
 
-    private func attachRuleLists(to page: LivePage) {
+    func attachRuleLists(to page: LivePage) {
         let content = page.webView.configuration.userContentController
         content.removeAllContentRuleLists()
         if page.isContentBlockingOn {
@@ -383,7 +386,7 @@ public final class PageHost {
         page.setZoom(level)
         guard let site = page.siteKey else { return }
         setSiteValue(ZoomLevels.storedValue(level), for: page, host: site, key: .zoom)
-        for other in pages.values where other !== page && sharesSiteValues(other, page) && other.siteKey == site {
+        for other in pages.values where other !== page && other.siteScope == page.siteScope && other.siteKey == site {
             other.setZoom(level)
         }
     }
@@ -396,45 +399,60 @@ public final class PageHost {
         if page.zoom != level || page.webView.pageZoom != level { page.setZoom(level) }
     }
 
-    /// Two pages read the same site values: the same profile, or the same private session.
-    private func sharesSiteValues(_ a: LivePage, _ b: LivePage) -> Bool {
-        if let profile = a.siteSettingsProfileID { return profile == b.siteSettingsProfileID }
-        return b.siteSettingsProfileID == nil && a.store == b.store
-    }
-
     // MARK: Site values
 
     /// A profile's values are stored; a private session's are kept in memory for the session only.
     func siteValue<V: Codable>(for page: LivePage, host: String, key: SiteValueKey, as type: V.Type) -> V? {
-        if let profileID = page.siteSettingsProfileID {
-            return siteSettings.siteValue(profileID: profileID, host: host, key: key, as: type)
-        }
-        return privateSiteValues[PrivateSiteValueKey(store: page.store, host: host, key: key)].flatMap { try? JSONDecoder().decode(V.self, from: $0) }
+        siteValue(in: page.siteScope, host: host, key: key, as: type)
     }
 
     func setSiteValue<V: Codable>(_ value: V?, for page: LivePage, host: String, key: SiteValueKey) {
-        if let profileID = page.siteSettingsProfileID {
-            siteSettings.setSiteValue(profileID: profileID, host: host, key: key, value)
-        } else {
-            privateSiteValues[PrivateSiteValueKey(store: page.store, host: host, key: key)] = value.flatMap { try? JSONEncoder().encode($0) }
+        setSiteValue(value, in: page.siteScope, host: host, key: key)
+    }
+
+    func siteValue<V: Codable>(in scope: SiteScope, host: String, key: SiteValueKey, as type: V.Type) -> V? {
+        switch scope {
+        case .profile(let profileID):
+            return siteSettings.siteValue(profileID: profileID, host: host, key: key, as: type)
+        case .privateSession(let store):
+            return privateSiteValues[PrivateSiteValueKey(store: store, host: host, key: key)].flatMap { try? JSONDecoder().decode(V.self, from: $0) }
         }
     }
 
-    // MARK: Camera and microphone
+    func setSiteValue<V: Codable>(_ value: V?, in scope: SiteScope, host: String, key: SiteValueKey) {
+        switch scope {
+        case .profile(let profileID):
+            siteSettings.setSiteValue(profileID: profileID, host: host, key: key, value)
+        case .privateSession(let store):
+            privateSiteValues[PrivateSiteValueKey(store: store, host: host, key: key)] = value.flatMap { try? JSONEncoder().encode($0) }
+        }
+    }
+
+    // MARK: Camera, microphone and content blocking answers
 
     /// A profile's answers are site settings; a private window's are kept in memory for that window only.
     func rememberedMedia(for page: LivePage, host: String, key: SiteSettingKey) -> SiteDecision? {
-        if let profileID = page.siteSettingsProfileID {
-            return siteSettings.decision(profileID: profileID, host: host, key: key)
-        }
-        return privateMediaAnswers[PrivateMediaKey(store: page.store, host: host, key: key)]
+        rememberedDecision(in: page.siteScope, host: host, key: key)
     }
 
     func rememberMedia(_ decision: SiteDecision, for page: LivePage, host: String, key: SiteSettingKey) {
-        if let profileID = page.siteSettingsProfileID {
+        setRemembered(decision, in: page.siteScope, host: host, key: key)
+    }
+
+    func rememberedDecision(in scope: SiteScope, host: String, key: SiteSettingKey) -> SiteDecision? {
+        switch scope {
+        case .profile(let profileID): siteSettings.decision(profileID: profileID, host: host, key: key)
+        case .privateSession(let store): privateMediaAnswers[PrivateMediaKey(store: store, host: host, key: key)]
+        }
+    }
+
+    /// Nil removes the answer (the site asks again).
+    func setRemembered(_ decision: SiteDecision?, in scope: SiteScope, host: String, key: SiteSettingKey) {
+        switch scope {
+        case .profile(let profileID):
             siteSettings.setDecision(profileID: profileID, host: host, key: key, decision)
-        } else {
-            privateMediaAnswers[PrivateMediaKey(store: page.store, host: host, key: key)] = decision
+        case .privateSession(let store):
+            privateMediaAnswers[PrivateMediaKey(store: store, host: host, key: key)] = decision
         }
     }
 

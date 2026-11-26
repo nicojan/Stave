@@ -87,8 +87,7 @@ private struct ViewCommands: Commands {
             Divider()
             ZoomItems(delegate: delegate)
             Divider()
-            Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
-                .disabled(state.pageMenu.blockingOn == nil)
+            SiteItems(delegate: delegate)
             Button(ShortcutText.title(.showDownloads)) { delegate.showDownloads() }
                 .standardShortcut(.showDownloads, state: state, enabled: state.tabKeys.canShowDownloads)
         }
@@ -109,6 +108,20 @@ private struct PageNavigationItems: View {
             .standardShortcut(.reload, state: state, enabled: state.pageMenu.canReload)
         Button(PageMenuText.stop) { delegate.stopLoading() }
             .standardShortcut(.stop, state: state, enabled: state.pageMenu.canStop)
+    }
+}
+
+/// View ▸ Content Blocking and Settings for This Website: the page's per-site items, kept in their own view so the View group stays
+/// under the result builder's ten-child limit as later tasks add more (Task 16's user agent).
+private struct SiteItems: View {
+    let delegate: AppDelegate
+    private var state: AppMenuState { delegate.menuState }
+
+    var body: some View {
+        Toggle(PageMenuText.contentBlocking, isOn: Binding(get: { state.pageMenu.blockingOn ?? false }, set: { _ in delegate.toggleContentBlocking() }))
+            .disabled(state.pageMenu.blockingOn == nil)
+        Button(SitePanelText.menuItem) { delegate.showSitePanel() }
+            .disabled(!state.pageMenu.canShowSitePanel)
     }
 }
 

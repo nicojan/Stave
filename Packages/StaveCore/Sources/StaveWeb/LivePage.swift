@@ -221,6 +221,10 @@ public final class LivePage {
         SiteHost.normalized(webView.url?.absoluteString ?? status.url)
     }
 
+    /// The site the per-site panel is for: the host of the address the page shows (`status.url`, the field the View menu and the address
+    /// field's site button read), so the panel, the button and the menu item always agree. Nil with no web site.
+    var panelSiteKey: String? { SitePanelSite.host(forPageURL: status.url) }
+
     /// The web content process ended. Shown as crashed; nothing is written until a new load commits.
     func processTerminated() {
         guard !isClosed else { return }

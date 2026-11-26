@@ -22,17 +22,19 @@ public struct PageStatusSummary: Equatable, Sendable {
     public var selectedSection: SlotSection?
     /// The page is in a private window, which has nothing to pin to.
     public var isPrivate: Bool
+    /// The page has a web site (http or https with a host), so it has a per-site panel.
+    public var hasSite: Bool
 
     public init(
         isLoading: Bool = false, canGoBack: Bool = false, canGoForward: Bool = false, hasPage: Bool = false, blockingOn: Bool? = nil,
         hasFailure: Bool = false, isBlank: Bool = false, zoom: Double = ZoomLevels.defaultLevel, inspectorAvailable: Bool = false,
-        sourceAvailable: Bool = false, selectedSection: SlotSection? = nil, isPrivate: Bool = false
+        sourceAvailable: Bool = false, selectedSection: SlotSection? = nil, isPrivate: Bool = false, hasSite: Bool = false
     ) {
         self.isLoading = isLoading; self.canGoBack = canGoBack; self.canGoForward = canGoForward
         self.hasPage = hasPage; self.blockingOn = blockingOn
         self.hasFailure = hasFailure; self.isBlank = isBlank; self.zoom = zoom
         self.inspectorAvailable = inspectorAvailable; self.sourceAvailable = sourceAvailable
-        self.selectedSection = selectedSection; self.isPrivate = isPrivate
+        self.selectedSection = selectedSection; self.isPrivate = isPrivate; self.hasSite = hasSite
     }
 }
 
@@ -57,6 +59,8 @@ public struct PageMenuState: Equatable, Sendable {
     public var canShowSource = false
     /// Tab ▸ Pin Tab (⌘D, question 18): a regular tab's web page in a normal window. Never on a pinned tab or an Essential, so ⌘D never unpins.
     public var canPinSelected = false
+    /// View ▸ Settings for This Website (decision 20): a page with a web site. A failure panel keeps it, so a bad answer can be undone.
+    public var canShowSitePanel = false
 
     public static let disabled = PageMenuState(canGoBack: false, canGoForward: false, canReload: false, canStop: false, blockingOn: nil)
 
@@ -84,7 +88,8 @@ public struct PageMenuState: Equatable, Sendable {
             canResetZoom: hasContent && !ZoomLevels.isDefault(status.zoom),
             canInspect: visible && status.inspectorAvailable,
             canShowSource: hasContent && status.sourceAvailable,
-            canPinSelected: hasContent && status.selectedSection == .regular && !status.isPrivate
+            canPinSelected: hasContent && status.selectedSection == .regular && !status.isPrivate,
+            canShowSitePanel: status.hasSite
         )
     }
 }

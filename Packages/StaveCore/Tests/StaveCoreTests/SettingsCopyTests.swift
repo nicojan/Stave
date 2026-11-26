@@ -102,3 +102,22 @@ struct SettingsCopyTests {
         #expect(try store.siteEntries(profileID: other.id).count == 1) // another profile keeps its own
     }
 }
+
+/// `removeSite`, which the per-site panel's Reset This Site uses (plan 5, Task 13).
+struct RemoveSiteTests {
+    @Test func removeSiteTakesBothTablesForOneHostAndProfile() throws {
+        let (store, _, _) = try makeTempStore()
+        let profile = try store.createProfile(name: "P")
+        let other = try store.createProfile(name: "Q")
+        try store.setSiteDecision(profileID: profile.id, host: "a.example", key: .camera, .allow)
+        try store.setSiteDecision(profileID: profile.id, host: "a.example", key: .contentBlocking, .deny)
+        try store.setSiteValue(profileID: profile.id, host: "a.example", key: .zoom, 1.5)
+        try store.setSiteDecision(profileID: profile.id, host: "b.example", key: .camera, .deny)
+        try store.setSiteDecision(profileID: other.id, host: "a.example", key: .camera, .allow)
+
+        #expect(try store.removeSite(profileID: profile.id, host: "a.example") == 3)
+        #expect(try store.siteEntries(profileID: profile.id).map(\.host) == ["b.example"])
+        #expect(try store.siteEntries(profileID: other.id).count == 1)
+        #expect(try store.removeSite(profileID: profile.id, host: "a.example") == 0)
+    }
+}

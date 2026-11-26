@@ -25,7 +25,7 @@ struct CompactContainer<Sidebar: View, Divider: View, Content: View>: View {
         CompactHold(
             commandBarOpen: presenter.commandBar != nil,
             menuOpen: driver.menuOpen,
-            popoverOpen: presenter.showArchive,
+            popoverOpen: presenter.showArchive || presenter.showSitePanel,
             sheetOpen: driver.sheetOpen || presenter.workspaceEditor != nil || presenter.showNewProfile || presenter.showArchiveSheet,
             dragInFlight: presenter.drag.payload != nil,
             keyboardFocusInside: driver.keyboardFocus,

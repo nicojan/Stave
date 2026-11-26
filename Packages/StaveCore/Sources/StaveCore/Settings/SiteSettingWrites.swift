@@ -21,4 +21,12 @@ public struct SiteSettingWrites {
         try store.setSiteValue(profileID: profileID, host: host, key: key, value)
         revision.bump()
     }
+
+    /// Reset This Site: every stored answer and value for the host, then a bump. Returns how many rows went.
+    @discardableResult
+    public func removeSite(profileID: UUID, host: String) throws -> Int {
+        let removed = try store.removeSite(profileID: profileID, host: host)
+        revision.bump()
+        return removed
+    }
 }

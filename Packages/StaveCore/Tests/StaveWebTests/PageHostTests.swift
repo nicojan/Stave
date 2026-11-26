@@ -72,6 +72,16 @@ final class FakeSiteSettings: SiteSettingsSource {
         siteValueWrites.append((name, data))
     }
 
+    /// Each `removeSite` call, as (profile, host), and what it takes: every decision and value under that profile and host.
+    var removedSites: [String] = []
+
+    func removeSite(profileID: UUID, host: String) {
+        removedSites.append("\(profileID)|\(host)")
+        let prefix = "\(profileID)|\(host)|"
+        values = values.filter { !$0.key.hasPrefix(prefix) }
+        siteValues = siteValues.filter { !$0.key.hasPrefix(prefix) }
+    }
+
     func zoom(profileID: UUID, host: String) -> Double? {
         siteValue(profileID: profileID, host: host, key: .zoom, as: Double.self)
     }

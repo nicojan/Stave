@@ -102,7 +102,7 @@ extension AppDelegate {
             hasPage: true, blockingOn: PageMenuState.blockingState(url: page.status.url, isOn: page.isContentBlockingOn),
             hasFailure: page.status.failure != nil, isBlank: PageMenuState.isBlank(url: page.status.url), zoom: page.zoom,
             inspectorAvailable: PageTools.canShowInspector(page.webView), sourceAvailable: PageTools.canShowPageSource(page.webView),
-            selectedSection: section, isPrivate: isPrivate
+            selectedSection: section, isPrivate: isPrivate, hasSite: SitePanelSite.host(forPageURL: page.status.url) != nil
         )
     }
 

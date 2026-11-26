@@ -17,6 +17,17 @@ extension AppDelegate {
         }
     }
 
+    /// View ▸ Settings for This Website: the per-site panel as a sheet on the key window, for the page it shows (in a private window too).
+    func showSitePanel() {
+        pageToolCommand(\PageMenuState.canShowSitePanel) { _, _ in
+            if let keyPrivate = self.keyPrivate {
+                keyPrivate.presenter.openSitePanel(.keyboard)
+            } else {
+                self.keyController?.sidebarPresenter.openSitePanel(.keyboard)
+            }
+        }
+    }
+
     /// Develop ▸ Show Web Inspector (⌥⌘I) and Show Page Source (⌥⌘U).
     func showWebInspector() { pageToolCommand(\PageMenuState.canInspect) { page, _ in PageTools.showInspector(page.webView) } }
     func showPageSource() { pageToolCommand(\PageMenuState.canShowSource) { page, _ in PageTools.showPageSource(page.webView) } }

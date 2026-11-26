@@ -118,9 +118,9 @@ extension PageDelegate {
         topURL.flatMap { SiteHost.normalized($0.absoluteString) } == site
     }
 
-    /// A remembered answer for every key asked grants; any remembered deny denies (rows stored earlier still count); otherwise the app asks.
-    /// Only an Allow is remembered, per key, when the user ticks "Remember for this site" (plan 3, decision 11). A Don't Allow denies this
-    /// time and stores nothing, so the next load asks again: a stopgap until a per-site settings panel lets the user undo a stored deny.
+    /// A remembered answer for every key asked grants; any remembered deny (a Block) denies without a sheet; otherwise the app asks. With
+    /// "Remember for this site" ticked, an Allow is stored as Allow and a Don't Allow as Block, per key (plan 5, decision 32); without it
+    /// nothing is stored and the next load asks again. The site panel and Settings ▸ Websites show a stored answer and set it back to Ask.
     func mediaDecision(originHost: String, camera: Bool, microphone: Bool) async -> WKPermissionDecision {
         guard let page, !page.isClosed, let host, let events, let site = SiteHost.normalized(originHost), isTopSite(site) else { return .deny }
         let keys: [SiteSettingKey] = (camera ? [.camera] : []) + (microphone ? [.microphone] : [])
@@ -133,8 +133,8 @@ extension PageDelegate {
         // The question may have waited, or been up, while the page navigated, was unloaded or remade: the answer is then for a page that
         // is gone, so nothing is remembered or granted (an allow must not be stored for the old host).
         guard !page.isClosed, host.existingPage(tabID) === page, page.commitCount == commits, isTopSite(site) else { return .deny }
-        if answer.remember, answer.allow {
-            for key in keys { host.rememberMedia(.allow, for: page, host: site, key: key) }
+        if answer.remember {
+            for key in keys { host.rememberMedia(answer.allow ? .allow : .deny, for: page, host: site, key: key) }
         }
         return answer.allow ? .grant : .deny
     }

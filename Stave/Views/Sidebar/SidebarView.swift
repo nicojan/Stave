@@ -10,6 +10,8 @@ struct SidebarView: View {
     let openCommandBar: (CommandBarMode) -> Void
     /// The selected tab's live address, when its page is shown here; the address field follows it.
     let liveURL: (UUID) -> String?
+    /// The per-site panel for the selected tab, given what closes it (the popover on the site button shows it).
+    let makeSitePanel: (@escaping () -> Void) -> SitePanel
     /// The app's downloads; the bottom bar shows this profile's.
     let downloads: DownloadList
 
@@ -37,7 +39,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             // The swipe catcher covers everything above the bottom bar, so a swipe that starts on the workspace strip only scrolls the strip.
             VStack(spacing: 0) {
-                AddressField(tab: addressTab) { openCommandBar(.currentTab) }
+                AddressField(tab: addressTab, open: { openCommandBar(.currentTab) }, sitePanel: sitePanelAccess)
                     .padding(.horizontal, 10).padding(.bottom, 8)
                 if !model.snapshot.essentials.isEmpty {
                     EssentialsGrid(
@@ -72,6 +74,10 @@ struct SidebarView: View {
             presenter.showDownloads = false // the popover belongs to the window's profile; a switch closes it
             slideIn()
         }
+        .onChange(of: sitePanelHost) {
+            // The button is gone (a blank tab) or belongs to another site: a held-open flag would pin the compact sidebar and reopen the popover later (R2-M2).
+            presenter.showSitePanel = false
+        }
         .onChange(of: presenter.actionRequest) { _, request in
             if let request { self.request(request.action, on: request.item) }
         }
@@ -98,6 +104,21 @@ struct SidebarView: View {
                 cancel: { self.prompt = nil }
             )
         }
+    }
+
+    /// The web site the button would open the panel for; nil when it shows no button.
+    private var sitePanelHost: String? {
+        model.selectedTab.flatMap { liveURL($0.id) }.flatMap(SitePanelSite.host(forPageURL:))
+    }
+
+    /// The site button's wiring: only when this window shows the page and its address (the field the panel reads too) has a web site.
+    private var sitePanelAccess: SitePanelAccess? {
+        guard sitePanelHost != nil else { return nil }
+        return SitePanelAccess(
+            open: { presenter.openSitePanel($0) },
+            showing: Binding(get: { presenter.showSitePanel }, set: { presenter.showSitePanel = $0 }),
+            panel: { makeSitePanel { presenter.showSitePanel = false } }
+        )
     }
 
     /// The selected tab as the address field shows it: with the live page's address when there is one.

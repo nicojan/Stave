@@ -56,6 +56,17 @@ extension OrganizationStore {
         }
     }
 
+    /// Removes every stored answer and value for one host of one profile, in one transaction (the site panel's Reset This Site). Other hosts
+    /// and other profiles keep theirs. Returns how many rows went. `host` is `SiteHost.normalized`'s key.
+    @discardableResult
+    public func removeSite(profileID: UUID, host: String) throws -> Int {
+        try database.writer.write { db in
+            let settings = try SiteSetting.filter(Column("profileID") == profileID && Column("host") == host).deleteAll(db)
+            let values = try SiteValue.filter(Column("profileID") == profileID && Column("host") == host).deleteAll(db)
+            return settings + values
+        }
+    }
+
     /// Removes every stored answer and value of the profile (Remove All, asked first). Returns how many rows went.
     @discardableResult
     public func removeAllSiteEntries(profileID: UUID) throws -> Int {

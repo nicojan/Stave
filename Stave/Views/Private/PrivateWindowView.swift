@@ -27,6 +27,14 @@ struct PrivateWindowView: View {
         }
         .fileDrop(actions.openDroppedFile)
         .overlay { commandBarLayer }
+        .sheet(isPresented: Binding(get: { presenter.showSitePanelSheet }, set: { presenter.showSitePanelSheet = $0 })) {
+            SitePanel(
+                make: { model.selectedTabID.flatMap { pageHost.sitePanelModel(for: $0) } },
+                currentHost: { model.selectedTabID.flatMap { pageHost.existingPage($0)?.status.url }.flatMap(SitePanelSite.host(forPageURL:)) },
+                done: { presenter.showSitePanelSheet = false }
+            )
+        }
+        .onChange(of: model.selectedTabID) { presenter.closeSitePanel() }
     }
 
     // MARK: - Sidebar

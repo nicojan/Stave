@@ -27,12 +27,15 @@ struct BrowserWindowView: View {
     var body: some View {
         CompactContainer(
             isCompact: model.isCompact, sidebarWidth: sidebarWidth, presenter: presenter,
-            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }, liveURL: liveURL, downloads: downloads) },
+            sidebar: { SidebarView(model: model, presenter: presenter, openCommandBar: { presenter.openCommandBar($0, for: model) }, liveURL: liveURL, makeSitePanel: sitePanel, downloads: downloads) },
             divider: { divider },
             content: { PageArea(model: model, pageHost: pageHost, state: pageViewState, actions: pageActions) }
         )
         .fileDrop(pageActions.openDroppedFile)
         .overlay { commandBarLayer }
+        .sheet(isPresented: Binding(get: { presenter.showSitePanelSheet }, set: { presenter.showSitePanelSheet = $0 })) {
+            sitePanel(done: { presenter.showSitePanelSheet = false })
+        }
         .sheet(item: Binding(get: { presenter.sheet }, set: { presenter.sheet = $0 })) { sheet in
             switch sheet {
             case .firstRun(let request):
@@ -47,6 +50,17 @@ struct BrowserWindowView: View {
         // The bar acts on the window it opened in; a workspace or profile change (a menu shortcut, a swipe) closes it.
         .onChange(of: model.snapshot.workspace.id) { presenter.closeCommandBar() }
         .onChange(of: model.snapshot.profile.id) { presenter.closeCommandBar() }
+        // The panel belongs to the tab it opened on (popover and sheet): another tab selected closes it (R2-L4).
+        .onChange(of: model.selectedTabID) { presenter.closeSitePanel() }
+    }
+
+    /// The per-site panel for the selected tab, for the popover and the sheet alike; it closes itself when the page leaves its site.
+    private func sitePanel(done: @escaping () -> Void) -> SitePanel {
+        SitePanel(
+            make: { model.selectedTab.flatMap { pageHost.sitePanelModel(for: $0.id) } },
+            currentHost: { model.selectedTab.flatMap { liveURL($0.id) }.flatMap(SitePanelSite.host(forPageURL:)) },
+            done: done
+        )
     }
 
     /// The address the selected tab's page shows right now, when this window shows the page.

@@ -21,6 +21,10 @@ final class SidebarPresenter {
     var showNewProfile = false
     /// The downloads popover, from its button or View ▸ Show Downloads (⌥⌘L).
     var showDownloads = false
+    /// The per-site panel as a popover on the address field's site button (a mouse click) ...
+    var showSitePanel = false
+    /// ... or as a sheet (the keyboard, View ▸ Settings for This Website), which takes the keyboard where a popover does not.
+    var showSitePanelSheet = false
     /// The first-run or Arc import sheet on this window, if any.
     var sheet: WindowSheet?
     /// The drag in flight in this window's sidebar. Kept here so compact mode can hold the sidebar open while it lasts.
@@ -82,6 +86,22 @@ final class SidebarPresenter {
         }
     }
 
+    /// Shows the site panel the way `ArchivePresentation` says for what asked, as `openArchive` does.
+    func openSitePanel(_ trigger: ArchiveTrigger) {
+        switch ArchivePresentation.presentation(for: trigger) {
+        case .popover: showSitePanel.toggle()
+        case .sheet:
+            showSitePanel = false
+            showSitePanelSheet = true
+        }
+    }
+
+    /// Closes the site panel, popover and sheet alike.
+    func closeSitePanel() {
+        showSitePanel = false
+        showSitePanelSheet = false
+    }
+
     /// Clears every sheet-driving state, so SwiftUI dismisses what it presents. Used when the app quits.
     func dismissAllSheets() {
         sheet = nil
@@ -90,6 +110,8 @@ final class SidebarPresenter {
         pendingWorkspaceDelete = nil
         showArchiveSheet = false
         showArchive = false
+        showSitePanel = false
+        showSitePanelSheet = false
         commandBar = nil
     }
 
