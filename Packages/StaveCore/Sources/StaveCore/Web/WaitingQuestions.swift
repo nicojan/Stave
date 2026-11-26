@@ -76,6 +76,11 @@ public final class WaitingQuestions<Answer: Sendable> {
         }
     }
 
+    /// Whether the tab has a question open, waiting or up.
+    public func isOpen(tabID: UUID) -> Bool {
+        entries.contains { $0.tabID == tabID && $0.continuation != nil }
+    }
+
     /// The tab's questions resolve with nil, waiting or up (an up sheet is ended by its window, and its late report is ignored).
     public func cancel(tabID: UUID) {
         for entry in entries where entry.tabID == tabID { resolve(entry, nil) }

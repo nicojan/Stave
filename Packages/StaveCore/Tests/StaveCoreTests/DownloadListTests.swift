@@ -25,6 +25,23 @@ final class ChangeCounter: @unchecked Sendable { var count = 0 }
         #expect(list.items(for: profile).first { $0.id == other }?.state == .running(fraction: nil))
     }
 
+    /// Idle archiving asks whether an owner has a download running: a finished, cancelled or other owner's row does not count.
+    @MainActor @Test func hasRunningCountsOnlyTheOwnersRunningRows() {
+        let list = DownloadList()
+        let owner = DownloadOwner.profile(UUID())
+        let other = DownloadOwner.profile(UUID())
+        #expect(!list.hasRunning(owner: owner))
+        let first = list.begin(owner: owner, filename: "a.bin", sourceHost: nil)
+        let second = list.begin(owner: owner, filename: "b.bin", sourceHost: nil)
+        #expect(list.hasRunning(owner: owner) && !list.hasRunning(owner: other))
+        list.progress(first, fraction: 0.5)
+        #expect(list.hasRunning(owner: owner))
+        list.finish(first, at: URL(fileURLWithPath: "/tmp/a.bin"))
+        #expect(list.hasRunning(owner: owner), "the second is still running")
+        list.cancel(second)
+        #expect(!list.hasRunning(owner: owner))
+    }
+
     /// Review fix 4: the menu reads `hasItems(for:)`, which changes only when a row is added or removed, never on a progress tick.
     @MainActor @Test func ownersWithItemsChangeOnlyWhenARowIsAddedOrRemoved() {
         let list = DownloadList()

@@ -66,6 +66,12 @@ public final class DownloadList {
         rows.filter { $0.owner == owner }.reversed()
     }
 
+    /// Whether the owner has a download still running. Downloads are listed per owner, not per tab, so idle archiving treats every tab of a
+    /// profile as busy while one of its downloads runs.
+    public func hasRunning(owner: DownloadOwner) -> Bool {
+        rows.contains { $0.owner == owner && !$0.state.hasEnded }
+    }
+
     /// Whether the owner has any row. Observers of this are told only when that flips.
     public func hasItems(for owner: DownloadOwner) -> Bool { ownersWithItems.contains(owner) }
 

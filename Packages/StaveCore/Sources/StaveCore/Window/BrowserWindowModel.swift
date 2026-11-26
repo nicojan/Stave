@@ -233,7 +233,26 @@ public final class BrowserWindowModel: CommandBarWindow {
         selectedTabID = tabID
         livePages.show(tabID, in: windowID)
         if let previous { pages?.tabDeselected(previous) }
-        perform { try store.markActive(tabID: tabID) }
+        // The tab just left counts as viewed until now (idle archiving, decision 34); it may be gone already, which `markSelected` skips. The old tab is stamped first, in the same write.
+        // A failed stamp is only logged: the selection stands, and the tab merely looks idle sooner.
+        do {
+            try store.markSelected(tabID, leaving: previous)
+            lastError = nil
+            revision.bump()
+        } catch {
+            NSLog("Stave: could not stamp the tab selection: \(error)")
+        }
+        reload()
+    }
+
+    /// Stamps the tab a window stops showing. Best effort: a failed stamp only makes the tab look idle sooner, and never blocks leaving it.
+    private func stampLeft(_ tabID: UUID) {
+        do { try store.markLeft(tabIDs: [tabID]) } catch { NSLog("Stave: could not stamp a tab as left: \(error)") }
+    }
+
+    /// Stamps the selected tab as viewed now; a window closing does this (the saved window set stamps the open windows' tabs itself).
+    public func markSelectedTabLeft() {
+        if let selectedTabID { stampLeft(selectedTabID) }
     }
 
     /// A click on a sidebar row. The list selects through `sidebarHighlight`, whose change never fires for the row already highlighted, so
@@ -258,6 +277,7 @@ public final class BrowserWindowModel: CommandBarWindow {
         guard let previous = selectedTabID else { return }
         selectedTabID = nil
         livePages.release(windowID: windowID)
+        stampLeft(previous)
         if reportDeselect { pages?.tabDeselected(previous) }
     }
 
@@ -773,6 +793,7 @@ public final class BrowserWindowModel: CommandBarWindow {
     }
 
     public func windowWillClose() {
+        markSelectedTabLeft() // closing the window leaves its selected tab
         livePages.windowClosed(windowID)
         // R1-3: only tabs no open window lists (an Essential or a shared workspace's tab stays waiting for the window that still lists it).
         let unshown = Self.allTabs(in: snapshot).map(\.id).filter { livePages.owner(of: $0) == nil && !livePages.isListed($0) }

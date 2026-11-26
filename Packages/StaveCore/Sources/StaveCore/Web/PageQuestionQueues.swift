@@ -135,6 +135,10 @@ public final class PageQuestionQueues {
         }
     }
 
+    /// Whether the tab has a "wants to download several files" question open, held or up. Idle archiving leaves such a tab alone:
+    /// archiving it would drop the question and refuse the page's downloads.
+    public func hasSeveralDownloadsQuestion(tabID: UUID) -> Bool { severalDownloads.isOpen(tabID: tabID) }
+
     /// A JavaScript `alert`, `confirm` or `prompt`. Held, not answered at once, while its tab is hidden or another sheet is up, as Chrome and
     /// Firefox hold a tab's dialogs until it is shown (decision 21); the page's script waits meanwhile. Nil: dropped by the system (a new
     /// document committed, the page closed or unloaded, the tab was forgotten, the window closed), so `alert` returns, `confirm` is false

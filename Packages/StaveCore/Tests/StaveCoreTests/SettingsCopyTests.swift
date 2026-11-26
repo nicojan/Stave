@@ -19,6 +19,14 @@ struct SettingsCopyTests {
         }
     }
 
+    /// The idle-tab picker's choices are labelled in the Tabs pane, and the read-only archive line reads differently from the "30 days" choice.
+    @Test func tabsPaneListsThePickerChoicesAndKeepsThemApartFromTheTrimLine() {
+        let labels = SettingsCopy.labels(in: .tabs)
+        for choice in AutoArchiveAfter.allCases { #expect(labels.contains(choice.title), "\(choice.title)") }
+        #expect(labels.contains(AutoArchiveAfter.settingTitle))
+        #expect(SettingsCopy.archiveTrimValue != AutoArchiveAfter.days30.title)
+    }
+
     @Test func everyKnownLabelIsInSomePane() {
         let all = SettingsPane.allCases.flatMap { SettingsCopy.labels(in: $0) } + SettingsCopy.alertLabels
         let expected = [

@@ -49,6 +49,7 @@ extension OrganizationStore {
             tab.pinnedURL = nil
             tab.pinnedTitle = nil
             tab.pinnedFaviconURL = nil
+            tab.lastActiveAt = stamp // it enters the regular section now: idle archiving counts from here, not from before it was pinned
             tab.modifiedAt = stamp
             try tab.update(db)
         }

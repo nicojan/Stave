@@ -24,11 +24,12 @@ extension BrowserWindowModel {
         select(id)
     }
 
-    /// ⇧⌘T: restores the newest archived tab of this workspace (by `closedAt`, then `rowid`, as the archive lists them; a pinned page the
-    /// archive kept when a drifted tab was unpinned counts, since it is in the archive) and selects it, as a page the user opened. Nothing
-    /// when this workspace has nothing archived.
+    /// ⇧⌘T: restores the newest archived tab of this workspace that the user closed (by `closedAt`, then `rowid`, as the archive lists them;
+    /// a pinned page the archive kept when a drifted tab was unpinned counts, since it is in the archive) and selects it, as a page the user
+    /// opened. A row archived for being idle is not skipped over by accident: it was never closed by the user, so Safari's and Chrome's
+    /// "reopen last closed tab" does not pick it (it stays in the archive sheet). Nothing when no such row is in this workspace.
     public func reopenLastClosed() {
-        guard let newest = archivedTabs().first(where: { $0.workspaceID == snapshot.workspace.id }) else { return }
+        guard let newest = archivedTabs().first(where: { $0.workspaceID == snapshot.workspace.id && !$0.wasAutoArchived }) else { return }
         restoreArchived(newest.id, openedByUser: true)
     }
 

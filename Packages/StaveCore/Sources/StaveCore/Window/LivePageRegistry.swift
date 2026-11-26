@@ -92,6 +92,11 @@ public final class LivePageRegistry {
         state = next
     }
 
+    /// Every tab some window shows or wants: its owner windows' pages and the tabs windows wait for. Idle archiving never touches these.
+    public var shownTabs: Set<UUID> {
+        Set(state.owners.keys).union(state.wants.values)
+    }
+
     /// The window that owns the tab's live page, nil when no window does.
     public func owner(of tabID: UUID) -> UUID? { state.owners[tabID] }
 

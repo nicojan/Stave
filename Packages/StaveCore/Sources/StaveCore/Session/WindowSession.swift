@@ -13,6 +13,9 @@ public final class WindowSession {
     /// The pending delayed save. Internal so tests can await it instead of sleeping; a cancelled task finishes at once.
     private(set) var saveTask: Task<Void, Never>?
     private let saveDelay: Duration
+    /// The tab each open window shows. Every save that writes stamps these tabs as viewed now, so a tab shown when Stave quits (or crashes)
+    /// counts from then for idle archiving. The app supplies it; `windowWillClose` does not run at quit, the quit save does.
+    public var selectedTabIDs: (@MainActor () -> [UUID])?
     /// Called when a debounced save fails.
     public var onSaveError: (@MainActor (Error) -> Void)?
 
@@ -74,11 +77,18 @@ public final class WindowSession {
         guard isSavingEnabled else { return }
         // An empty set is never written: `saveWindows([])` deletes every saved window, and an empty state set only means nothing is known yet.
         guard !states.isEmpty else { return }
+        stampSelectedTabs()
         let numbered = states.enumerated().map { offset, state -> WindowState in
             var copy = state
             copy.sortIndex = Double(offset)
             return copy
         }
         try store.saveWindows(numbered)
+    }
+
+    /// Best effort: a failed stamp is logged and never stops the save; it only makes a tab look idle sooner.
+    private func stampSelectedTabs() {
+        guard let ids = selectedTabIDs?(), !ids.isEmpty else { return }
+        do { try store.markLeft(tabIDs: ids) } catch { NSLog("Stave: could not stamp the shown tabs: \(error)") }
     }
 }

@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var importCoordinator: ImportCoordinator?
     /// The pages' events go through this to their windows. Kept here: `PageHost` holds it weakly.
     private var pageEvents: PageEventsRouter?
+    /// Archives idle tabs at launch (after the saved windows are restored) and every 15 minutes (decision 34).
+    private var autoArchiveTimer: AutoArchiveTimer?
     /// Links and files from other apps that arrived before launch completed (decision 7); see `AppDelegate+Links.swift`.
     let pendingLinks = PendingLinks()
 
@@ -72,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.externalLinks = environment.externalLinks
             menuState.historyRetention = environment.historyRetention
             menuState.downloadRetention = environment.downloadRetention
+            menuState.autoArchive = environment.autoArchive
             let storeRemoval = makeStoreRemoval(environment) // one instance, so the launch retry and every deletion take turns
             menuState.settings = makeSettingsModel(environment, removal: storeRemoval)
             retryPendingStoreRemovals(storeRemoval)
@@ -87,6 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             observeKeyWindow()
             for state in windows { try open(state, environment: environment) }
             launchCompleted = true
+            // A tab a window shows when the window set is saved (and so at quit) counts as viewed then, for idle archiving.
+            environment.session.selectedTabIDs = { [weak self] in self?.controllers.compactMap(\.model.selectedTabID) ?? [] }
+            let archiveTimer = AutoArchiveTimer(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
+            autoArchiveTimer = archiveTimer
+            archiveTimer.start()
+            archiveTimer.launchCompleted() // the saved windows are open and their selected tabs are registered
             presentFirstRunIfNeeded(environment)
             refreshWorkspaceMenu()
             environment.session.enableSaving() // a failed launch never reaches here, so it never writes
@@ -121,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
+        autoArchiveTimer?.stop()
         guard launchCompleted, let environment else { return }
         // Private windows leave nothing: their pages close unflushed, their pop-ups close, their stores and download rows go.
         for controller in privateControllers { controller.tearDown() }

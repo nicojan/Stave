@@ -826,6 +826,26 @@ struct PageHostTests {
         host.close(opener.tabID)
     }
 
+    // MARK: Idle archiving's busy check
+
+    @Test func busyTabsNamesPlayingMediaAndPopupOpenersOnly() async {
+        let host = makeHost()
+        let playing = host.page(for: request(url: ""), writer: writer)
+        let opener = host.page(for: request(url: ""), writer: writer)
+        let quiet = host.page(for: request(url: ""), writer: writer)
+        host.mediaCheck = { webView in webView === playing.webView }
+        host.hasOpenPopups = { $0 == opener.tabID }
+        let noPage = UUID() // a tab with no live page is not busy for these reasons
+        let ids: Set<UUID> = [playing.tabID, opener.tabID, quiet.tabID, noPage]
+        let busy = await host.busyTabs(among: ids)
+        #expect(busy == [playing.tabID, opener.tabID])
+        #expect(host.holdingDialogsOrPopups(among: ids) == [opener.tabID])
+        #expect(await host.busyTabs(among: [quiet.tabID, noPage]).isEmpty)
+        host.close(playing.tabID)
+        host.close(opener.tabID)
+        host.close(quiet.tabID)
+    }
+
     // MARK: Quarantine
 
     @Test func finishedDownloadIsQuarantined() throws {

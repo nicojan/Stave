@@ -70,6 +70,9 @@ final class PageQuestionCenter {
     func cancelDialogs(tabID: UUID) { dialogs.cancelDialogs(tabID: tabID) }
 
     func drain() { queues.drain() }
+
+    /// A held or shown "wants to download several files" question: idle archiving leaves that tab alone.
+    func hasSeveralDownloadsQuestion(tabID: UUID) -> Bool { queues.hasSeveralDownloadsQuestion(tabID: tabID) }
     func cancel(tabID: UUID) { dialogs.cancel(tabID: tabID) }
     func cancelAuth(tabID: UUID, site: String) { queues.cancelAuth(tabID: tabID, site: site) }
 

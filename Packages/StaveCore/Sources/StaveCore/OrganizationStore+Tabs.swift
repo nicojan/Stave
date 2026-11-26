@@ -82,11 +82,20 @@ extension OrganizationStore {
             guard let tab = try Tab.fetchOne(db, key: id),
                   let slot = try Slot.fetchOne(db, key: tab.slotID) else { throw StoreError.notFound }
             guard slot.section == .regular else { return .unloaded }
-            let archived = makeArchivedTab(slot: slot, tab: tab, closedAt: now())
-            try archived.insert(db)
-            _ = try slot.delete(db) // the tab row goes with it (ON DELETE CASCADE)
-            return .archived(archived.id)
+            let stamp = now()
+            return .archived(try archiveRegularTab(tab: tab, slot: slot, closedAt: stamp, modifiedAt: stamp, in: db))
         }
+    }
+
+    /// The one archive step for a regular tab, shared by `closeTab` and `archiveIdleTabs`: the archive row is inserted and the slot deleted
+    /// (the tab row goes with it, ON DELETE CASCADE). `modifiedAt` equals `closedAt` for a tab the user closed; an idle archive passes the
+    /// tab's own last-modified time, which is how `ArchivedTab.wasAutoArchived` tells the two apart.
+    func archiveRegularTab(tab: Tab, slot: Slot, closedAt: Date, modifiedAt: Date, in db: Database) throws -> UUID {
+        var archived = makeArchivedTab(slot: slot, tab: tab, closedAt: closedAt)
+        archived.modifiedAt = modifiedAt
+        try archived.insert(db)
+        _ = try slot.delete(db)
+        return archived.id
     }
 
     /// Newest first by `closedAt`; rows archived together share a `closedAt`, so ties break on `rowid` descending (later-inserted first).

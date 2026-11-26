@@ -36,8 +36,8 @@ public enum SettingsCopy {
     public static let newTabEdgeTitle = "New tabs open at"
     public static func newTabEdgeChoice(_ edge: NewTabEdge) -> String { edge == .top ? "The top" : "The bottom" }
     // Tabs
-    public static let archiveTrimTitle = "Archived tabs are removed after"
-    public static let archiveTrimValue = "30 days"
+    public static let archiveTrimTitle = "Archived tabs are removed"
+    public static let archiveTrimValue = "After 30 days"
     // Profiles
     public static let profileNameField = "Profile name"
     public static let renameProfile = "Rename"
@@ -95,7 +95,8 @@ public enum SettingsCopy {
                 newTabEdgeChoice(.top), newTabEdgeChoice(.bottom), HistoryRetention.settingTitle, DownloadListRetention.settingTitle,
             ]
         case .tabs:
-            [WorkspaceShortcutsSetting.title, CompactModeSetting.title, archiveTrimTitle, archiveTrimValue]
+            [WorkspaceShortcutsSetting.title, CompactModeSetting.title, archiveTrimTitle, archiveTrimValue, AutoArchiveAfter.settingTitle]
+                + AutoArchiveAfter.allCases.map(\.title)
         case .profiles:
             [profileNameField, renameProfile, deleteProfile, profilesFootnote]
         case .containers:

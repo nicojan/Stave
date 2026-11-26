@@ -39,7 +39,7 @@ struct SettingsView: View {
         case .general:
             GeneralPane(state: state, makeDefaultBrowser: makeDefaultBrowser)
         case .tabs:
-            TabsPane(shortcuts: state.shortcuts, compactMode: state.compactMode)
+            TabsPane(shortcuts: state.shortcuts, compactMode: state.compactMode, autoArchive: state.autoArchive)
         case .profiles:
             if let settings = state.settings { ProfilesPane(model: settings).frame(minHeight: 260) } else { notOpen }
         case .containers:
@@ -112,10 +112,11 @@ struct GeneralPane: View {
     }
 }
 
-/// Tabs: ⌃1–9, compact mode and how long the archive keeps closed tabs (read-only). "Archive idle tabs after" joins in Task 16b.
+/// Tabs: ⌃1–9, compact mode, how long the archive keeps closed tabs (read-only) and "Archive idle tabs after" (off by default).
 struct TabsPane: View {
     let shortcuts: WorkspaceShortcutsSetting?
     let compactMode: CompactModeSetting?
+    let autoArchive: AutoArchiveSetting?
 
     var body: some View {
         Form {
@@ -131,6 +132,12 @@ struct TabsPane: View {
             }
             LabeledContent(SettingsCopy.archiveTrimTitle, value: SettingsCopy.archiveTrimValue)
                 .accessibilityElement(children: .combine)
+            if let autoArchive {
+                Picker(AutoArchiveAfter.settingTitle, selection: Binding(get: { autoArchive.limit }, set: { autoArchive.set($0) })) {
+                    ForEach(AutoArchiveAfter.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .accessibilityLabel(AutoArchiveAfter.settingTitle)
+            }
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)

@@ -24,6 +24,8 @@ final class AppEnvironment {
     let externalLinks: ExternalLinkSetting
     /// "Remove history items", for Settings; the launch and daily trims read it.
     let historyRetention: HistoryRetentionSetting
+    /// "Archive idle tabs after", for Settings; the timer reads the stored value at every check.
+    let autoArchive: AutoArchiveSetting
     /// Trims history once a day while Stave runs (launch maintenance does the first).
     private var historyTrim: Task<Void, Never>?
     /// The folder Arc's files are looked for under: the Debug override, or the real home.
@@ -93,6 +95,9 @@ final class AppEnvironment {
         let retention = HistoryRetentionSetting(store: store, revision: revision)
         retention.onSaveError = { NSLog("Stave: could not save how long history is kept: \($0)") }
         self.historyRetention = retention
+        let autoArchive = AutoArchiveSetting(store: store, revision: revision)
+        autoArchive.onSaveError = { NSLog("Stave: could not save how long idle tabs are kept: \($0)") }
+        self.autoArchive = autoArchive
         let writer = StorePageWriter(store: store, revision: revision)
         self.pageWriter = writer
         let downloadRetention = DownloadListRetentionSetting(store: store, revision: revision)

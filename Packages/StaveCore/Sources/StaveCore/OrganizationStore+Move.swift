@@ -24,6 +24,9 @@ extension OrganizationStore {
             if section == .regular, slot.section != .regular {
                 try archivePinnedPageIfDrifted(slot: slot, tab: tab, closedAt: stamp, in: db)
             }
+            // A tab that enters the regular section or another workspace starts its idle time now (idle archiving, decision 34): the old
+            // `lastActiveAt` says nothing about how long it has been where it is now.
+            let isNewToItsPlace = (section == .regular && slot.section != .regular) || slot.workspaceID != workspaceID
             let pinnedPage = section == .regular
                 ? (url: String?.none, title: String?.none, favicon: String?.none)
                 : (url: tab.pinnedURL ?? tab.url, title: tab.pinnedTitle ?? tab.title,
@@ -34,7 +37,8 @@ extension OrganizationStore {
             slot.sortIndex = index
             slot.modifiedAt = stamp
             try slot.update(db)
-            if tab.pinnedURL != pinnedPage.url || tab.pinnedTitle != pinnedPage.title || tab.pinnedFaviconURL != pinnedPage.favicon {
+            if isNewToItsPlace || tab.pinnedURL != pinnedPage.url || tab.pinnedTitle != pinnedPage.title || tab.pinnedFaviconURL != pinnedPage.favicon {
+                if isNewToItsPlace { tab.lastActiveAt = stamp }
                 tab.pinnedURL = pinnedPage.url
                 tab.pinnedTitle = pinnedPage.title
                 tab.pinnedFaviconURL = pinnedPage.favicon

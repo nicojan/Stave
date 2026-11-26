@@ -261,6 +261,21 @@ struct PageQuestionQueuesTests {
         #expect(await question.value == .allow)
     }
 
+    /// Idle archiving leaves a tab with a several-files question open alone (held or up), and only that tab.
+    @Test func openSeveralFilesQuestionIsReportedPerTab() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        #expect(!queues.hasSeveralDownloadsQuestion(tabID: tab))
+        let held = Task { await queues.askSeveralDownloads(tabID: tab, host: "example.com", isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(queues.hasSeveralDownloadsQuestion(tabID: tab))
+        #expect(!queues.hasSeveralDownloadsQuestion(tabID: UUID()))
+        queues.cancel(tabID: tab)
+        #expect(await held.value == nil)
+        #expect(!queues.hasSeveralDownloadsQuestion(tabID: tab))
+    }
+
     /// Another sheet on the window holds the question; it comes up when that sheet is gone.
     @Test func severalFilesQuestionWaitsBehindAnotherSheet() async {
         let queues = PageQuestionQueues()

@@ -318,6 +318,22 @@ public final class PageHost {
         }
     }
 
+    /// The tabs among `ids` that idle archiving must leave alone because of their live page: playing media or capturing the camera or
+    /// microphone, a JavaScript dialog waiting, or pop-ups open. Each media check is time-limited, and one that never answers counts as
+    /// busy. A tab with no live page is not busy for these reasons.
+    public func busyTabs(among ids: Set<UUID>) async -> Set<UUID> {
+        let pagesToAsk = ids.compactMap { pages[$0] }
+        let checks = pagesToAsk.map { page in Task { @MainActor in await self.isBusy(page) } }
+        var busy = Set<UUID>()
+        for (page, check) in zip(pagesToAsk, checks) where await check.value { busy.insert(page.tabID) }
+        return busy.union(holdingDialogsOrPopups(among: ids))
+    }
+
+    /// The synchronous part of `busyTabs`: read again right before archiving, since a dialog or pop-up can arrive during the media checks.
+    public func holdingDialogsOrPopups(among ids: Set<UUID>) -> Set<UUID> {
+        ids.filter { (delegates[$0]?.pendingDialogs ?? 0) > 0 || hasOpenPopups($0) }
+    }
+
     /// Whether an unshown page can't be hibernated now. A page with a JavaScript dialog waiting is busy without being asked: its script is
     /// blocked in WebKit's completion handler and the media question may never come back. Any other check that takes longer than
     /// `mediaCheckLimit` counts as busy too (try again next round).

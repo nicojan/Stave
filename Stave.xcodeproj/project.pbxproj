@@ -67,6 +67,7 @@
 		D39C5C1F0BA29375BA0F8ED0 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */; };
 		DA6B611DBEB1E0CA983490CB /* SitePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6D0CAD17860FE4B362A4EA5 /* SitePanel.swift */; };
 		DD235B3EA94856AC4F5251C8 /* FindBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4835396844D6668AA906D3E8 /* FindBar.swift */; };
+		E127BCF258BAE1854B0B08F0 /* AutoArchiveTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C6B998766AB86CABB67A64 /* AutoArchiveTimer.swift */; };
 		F9A4341740E7D1B99AE3F5C3 /* AppDelegate+Links.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9E07F13F5786B741DCC0D1 /* AppDelegate+Links.swift */; };
 		FB1DB824B4638F21B4AD2727 /* ProfilesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED534804EA2CBABE55C1A8B7 /* ProfilesPane.swift */; };
 		FBF0B0AB0AEA0BAEB7C99E0A /* SettingsAlerts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65E45914F2DC9C946E818E2 /* SettingsAlerts.swift */; };
@@ -110,6 +111,7 @@
 		99A3C13E6C531E06EA52627A /* Stave.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stave.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A65E45914F2DC9C946E818E2 /* SettingsAlerts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAlerts.swift; sourceTree = "<group>"; };
 		A69A09832629A93F3D86BBE1 /* AppDelegate+Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Settings.swift"; sourceTree = "<group>"; };
+		A7C6B998766AB86CABB67A64 /* AutoArchiveTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoArchiveTimer.swift; sourceTree = "<group>"; };
 		A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageFind.swift; sourceTree = "<group>"; };
 		ACA45A6512E37822BFE15DB9 /* ContainersPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContainersPane.swift; sourceTree = "<group>"; };
 		B6F3D4CB49D8998582C21D9A /* StorePageWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorePageWriter.swift; sourceTree = "<group>"; };
@@ -210,6 +212,7 @@
 				65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */,
 				995508A5262708F8EE5364E3 /* AppMenuState.swift */,
 				21580A0E3C81A87C49AE021C /* ArcImportSession.swift */,
+				A7C6B998766AB86CABB67A64 /* AutoArchiveTimer.swift */,
 				1942EB2B034830D345E030ED /* BrowserWindowController.swift */,
 				4E267B057490F99BB0053CAD /* BrowserWindowController+PageEvents.swift */,
 				BE092AF52ED81A9E996EF1C0 /* BrowserWindowController+Pages.swift */,
@@ -417,6 +420,7 @@
 				829BEB3A5BA3BEEDB81DF151 /* ArcImportSheet.swift in Sources */,
 				BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */,
 				2CA7DB817E90B18CB1B0B8FF /* AuthSheet.swift in Sources */,
+				E127BCF258BAE1854B0B08F0 /* AutoArchiveTimer.swift in Sources */,
 				46130092B92463BE21483B0E /* BrowserWindowController+PageEvents.swift in Sources */,
 				8C325985CD5E15C282708FFA /* BrowserWindowController+Pages.swift in Sources */,
 				AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */,
