@@ -14,10 +14,14 @@ extension PageDelegateTests {
         "webView:decidePolicyForNavigationResponse:decisionHandler:",
         "webView:navigationAction:didBecomeDownload:",
         "webView:navigationResponse:didBecomeDownload:",
+        "webView:didStartProvisionalNavigation:",
+        "webView:didReceiveServerRedirectForProvisionalNavigation:",
         "webView:didCommitNavigation:",
         "webView:didFailProvisionalNavigation:withError:",
         "webView:didFailNavigation:withError:",
         "webViewWebContentProcessDidTerminate:",
+        // HTTP auth (Task 11): the async Swift name is `webView(_:respondTo:)`
+        "webView:didReceiveAuthenticationChallenge:completionHandler:",
         // UI
         "webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:",
         "webViewDidClose:",

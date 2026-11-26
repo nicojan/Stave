@@ -129,12 +129,21 @@ final class PageEventsRouter: PageEvents {
 
     /// Waits in the app-wide queue until the window or pop-up showing the tab can ask; denied when the asking page is gone first.
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
-        await environment.mediaQuestions.ask(pageHost: environment.pageHost, tabID: tabID, host: host, camera: camera, microphone: microphone)
+        await environment.pageQuestions.ask(pageHost: environment.pageHost, tabID: tabID, host: host, camera: camera, microphone: microphone)
     }
 
-    /// The tab's page went away or navigated: its waiting camera and microphone questions are denied.
+    /// Waits in the app-wide queue until the window or pop-up showing the tab can ask; nil (nothing sent) when the system drops it (the asking page is gone first); the user's Cancel is `.cancelled`.
+    func askAuth(tabID: UUID, challenge: AuthChallenge) async -> AuthReply? {
+        await environment.pageQuestions.askAuth(pageHost: environment.pageHost, tabID: tabID, challenge: challenge)
+    }
+
+    /// The tab's page went away or navigated: its waiting camera, microphone and sign-in questions are denied or cancelled.
     func cancelWaitingQuestions(tabID: UUID) {
-        environment.mediaQuestions.cancel(tabID: tabID)
+        environment.pageQuestions.cancel(tabID: tabID)
+    }
+
+    func cancelWaitingAuthQuestions(tabID: UUID, site: String) {
+        environment.pageQuestions.cancelAuth(tabID: tabID, site: site)
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async {

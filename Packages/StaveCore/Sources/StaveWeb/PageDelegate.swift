@@ -27,6 +27,10 @@ public enum QuestionAnswer: Sendable {
     /// "Open this link in ‹App›?" for the tab's page. `host`: the asking page's site, named in the question; nil for a typed address.
     /// Asked only while the tab is shown; otherwise false.
     func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool
+    /// "‹host› wants you to sign in" for an HTTP Basic, Digest, NTLM or default-method challenge. A question that can't be shown yet (the tab
+    /// isn't shown, another sheet is up) waits until it can. `.cancelled`: the user pressed Cancel. Nil: the system dropped it (the tab went
+    /// away, navigated or failed to load first). Either way nothing is sent; only the user's Cancel counts toward the cancel limit.
+    func askAuth(tabID: UUID, challenge: AuthChallenge) async -> AuthReply?
     /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
     /// Asked only while the tab is shown; otherwise `unasked`.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer
@@ -38,8 +42,11 @@ public enum QuestionAnswer: Sendable {
     /// honoured for an Allow only (`mediaDecision`).
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool)
     /// The tab's page went away (closed or unloaded) or committed a new main-frame document: the questions still waiting for it, and a media
-    /// sheet up for it, are dropped (denied, remembering nothing). They never appear over a page that did not ask.
+    /// or sign-in sheet up for it, are dropped (denied or cancelled, remembering nothing). They never appear over a page that did not ask.
     func cancelWaitingQuestions(tabID: UUID)
+    /// A main-frame load failed or was stopped before it committed: only the tab's HTTP sign-in questions about `site` (`AuthChallenge.siteKey`,
+    /// the failed navigation's host) are dropped by the system. The page shown, its other questions and its other sites' sign-ins stay.
+    func cancelWaitingAuthQuestions(tabID: UUID, site: String)
     /// `origin`: the host of the frame that asked (nil for a frame with no web origin), which the dialog names instead of the top page.
     func alert(tabID: UUID, origin: String?, message: String) async
     func confirm(tabID: UUID, origin: String?, message: String) async -> Bool
@@ -106,7 +113,18 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     weak var host: PageHost?
     private weak var ownEvents: PageEvents?
     /// The URL of the main-frame navigation last allowed, for failures whose error names no URL.
-    private var pendingURL: URL?
+    var pendingURL: URL?
+    /// The hosts of the subframe navigations allowed since the last main-frame commit, which may ask for HTTP credentials (`PageDelegate+Auth`).
+    var allowedFrameHosts: [String] = []
+    /// A main-frame navigation was allowed and has neither committed nor failed: `pendingURL`'s host may ask for credentials meanwhile.
+    var mainFrameProvisional = false
+    /// The `WKNavigation` WebKit started for the navigation that is provisional now; nil until it starts (allowing a navigation clears it).
+    /// A failure ends the provisional state only when it is this navigation's, so a replaced navigation's late cancel can't end its successor.
+    var provisionalNavigation: ObjectIdentifier?
+    /// This page's sign-in questions: one sheet per protection space, a cap on waiting ones, and a stop after repeated cancels.
+    let authGate = AuthQuestionGate()
+    /// The system proxy settings, read when a proxy challenge arrives. A seam for tests.
+    var proxySettings: () -> [String: Any]? = { PageDelegate.systemProxySettings }
     /// Every load failure WebKit delivered, shown or not. Tests wait on it to know a late failure has arrived before checking for silence.
     private(set) var deliveredLoadFailures: [NSError] = []
     /// The latest external-app hand-off, kept so tests can wait for it.
@@ -268,6 +286,7 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
                 return .cancel
             }
             if opensHere { allowMainFrame(url, page: page) }
+            if !navigation.isMainFrame, !targetsNewWindow { noteAllowedFrame(url) }
             return .allow
         }
     }
@@ -320,6 +339,8 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// Content blocking follows the site being opened, before its load starts (ruling R6).
     private func allowMainFrame(_ url: String, page: LivePage) {
         pendingURL = URL(string: url)
+        mainFrameProvisional = true
+        provisionalNavigation = nil
         host?.updateBlocking(for: page, navigatingTo: url)
     }
 
@@ -346,6 +367,10 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         page?.committed()
+        // The old document's frames and the pending navigation are over: only the committed page's own site may ask for credentials now.
+        mainFrameProvisional = false
+        provisionalNavigation = nil
+        allowedFrameHosts = []
         // Zoom follows the committed site, or goes back to 100 % (decision 12), so it never leaks to another site.
         if let page { host?.applyStoredZoom(to: page) }
         // As in Chrome, a question waiting for the old document is dropped when a new one commits.
@@ -353,7 +378,48 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         refuseWaitingDownloads()
     }
 
+    public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        navigationStarted(navigation.map(ObjectIdentifier.init))
+    }
+
+    /// WebKit started the navigation the policy just allowed: from now on its failure, and only its failure, ends the provisional state.
+    func navigationStarted(_ navigation: ObjectIdentifier?) {
+        guard mainFrameProvisional else { return }
+        provisionalNavigation = navigation
+    }
+
+    public func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+        navigationRedirected(navigation.map(ObjectIdentifier.init))
+    }
+
+    /// A server redirect re-runs the policy check, which clears the recorded navigation; WebKit then reports the redirect for the same
+    /// navigation (no second start), so it is recorded again: its failure, a stop included, still ends the provisional state.
+    func navigationRedirected(_ navigation: ObjectIdentifier?) {
+        navigationStarted(navigation)
+    }
+
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        provisionalNavigationFailed(navigation.map(ObjectIdentifier.init), error: error)
+    }
+
+    /// The current navigation failing, with any error code (a stop, Esc or `window.stop()` is a cancel), ends the provisional state and drops
+    /// the sign-ins waiting for its host. A cancel of a navigation that was already replaced ends nothing: its successor is the one waiting.
+    /// A failure we can't place (no navigation recorded) ends the state unless it is a cancel.
+    func provisionalNavigationFailed(_ navigation: ObjectIdentifier?, error: Error) {
+        let nsError = error as NSError
+        let isCancel = nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+        let isCurrent: Bool
+        if let navigation, let provisionalNavigation {
+            isCurrent = navigation == provisionalNavigation
+        } else {
+            isCurrent = !isCancel
+        }
+        if isCurrent {
+            let site = pendingURL.flatMap { SiteHost.normalized($0.absoluteString) }
+            mainFrameProvisional = false
+            provisionalNavigation = nil
+            if let site { events?.cancelWaitingAuthQuestions(tabID: tabID, site: site) }
+        }
         loadFailed(error)
     }
 

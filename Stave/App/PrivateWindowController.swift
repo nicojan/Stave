@@ -51,7 +51,7 @@ final class PrivateWindowController: NSObject, NSWindowDelegate {
             backing: .buffered, defer: false
         )
         let host = environment.pageHost
-        prompts = PagePrompts(window: window, pageHost: host, center: environment.mediaQuestions, shows: { [weak model, weak host] tabID in
+        prompts = PagePrompts(window: window, pageHost: host, center: environment.pageQuestions, shows: { [weak model, weak host] tabID in
             guard let model, let host, model.selectedTabID == tabID else { return false }
             return host.existingPage(tabID) != nil
         })

@@ -21,6 +21,8 @@ public final class WaitingQuestions<Answer: Sendable> {
 
     private final class Entry {
         let tabID: UUID
+        /// The site the question is about, for `cancel(tabID:site:)`; nil when it has none.
+        let site: String?
         let show: Show
         /// True once the page that asked is gone (unloaded, navigated, remade): the question is then dropped, never shown.
         let isStale: () -> Bool
@@ -29,8 +31,9 @@ public final class WaitingQuestions<Answer: Sendable> {
         /// Counts shows, so a late report from an earlier sheet never answers a later one.
         var generation = 0
 
-        init(tabID: UUID, isStale: @escaping () -> Bool, show: @escaping Show) {
+        init(tabID: UUID, site: String?, isStale: @escaping () -> Bool, show: @escaping Show) {
             self.tabID = tabID
+            self.site = site
             self.isStale = isStale
             self.show = show
         }
@@ -44,10 +47,10 @@ public final class WaitingQuestions<Answer: Sendable> {
 
     /// The answer, or nil when the question is cancelled. Shown at once when it can be, else when `drain` finds that it can. `isStale` is
     /// checked on every drain and right before each show: a stale question resolves with nil and is never shown.
-    public func ask(tabID: UUID, isStale: @escaping () -> Bool = { false }, show: @escaping Show) async -> Answer? {
+    public func ask(tabID: UUID, site: String? = nil, isStale: @escaping () -> Bool = { false }, show: @escaping Show) async -> Answer? {
         guard !isClosed, !isStale() else { return nil }
         return await withCheckedContinuation { continuation in
-            let entry = Entry(tabID: tabID, isStale: isStale, show: show)
+            let entry = Entry(tabID: tabID, site: site, isStale: isStale, show: show)
             entry.continuation = continuation
             entries.append(entry)
             drain()
@@ -76,6 +79,11 @@ public final class WaitingQuestions<Answer: Sendable> {
     /// The tab's questions resolve with nil, waiting or up (an up sheet is ended by its window, and its late report is ignored).
     public func cancel(tabID: UUID) {
         for entry in entries where entry.tabID == tabID { resolve(entry, nil) }
+    }
+
+    /// The tab's questions about `site` resolve with nil, waiting or up; its other questions are untouched.
+    public func cancel(tabID: UUID, site: String) {
+        for entry in entries where entry.tabID == tabID && entry.site == site { resolve(entry, nil) }
     }
 
     /// Every question resolves with nil, and later ones resolve at once.

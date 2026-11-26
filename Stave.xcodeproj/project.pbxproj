@@ -16,6 +16,7 @@
 		0CAE474AB3F75F2AACC5302C /* PrivateWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */; };
 		12877385E5C6F6579C768E43 /* CompactDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D854C199C3FAA3BCC1D639F6 /* CompactDriver.swift */; };
 		23F6E20E9AA5179430CEE3F3 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CEDA1E446463C3A7EFF293 /* HistoryView.swift */; };
+		2CA7DB817E90B18CB1B0B8FF /* AuthSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 824FA929BF0C5344B0511A96 /* AuthSheet.swift */; };
 		2D6F36A4B9677ABA68490F08 /* StaveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3BA1703865C93D34246435 /* StaveApp.swift */; };
 		2F9223943913552679A1DF70 /* DownloadsPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */; };
 		32C2CE65FEF7878608B12A6A /* DebugLaunchOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */; };
@@ -38,9 +39,9 @@
 		8C325985CD5E15C282708FFA /* BrowserWindowController+Pages.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE092AF52ED81A9E996EF1C0 /* BrowserWindowController+Pages.swift */; };
 		9120B1829D328055C745B599 /* TabPlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C397559D438EA7976BB5DBA /* TabPlaceholderView.swift */; };
 		91BCC9B3B6888D691F00E509 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */; };
+		94ABD6333B0008143A9D6FF4 /* PageQuestionCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2C93C2ABCF17D34B7347C0 /* PageQuestionCenter.swift */; };
 		984B8D0F42BC2319E1F111F5 /* WorkspaceSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B38E719DD86C042B0D6CDCD /* WorkspaceSwitcher.swift */; };
 		99CB40616081101643172E0F /* CompactContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BCA109F1ED09F14F92FE8AF /* CompactContainer.swift */; };
-		A0F26111A32BA92309611D15 /* MediaQuestionCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */; };
 		A19A3D7B931732978698E2BA /* AppDelegate+Launch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D48EFC0A99CD0DBE88343EAC /* AppDelegate+Launch.swift */; };
 		A9CC316968C4BFDEA0F2FE45 /* SidebarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFC6E574E830FC6CF9C6810 /* SidebarActions.swift */; };
 		AB48C18B8B230B2F01549179 /* AppDelegate+PageTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F764C169F4A16116B13D08E /* AppDelegate+PageTools.swift */; };
@@ -89,9 +90,11 @@
 		65A48DCB841AA899FABF1EB4 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopupWindowController.swift; sourceTree = "<group>"; };
 		72C075B443C44A4D2A1AEBCB /* DownloadsPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPopover.swift; sourceTree = "<group>"; };
+		7D2C93C2ABCF17D34B7347C0 /* PageQuestionCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageQuestionCenter.swift; sourceTree = "<group>"; };
 		7D8BC787394FE59027F03DE4 /* PageFailureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageFailureView.swift; sourceTree = "<group>"; };
 		7ED2F2159BFD4065D57C6AFE /* Stave.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Stave.entitlements; sourceTree = "<group>"; };
 		81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagePrompts.swift; sourceTree = "<group>"; };
+		824FA929BF0C5344B0511A96 /* AuthSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSheet.swift; sourceTree = "<group>"; };
 		867C1FF0B1AC1C218FE24AF3 /* CommandBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBarView.swift; sourceTree = "<group>"; };
 		8A7B3A611E5FC0DBA699EF2D /* SidebarPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPresenter.swift; sourceTree = "<group>"; };
 		95FBC22188EEA92B26C9E0CF /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -118,7 +121,6 @@
 		E80432D1CC0368349814BADA /* ArcImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcImportSheet.swift; sourceTree = "<group>"; };
 		ED8FEF237B01F443D40E6BC2 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		F0514FA8A157CC9EE49809FB /* PageContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageContentView.swift; sourceTree = "<group>"; };
-		F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaQuestionCenter.swift; sourceTree = "<group>"; };
 		F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateWindowController.swift; sourceTree = "<group>"; };
 		FF5F7C81B2A9BB75BD50EA5B /* SwipeCatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeCatcher.swift; sourceTree = "<group>"; };
 		FF9003316572911593E1DFEE /* ArchivePopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivePopover.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 		21A24A833C93DF9ED96A4030 /* Content */ = {
 			isa = PBXGroup;
 			children = (
+				824FA929BF0C5344B0511A96 /* AuthSheet.swift */,
 				4835396844D6668AA906D3E8 /* FindBar.swift */,
 				46CEDA1E446463C3A7EFF293 /* HistoryView.swift */,
 				F0514FA8A157CC9EE49809FB /* PageContentView.swift */,
@@ -193,10 +196,10 @@
 				E4C87D70CFDFCA69E1AA2136 /* DebugLaunchOptions.swift */,
 				2527A6CB8EBE50648299A1D9 /* HistoryClearPrompt.swift */,
 				BB0B8B7ABBCF1142F1D506D7 /* ImportCoordinator.swift */,
-				F6D0B314D11523AF16491F4F /* MediaQuestionCenter.swift */,
 				0C8CF2CF2389CAAC20E91ABE /* PageEventsRouter.swift */,
 				A9F9AAB99EEB6A69C2ADE663 /* PageFind.swift */,
 				81C34DA111F10EAB2462EFD5 /* PagePrompts.swift */,
+				7D2C93C2ABCF17D34B7347C0 /* PageQuestionCenter.swift */,
 				68D5BAF4428F66E7794BD8B9 /* PopupWindowController.swift */,
 				F9E73071A58828ECA19339B6 /* PrivateWindowController.swift */,
 				36EE5AA95C105938B9CB1919 /* StandardShortcutKeys.swift */,
@@ -390,6 +393,7 @@
 				3D464C41BCA6A1B79C118877 /* ArcImportSession.swift in Sources */,
 				829BEB3A5BA3BEEDB81DF151 /* ArcImportSheet.swift in Sources */,
 				BE5464C02BFCBC20739E6B32 /* ArchivePopover.swift in Sources */,
+				2CA7DB817E90B18CB1B0B8FF /* AuthSheet.swift in Sources */,
 				46130092B92463BE21483B0E /* BrowserWindowController+PageEvents.swift in Sources */,
 				8C325985CD5E15C282708FFA /* BrowserWindowController+Pages.swift in Sources */,
 				AF52E756964DF7C4DD7FC46E /* BrowserWindowController.swift in Sources */,
@@ -405,13 +409,13 @@
 				C96A0E51911B33D8D1E18EC2 /* HistoryClearPrompt.swift in Sources */,
 				23F6E20E9AA5179430CEE3F3 /* HistoryView.swift in Sources */,
 				C5F63F0387FA0137FBE5E0BC /* ImportCoordinator.swift in Sources */,
-				A0F26111A32BA92309611D15 /* MediaQuestionCenter.swift in Sources */,
 				BF70579095B7404A5E926D85 /* NamePromptSheet.swift in Sources */,
 				0A72401CB50855852A482D81 /* PageContentView.swift in Sources */,
 				B207D8F4B94BD9461B0FAC74 /* PageEventsRouter.swift in Sources */,
 				0971FA050C097C3BD6D75FE0 /* PageFailureView.swift in Sources */,
 				CED9292C543EBB824037EF48 /* PageFind.swift in Sources */,
 				4360D4C8CE0C05CB647EEE2D /* PagePrompts.swift in Sources */,
+				94ABD6333B0008143A9D6FF4 /* PageQuestionCenter.swift in Sources */,
 				3A45E58A25EFCE4B95B8A42F /* PopupWindowController.swift in Sources */,
 				0CAE474AB3F75F2AACC5302C /* PrivateWindowController.swift in Sources */,
 				6CBDEC5AEF74820B1ADFD55F /* PrivateWindowView.swift in Sources */,

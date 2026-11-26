@@ -73,6 +73,14 @@ final class FakeEvents: PageEvents {
     }
 
     func cancelWaitingQuestions(tabID: UUID) { cancelledTabs.append(tabID) }
+    /// Tabs whose waiting sign-in questions alone were cancelled (a main-frame load failed).
+    var cancelledAuthTabs: [UUID] = []
+    /// The sites those cancels were for (`AuthChallenge.siteKey`), in the same order.
+    var cancelledAuthSites: [String] = []
+    func cancelWaitingAuthQuestions(tabID: UUID, site: String) {
+        cancelledAuthTabs.append(tabID)
+        cancelledAuthSites.append(site)
+    }
 
     /// Each clicked file link inside an opened file's grant that opens a new tab.
     var linkedFiles: [(opener: UUID, file: URL, select: Bool)] = []
@@ -120,6 +128,34 @@ final class FakeEvents: PageEvents {
         mediaQuestions.append((host, camera, microphone))
         whileAskingMedia?()
         return mediaAnswer
+    }
+
+    /// Each sign-in question that was actually asked (shown), with its tab.
+    var authQuestions: [(tabID: UUID, challenge: AuthChallenge)] = []
+    /// nil: the user cancelled (unless `authDropped`).
+    var authAnswer: AuthAnswer?
+    /// True: the system dropped the question (no reply at all), so it is not the user's Cancel.
+    var authDropped = false
+    /// True: the tab isn't shown, so a sign-in question waits (as the app's queue holds it) until `showTab()`.
+    var authHeld = false
+    private var heldAuth: [CheckedContinuation<Void, Never>] = []
+    var heldAuthCount: Int { heldAuth.count }
+    /// Runs while the sign-in question is up.
+    var whileAskingAuth: (() -> Void)?
+
+    func showTab() {
+        authHeld = false
+        let waiting = heldAuth
+        heldAuth = []
+        for continuation in waiting { continuation.resume() }
+    }
+
+    func askAuth(tabID: UUID, challenge: AuthChallenge) async -> AuthReply? {
+        if authHeld { await withCheckedContinuation { heldAuth.append($0) } }
+        authQuestions.append((tabID, challenge))
+        whileAskingAuth?()
+        if authDropped { return nil }
+        return authAnswer.map { .signedIn($0) } ?? .cancelled
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async { alerts.append(message); dialogOrigins.append(origin) }

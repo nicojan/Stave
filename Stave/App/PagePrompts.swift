@@ -1,27 +1,41 @@
 import AppKit
 import StaveCore
+import SwiftUI
 import StaveWeb
 
 /// A page's question up as a sheet; `end` cancels it, and its waiting question then resolves with the safe answer.
 struct PagePanel {
     let tabID: UUID
     let end: () -> Void
-    /// Set for the media sheet, which goes back to waiting when its tab is hidden: marks it sent back (a flag, not a return code), then ends it.
+    /// For a sign-in sheet: the site it is about (`AuthChallenge.siteKey`), so a failed load can end only that site's sheet.
+    var site: String?
+    /// Set for a sheet that comes from the waiting queue (media, sign-in), which goes back to waiting when its tab is hidden: marks it sent
+    /// back (a flag, not a return code), then ends it.
     var sendBack: (() -> Void)?
 
-    init(tabID: UUID, end: @escaping () -> Void, sendBack: (() -> Void)? = nil) {
+    init(tabID: UUID, kind: PageQuestionKind? = nil, site: String? = nil, end: @escaping () -> Void, sendBack: (() -> Void)? = nil) {
         self.tabID = tabID
+        self.kind = kind
+        self.site = site
         self.end = end
         self.sendBack = sendBack
     }
 
-    var isMedia: Bool { sendBack != nil }
-    /// A download question's sheet: it comes down when its page commits a new document (`MediaQuestionCenter.cancel`), so it can't hold up
-    /// the new page's questions.
-    var isDownload = false
+    /// The kind of question this sheet is, for the kinds `PageQuestionQueues` cancels together (a camera or sign-in sheet from the waiting
+    /// queue, a download question's sheet). Nil for the rest (JavaScript dialogs, the file picker, the external-app question), which a new
+    /// document leaves alone.
+    var kind: PageQuestionKind?
+
+    var isQueued: Bool { sendBack != nil }
 }
 
-/// Set when a media sheet is taken down because its tab was hidden, before the sheet ends: its completion then reports "sent back" rather
+/// A weak reference to one sheet, for a callback made before the sheet exists.
+@MainActor
+final class SheetReference {
+    weak var sheet: NSWindow?
+}
+
+/// Set when a camera or sign-in sheet is taken down because its tab was hidden, before the sheet ends: its completion then reports "sent back" rather
 /// than "cancelled". A flag, because a return code could be mistaken for another way a sheet ends (`AppDelegate.quit()` ends sheets with `.cancel`).
 @MainActor
 final class SentBackFlag {
@@ -29,16 +43,16 @@ final class SentBackFlag {
 }
 
 /// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download several files", camera
-/// and microphone, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
+/// and microphone, HTTP sign-in, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
 /// can't be asked (its tab isn't shown here, another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its
 /// own window, so it never blocks another window.
 ///
-/// The camera and microphone question is the exception to "refused at once": it is asked through the app-wide `MediaQuestionCenter`, where it
-/// waits when it can't be shown, and is shown by whichever window shows its tab when no sheet is up. Hiding its tab while its sheet is up
-/// sends it back to waiting. It is denied, remembering nothing, when its page goes away or navigates, its tab goes away (`forget`), or the
-/// window it is up on closes.
+/// The camera and microphone question and the HTTP sign-in question are the exception to "refused at once": they are asked through the
+/// app-wide `PageQuestionCenter`, where they wait when they can't be shown, and are shown by whichever window shows their tab when no sheet
+/// is up. Hiding the tab while the sheet is up sends the question back to waiting. A camera question is denied, remembering nothing, and a
+/// sign-in question cancelled, when the page goes away or navigates, its tab goes away (`forget`), or the window it is up on closes.
 @MainActor
-final class PagePrompts {
+final class PagePrompts: PageQuestionWindow {
     private weak var window: NSWindow?
     private let pageHost: PageHost
     /// Whether this window shows the tab now: every question is asked only on the window showing its tab.
@@ -53,10 +67,10 @@ final class PagePrompts {
         var gate: PageDialogGate
     }
     private var isClosed = false
-    private let center: MediaQuestionCenter
+    private let center: PageQuestionCenter
     private var sheetEndObserver: NSObjectProtocol?
 
-    init(window: NSWindow, pageHost: PageHost, center: MediaQuestionCenter, shows: @escaping (UUID) -> Bool) {
+    init(window: NSWindow, pageHost: PageHost, center: PageQuestionCenter, shows: @escaping (UUID) -> Bool) {
         self.window = window
         self.pageHost = pageHost
         self.center = center
@@ -112,7 +126,7 @@ final class PagePrompts {
     }
 
     /// "Allow example.com to use your camera?" with Allow / Don't Allow and "Remember for this site", ticked by default (decision 11). Only an
-    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). Called by `MediaQuestionCenter` when this window can ask now;
+    /// Allow is remembered (`mediaDecision` stores nothing for a Don't Allow). Called by `PageQuestionQueues` when this window can ask now;
     /// `finish` hears how the sheet ended: answered, sent back (its tab was hidden), or cancelled.
     func showMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool, finish: @escaping (WaitingQuestions<MediaAnswer>.Result) -> Void) -> Bool {
         guard let window, canAsk(tabID) else { return false }
@@ -128,6 +142,7 @@ final class PagePrompts {
         let sentBack = SentBackFlag()
         panels[id] = PagePanel(
             tabID: tabID,
+            kind: .media,
             end: { [weak window, weak sheet] in
                 guard let window, let sheet else { return }
                 window.endSheet(sheet, returnCode: .abort)
@@ -148,6 +163,54 @@ final class PagePrompts {
                 finish(sentBack.isSet ? .sentBack : .cancelled)
             }
             // The window is free of this sheet: another waiting question may go up. A backup to the sheet-end notification.
+            center.drain()
+        }
+        return true
+    }
+
+    /// The HTTP sign-in sheet (`AuthSheet`). Called by `PageQuestionQueues` when this window can ask now; `finish` hears how it ended: signed
+    /// in, cancelled by the user, sent back (its tab was hidden) or cancelled (the page went away). Stave keeps no password: the answer is
+    /// handed to WebKit and forgotten.
+    func showAuth(tabID: UUID, challenge: AuthChallenge, finish: @escaping (WaitingQuestions<AuthReply>.Result) -> Void) -> Bool {
+        guard let window, canAsk(tabID) else { return false }
+        let result = AuthSheetResult()
+        // The sheet this callback belongs to, not whichever sheet is attached to the window now (a sheet of another kind may have replaced
+        // it). The first call decides; a second (a double click, Return then Cancel) is ignored.
+        let own = SheetReference()
+        let sheet = NSWindow(contentViewController: NSHostingController(rootView: AuthSheet(challenge: challenge, onFinish: { [weak window, own] answer in
+            guard !result.isUserChoice else { return }
+            result.answer = answer
+            result.isUserChoice = true
+            if let window, let sheet = own.sheet { window.endSheet(sheet) }
+        })))
+        own.sheet = sheet
+        let id = UUID()
+        let sentBack = SentBackFlag()
+        panels[id] = PagePanel(
+            tabID: tabID,
+            kind: .auth,
+            site: challenge.siteKey,
+            end: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                window.endSheet(sheet, returnCode: .abort)
+            },
+            sendBack: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                sentBack.isSet = true
+                window.endSheet(sheet, returnCode: .abort)
+            }
+        )
+        let center = center
+        window.beginSheet(sheet) { [weak self] _ in
+            self?.panels[id] = nil
+            if result.isUserChoice {
+                // Sign In answers; the user's Cancel is a reply (`.cancelled`) that counts toward the cancel limit. The delegate sends no
+                // credential for either.
+                finish(.answered(result.answer.map { .signedIn($0) } ?? .cancelled))
+            } else {
+                // Taken down by the system (page gone, failed load, window closed): no reply, so it never counts as the user's Cancel.
+                finish(sentBack.isSet ? .sentBack : .cancelled)
+            }
             center.drain()
         }
         return true
@@ -197,6 +260,16 @@ final class PagePrompts {
 
     // MARK: - Ending
 
+    /// Ends the tab's sheets of these kinds as cancelled; each one's waiting question then resolves (`PageQuestionWindow`).
+    func endSheets(tabID: UUID, kinds: Set<PageQuestionKind>) {
+        end { $0.tabID == tabID && $0.kind.map(kinds.contains) == true }
+    }
+
+    /// Ends the tab's sign-in sheet about `site` only, as cancelled by the system.
+    func endAuthSheets(tabID: UUID, site: String) {
+        end { $0.tabID == tabID && $0.kind == .auth && $0.site == site }
+    }
+
     /// Ends the matching sheets as cancelled; each one's waiting question then resolves.
     func end(where matches: (PagePanel) -> Bool) {
         for (id, panel) in panels where matches(panel) {
@@ -205,7 +278,7 @@ final class PagePrompts {
         }
     }
 
-    /// The tab is no longer shown here: its sheets come down. A media question goes back to waiting; every other one is cancelled.
+    /// The tab is no longer shown here: its sheets come down. A camera or sign-in question goes back to waiting; every other one is cancelled.
     func hide(_ tabID: UUID) {
         for (id, panel) in panels where panel.tabID == tabID {
             panels[id] = nil
@@ -229,7 +302,7 @@ final class PagePrompts {
         sheetEndObserver = nil
     }
 
-    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it, and its waiting media questions are denied.
+    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it, and its waiting camera and sign-in questions are denied or cancelled.
     func forget(_ tabID: UUID) {
         gates[tabID] = nil
         center.cancel(tabID: tabID)
@@ -283,7 +356,7 @@ final class PagePrompts {
             guard let window, let sheet else { return }
             window.endSheet(sheet, returnCode: .abort)
         })
-        panel.isDownload = isDownload
+        panel.kind = isDownload ? .download : nil
         panels[id] = panel
         let response = await withCheckedContinuation { (continuation: CheckedContinuation<NSApplication.ModalResponse, Never>) in
             alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }

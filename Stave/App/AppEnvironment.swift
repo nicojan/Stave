@@ -44,7 +44,7 @@ final class AppEnvironment {
     /// Every open pop-up window, by opener tab.
     let popups = PopupRegistry()
     /// The one queue of camera and microphone questions, shown by whichever window shows the asking tab.
-    let mediaQuestions = MediaQuestionCenter()
+    let pageQuestions = PageQuestionCenter()
     /// Favicons fetched without cookies, cached in `<data folder>/Favicons/<sha256 of URL>.png` (decision 10).
     let favicons: FaviconLoader
     /// The rolling copies of the database in `<data folder>/Backups/`, started after launch maintenance.
