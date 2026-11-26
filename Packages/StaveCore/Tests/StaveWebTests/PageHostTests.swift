@@ -127,24 +127,21 @@ struct PageHostTests {
         }
     }
 
-    func removePersistentStores(_ ids: [UUID]) async {
-        for id in ids { try? await WKWebsiteDataStore.remove(forIdentifier: id) }
-    }
-
     // MARK: Stores
 
-    @Test func storesFollowProfileContainerAndPrivate() async {
-        let stores = WebDataStores()
+    @Test func storesFollowProfileContainerAndPrivate() async throws {
         let a = UUID(), b = UUID(), w = UUID()
-        let storeA = stores.store(for: .persistent(a))
-        #expect(storeA.isPersistent)
-        #expect(storeA.identifier == a)
-        let storeB = stores.store(for: .persistent(b))
-        #expect(storeB !== storeA)
-        #expect(storeB.identifier == b)
-        #expect(stores.store(for: .persistent(a)) === storeA)
-        #expect(!stores.store(for: .privateSession(stores.joinPrivateSession(profileID: w))).isPersistent)
-        await removePersistentStores([a, b])
+        try await StoreCleanup.scoped([a, b]) {
+            let stores = WebDataStores()
+            let storeA = stores.store(for: .persistent(a))
+            #expect(storeA.isPersistent)
+            #expect(storeA.identifier == a)
+            let storeB = stores.store(for: .persistent(b))
+            #expect(storeB !== storeA)
+            #expect(storeB.identifier == b)
+            #expect(stores.store(for: .persistent(a)) === storeA)
+            #expect(!stores.store(for: .privateSession(stores.joinPrivateSession(profileID: w))).isPersistent)
+        }
     }
 
     /// Private windows of a profile share one throwaway session, as in Chrome and Firefox, for as long as one of them is open.
@@ -184,30 +181,32 @@ struct PageHostTests {
         #expect(stores.store(for: .privateSession(a)) !== stores.store(for: .privateSession(b)))
     }
 
-    @Test func privateSessionNeverSharesAPersistentProfileOrContainerStore() async {
-        let stores = WebDataStores()
+    @Test func privateSessionNeverSharesAPersistentProfileOrContainerStore() async throws {
         let profile = UUID(), container = UUID()
-        let session = stores.joinPrivateSession(profileID: profile)
-        let shared = stores.store(for: .privateSession(session))
-        for key in [DataStoreKey.persistent(profile), .persistent(container)] {
-            let persistent = stores.store(for: key)
-            #expect(persistent !== shared)
-            #expect(persistent.isPersistent)
+        try await StoreCleanup.scoped([profile, container]) {
+            let stores = WebDataStores()
+            let session = stores.joinPrivateSession(profileID: profile)
+            let shared = stores.store(for: .privateSession(session))
+            for key in [DataStoreKey.persistent(profile), .persistent(container)] {
+                let persistent = stores.store(for: key)
+                #expect(persistent !== shared)
+                #expect(persistent.isPersistent)
+            }
+            #expect(!shared.isPersistent)
         }
-        #expect(!shared.isPersistent)
-        await removePersistentStores([profile, container])
     }
 
-    @Test func noDefaultStoreEver() async {
-        let stores = WebDataStores()
+    @Test func noDefaultStoreEver() async throws {
         let p = UUID()
-        let made = [stores.store(for: .persistent(p)), stores.store(for: .privateSession(stores.joinPrivateSession(profileID: UUID())))]
-        let defaultStore = WKWebsiteDataStore.default()
-        for store in made {
-            #expect(store !== defaultStore)
-            #expect(!(store.isPersistent && store.identifier == nil))
+        try await StoreCleanup.scoped([p]) {
+            let stores = WebDataStores()
+            let made = [stores.store(for: .persistent(p)), stores.store(for: .privateSession(stores.joinPrivateSession(profileID: UUID())))]
+            let defaultStore = WKWebsiteDataStore.default()
+            for store in made {
+                #expect(store !== defaultStore)
+                #expect(!(store.isPersistent && store.identifier == nil))
+            }
         }
-        await removePersistentStores([p])
     }
 
     // MARK: Loading
@@ -491,22 +490,23 @@ struct PageHostTests {
 
     /// When the last browser window closes, Stave stays open (decision 31) and unloads every browser-window page, so a background tab's
     /// audio, camera or microphone stops as it does in Safari, Chrome and Firefox. Private pages are left to their own windows.
-    @Test func persistentTabIDsNameOnlyBrowserWindowPages() async {
-        let profile = UUID()
-        let host = makeHost()
-        let normal = host.page(for: PageRequest(tabID: UUID(), store: .persistent(profile), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
-        let privatePage = host.page(for: request(url: ""), writer: writer)
-        #expect(host.persistentTabIDs == [normal.tabID])
-        normal.record(.stateChanged)
-        normal.record(.stateChanged)
-        writer.calls.removeAll()
-        for id in host.persistentTabIDs { host.unload(id) }
-        #expect(writer.stateWrites == 1)
-        #expect(host.existingPage(normal.tabID) == nil)
-        #expect(host.existingPage(privatePage.tabID) === privatePage)
-        #expect(host.persistentTabIDs.isEmpty)
-        host.close(privatePage.tabID)
-        await removePersistentStores([profile])
+    @Test func persistentTabIDsNameOnlyBrowserWindowPages() async throws {
+        try await StoreCleanup.withProfile { profile in
+            let host = makeHost()
+            host.snapshotter = { _, done in done(nil) } // the unloaded page's web view is released at once, so its store is free to remove
+            let normal = host.page(for: PageRequest(tabID: UUID(), store: .persistent(profile), siteSettingsProfileID: profile, url: "", title: "", faviconURL: nil, interactionState: nil), writer: writer)
+            let privatePage = host.page(for: request(url: ""), writer: writer)
+            #expect(host.persistentTabIDs == [normal.tabID])
+            normal.record(.stateChanged)
+            normal.record(.stateChanged)
+            writer.calls.removeAll()
+            for id in host.persistentTabIDs { host.unload(id) }
+            #expect(writer.stateWrites == 1)
+            #expect(host.existingPage(normal.tabID) == nil)
+            #expect(host.existingPage(privatePage.tabID) === privatePage)
+            #expect(host.persistentTabIDs.isEmpty)
+            host.close(privatePage.tabID)
+        }
     }
 
     // MARK: Snapshot memory

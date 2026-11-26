@@ -32,13 +32,13 @@ extension OrganizationStore {
         }
     }
 
-    private static func encoded<V: Encodable>(_ value: V) throws -> String {
+    static func encoded<V: Encodable>(_ value: V) throws -> String {
         let data = try JSONEncoder().encode(value)
         guard let text = String(data: data, encoding: .utf8) else { throw StoreError.notFound }
         return text
     }
 
-    private static func upsert(_ db: Database, key: String, text: String, at stamp: Date) throws {
+    static func upsert(_ db: Database, key: String, text: String, at stamp: Date) throws {
         try db.execute(
             sql: """
                 INSERT INTO setting (key, value, modifiedAt) VALUES (?, ?, ?)

@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let menuState = AppMenuState()
     var menuGeneration = 0
     var keyObservers: [NSObjectProtocol] = []
+    /// The browser window that was key most recently; Settings' Websites picker starts on its profile (R2-L3).
+    weak var lastKeyController: BrowserWindowController?
     /// The table's hidden alternate keys, such as ⌘= for View ▸ Zoom In (⌘+), as in Safari (`installHiddenShortcuts`).
     var alternateKeyMonitor: Any?
     private(set) var importCoordinator: ImportCoordinator?
@@ -69,6 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.searchEngine = environment.searchEngine
             menuState.externalLinks = environment.externalLinks
             menuState.historyRetention = environment.historyRetention
+            let storeRemoval = makeStoreRemoval(environment) // one instance, so the launch retry and every deletion take turns
+            menuState.settings = makeSettingsModel(environment, removal: storeRemoval)
+            retryPendingStoreRemovals(storeRemoval)
+            menuState.backups = environment.backups
             importCoordinator = ImportCoordinator(environment: environment, controllers: { [weak self] in self?.controllers ?? [] })
             let router = PageEventsRouter(
                 environment: environment, controllers: { [weak self] in self?.controllers ?? [] },
@@ -357,10 +363,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.sheetParent.map(rootWindow(of:)) ?? window
     }
 
+    /// The key browser window, else the browser window that was key most recently (Settings is key, say), else the main window, else any.
     var frontController: BrowserWindowController? {
         keyController
+            ?? lastKeyController.flatMap { last in controllers.first { $0 === last } }
             ?? controllers.first { $0.window === NSApp.mainWindow }
             ?? controllers.first
+    }
+
+    /// Remembers the key browser window as it changes (called from the key-window observer).
+    func noteKeyController() {
+        if let key = keyController { lastKeyController = key }
     }
 
     @discardableResult

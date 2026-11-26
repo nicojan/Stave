@@ -30,6 +30,12 @@ public final class WindowSession {
         states = states.filter { liveWindowIDs.contains($0.id) }
     }
 
+    /// Drops every state that names the profile. A profile deletion calls it after switching the live windows away: a state kept from a
+    /// closed window (the last one stays saved) would otherwise name a profile that is gone, and the save at quit would fail on its foreign key.
+    public func discardStates(forProfile profileID: UUID) {
+        states = states.filter { $0.profileID != profileID }
+    }
+
     /// One save for all windows, `saveDelay` after the last call. Every call restarts the delay.
     public func scheduleSave() {
         saveTask?.cancel()

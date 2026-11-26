@@ -12,9 +12,10 @@ struct StaveApp: App {
     var body: some Scene {
         Settings {
             SettingsView(
-                shortcuts: delegate.menuState.shortcuts, compactMode: delegate.menuState.compactMode, searchEngine: delegate.menuState.searchEngine,
-                externalLinks: delegate.menuState.externalLinks, historyRetention: delegate.menuState.historyRetention, isDefaultBrowser: delegate.menuState.isDefaultBrowser,
-                makeDefaultBrowser: { delegate.makeDefaultBrowser() }, refreshDefaultBrowser: { delegate.refreshDefaultBrowser() }
+                state: delegate.menuState,
+                makeDefaultBrowser: { delegate.makeDefaultBrowser() }, refreshDefaultBrowser: { delegate.refreshDefaultBrowser() },
+                showBackups: { delegate.showBackupsInFinder() },
+                frontProfileID: { delegate.frontController?.model.snapshot.profile.id }
             )
         }
             .commands {

@@ -134,7 +134,10 @@ extension AppDelegate {
         ].map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 // Deferred: during a resign, `NSApp.keyWindow` still names the old window.
-                Task { @MainActor in self?.refreshWorkspaceMenu() }
+                Task { @MainActor in
+                    self?.noteKeyController()
+                    self?.refreshWorkspaceMenu()
+                }
             }
         }
     }

@@ -10,10 +10,13 @@ import StaveWeb
 final class StorePageWriter: PageWriter, SiteSettingsSource {
     private let store: OrganizationStore
     private let revision: StoreRevision
+    /// Site writes bump the revision too, so Settings ▸ Websites re-reads (it lists these rows).
+    private let siteWrites: SiteSettingWrites
 
     init(store: OrganizationStore, revision: StoreRevision) {
         self.store = store
         self.revision = revision
+        self.siteWrites = SiteSettingWrites(store: store, revision: revision)
     }
 
     func writeNavigation(tabID: UUID, url: String, title: String, faviconURL: String?) {
@@ -65,7 +68,7 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
 
     func setDecision(profileID: UUID, host: String, key: SiteSettingKey, _ d: SiteDecision?) {
         do {
-            try store.setSiteDecision(profileID: profileID, host: host, key: key, d)
+            try siteWrites.setDecision(profileID: profileID, host: host, key: key, d)
         } catch {
             NSLog("Stave: could not save a site setting: \(error)")
         }
@@ -83,7 +86,7 @@ final class StorePageWriter: PageWriter, SiteSettingsSource {
 
     func setSiteValue<V: Codable>(profileID: UUID, host: String, key: SiteValueKey, _ value: V?) {
         do {
-            try store.setSiteValue(profileID: profileID, host: host, key: key, value)
+            try siteWrites.setValue(profileID: profileID, host: host, key: key, value)
         } catch {
             NSLog("Stave: could not save a site value: \(error)")
         }

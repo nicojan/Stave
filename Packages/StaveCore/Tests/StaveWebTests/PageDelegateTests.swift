@@ -450,48 +450,48 @@ struct PageDelegateTests {
     // MARK: R6: content blocking per site
 
     @Test func blockingFollowsTheSiteOnEachNavigation() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
-        #expect(page.isContentBlockingOn)
-        #expect(delegate.decide(NavigationRequest("https://www.example.com/a")) == .allow)
-        #expect(!page.isContentBlockingOn)
-        #expect(delegate.decide(NavigationRequest("https://example.com/b")) == .allow)
-        #expect(!page.isContentBlockingOn)
-        #expect(delegate.decide(NavigationRequest("https://example.org/")) == .allow)
-        #expect(page.isContentBlockingOn)
-        // A subframe doesn't change the page's site.
-        #expect(delegate.decide(NavigationRequest("https://example.com/f", isMainFrame: false)) == .allow)
-        #expect(page.isContentBlockingOn)
+        try await withProfile { profile in
+            let host = makeHost()
+            settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            #expect(page.isContentBlockingOn)
+            #expect(delegate.decide(NavigationRequest("https://www.example.com/a")) == .allow)
+            #expect(!page.isContentBlockingOn)
+            #expect(delegate.decide(NavigationRequest("https://example.com/b")) == .allow)
+            #expect(!page.isContentBlockingOn)
+            #expect(delegate.decide(NavigationRequest("https://example.org/")) == .allow)
+            #expect(page.isContentBlockingOn)
+            // A subframe doesn't change the page's site.
+            #expect(delegate.decide(NavigationRequest("https://example.com/f", isMainFrame: false)) == .allow)
+            #expect(page.isContentBlockingOn)
 
-        // A real load reaches the delegate too.
-        page.webView.loadSimulatedRequest(URLRequest(url: URL(string: "https://example.com/real")!), responseHTML: "<title>R</title>")
-        let switched = try await waitUntil { page.status.title == "R" }
-        #expect(switched)
-        #expect(!page.isContentBlockingOn)
-        host.close(page.tabID)
-        await removeStore(profile)
+            // A real load reaches the delegate too.
+            page.webView.loadSimulatedRequest(URLRequest(url: URL(string: "https://example.com/real")!), responseHTML: "<title>R</title>")
+            let switched = try await waitUntil { page.status.title == "R" }
+            #expect(switched)
+            #expect(!page.isContentBlockingOn)
+            host.close(page.tabID)
+        }
     }
 
     @Test func sharedControllerIsLeftAlone() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
-        let opener = host.page(for: request(profile: profile), writer: writer)
-        let openerDelegate = try delegate(of: opener)
-        _ = openerDelegate.webView(opener.webView, createWebViewWith: opener.webView.configuration, for: FakeAction("https://example.com/new"), windowFeatures: FakeFeatures())
-        // The opener and its linked tab share one content controller (ruling R10): switching lists
-        // for one would switch them for both, so neither switches on its own.
-        #expect(openerDelegate.decide(NavigationRequest("https://example.com/")) == .allow)
-        #expect(opener.isContentBlockingOn)
-        host.close(opener.tabID)
-        await removeStore(profile)
+        try await withProfile { profile in
+            let host = makeHost()
+            settings.setDecision(profileID: profile, host: "example.com", key: .contentBlocking, .deny)
+            let opener = host.page(for: request(profile: profile), writer: writer)
+            let openerDelegate = try delegate(of: opener)
+            _ = openerDelegate.webView(opener.webView, createWebViewWith: opener.webView.configuration, for: FakeAction("https://example.com/new"), windowFeatures: FakeFeatures())
+            // The opener and its linked tab share one content controller (ruling R10): switching lists
+            // for one would switch them for both, so neither switches on its own.
+            #expect(openerDelegate.decide(NavigationRequest("https://example.com/")) == .allow)
+            #expect(opener.isContentBlockingOn)
+            host.close(opener.tabID)
+        }
     }
 
-    func removeStore(_ id: UUID) async {
-        try? await WKWebsiteDataStore.remove(forIdentifier: id)
+    func withProfile(_ body: (UUID) async throws -> Void) async throws {
+        try await StoreCleanup.withProfile(body)
     }
 
     // MARK: External apps
@@ -742,115 +742,116 @@ struct PageDelegateTests {
     /// The origin WebKit passes is the page that asked; if the page's top document is on another site by the time the app looks (a commit
     /// slipped in between WebKit's call and this task), the question would name one site over another's page. Denied, nothing asked or kept.
     @Test func mediaForAnotherSitesPageIsDeniedWithoutAsking() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
-        events.mediaAnswer = (true, true)
-        delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
-        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
-        #expect(events.mediaQuestions.isEmpty)
-        // A page with no address yet is no match either.
-        delegate.currentTopURL = { nil }
-        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
-        #expect(events.mediaQuestions.isEmpty)
-        // A remembered allow doesn't grant a page that is on another site either.
-        settings.setDecision(profileID: profile, host: "evil.example", key: .camera, .allow)
-        delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
-        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
-        #expect(settings.decision(profileID: profile, host: "meet.google.com", key: .camera) == nil)
-        host.close(page.tabID)
-        await removeStore(profile)
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            events.mediaAnswer = (true, true)
+            delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
+            #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+            #expect(events.mediaQuestions.isEmpty)
+            // A page with no address yet is no match either.
+            delegate.currentTopURL = { nil }
+            #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+            #expect(events.mediaQuestions.isEmpty)
+            // A remembered allow doesn't grant a page that is on another site either.
+            settings.setDecision(profileID: profile, host: "evil.example", key: .camera, .allow)
+            delegate.currentTopURL = { URL(string: "https://meet.google.com/abc") }
+            #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+            #expect(settings.decision(profileID: profile, host: "meet.google.com", key: .camera) == nil)
+            host.close(page.tabID)
+        }
     }
 
     /// The page moves to another site while the question is up: nothing is granted or remembered, even without a commit being seen yet.
     @Test func mediaAnswerAfterTheTopSiteChangedIsDeniedAndNotRemembered() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
-        events.mediaAnswer = (true, true)
-        var current = "https://evil.example/"
-        delegate.currentTopURL = { URL(string: current) }
-        events.whileAskingMedia = { current = "https://meet.google.com/abc" }
-        #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
-        #expect(settings.decision(profileID: profile, host: "evil.example", key: .camera) == nil)
-        host.close(page.tabID)
-        await removeStore(profile)
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            events.mediaAnswer = (true, true)
+            var current = "https://evil.example/"
+            delegate.currentTopURL = { URL(string: current) }
+            events.whileAskingMedia = { current = "https://meet.google.com/abc" }
+            #expect(await delegate.mediaDecision(originHost: "evil.example", camera: true, microphone: false) == .deny)
+            #expect(settings.decision(profileID: profile, host: "evil.example", key: .camera) == nil)
+            host.close(page.tabID)
+        }
     }
 
 
     @Test func mediaUsesRememberedDecision() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        settings.setDecision(profileID: profile, host: "example.com", key: .camera, .allow)
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
+        try await withProfile { profile in
+            let host = makeHost()
+            settings.setDecision(profileID: profile, host: "example.com", key: .camera, .allow)
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
 
-        #expect(await delegate.decideMedia(originHost: "www.example.com", camera: true, microphone: false) == .grant)
-        #expect(events.mediaQuestions.isEmpty)
+            #expect(await delegate.decideMedia(originHost: "www.example.com", camera: true, microphone: false) == .grant)
+            #expect(events.mediaQuestions.isEmpty)
 
-        // Camera and microphone together need both remembered.
-        events.mediaAnswer = (true, true)
-        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .grant)
-        #expect(events.mediaQuestions.count == 1)
-        #expect(events.mediaQuestions.first?.host == "example.com")
-        #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == .allow)
+            // Camera and microphone together need both remembered.
+            events.mediaAnswer = (true, true)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .grant)
+            #expect(events.mediaQuestions.count == 1)
+            #expect(events.mediaQuestions.first?.host == "example.com")
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == .allow)
 
-        // Nothing stored: ask, and remember.
-        #expect(await delegate.decideMedia(originHost: "example.org", camera: true, microphone: false) == .grant)
-        #expect(events.mediaQuestions.count == 2)
-        #expect(settings.decision(profileID: profile, host: "example.org", key: .camera) == .allow)
+            // Nothing stored: ask, and remember.
+            #expect(await delegate.decideMedia(originHost: "example.org", camera: true, microphone: false) == .grant)
+            #expect(events.mediaQuestions.count == 2)
+            #expect(settings.decision(profileID: profile, host: "example.org", key: .camera) == .allow)
 
-        // Not remembered: asked again next time.
-        events.mediaAnswer = (false, false)
-        #expect(await delegate.decideMedia(originHost: "example.net", camera: false, microphone: true) == .deny)
-        #expect(settings.decision(profileID: profile, host: "example.net", key: .microphone) == nil)
+            // Not remembered: asked again next time.
+            events.mediaAnswer = (false, false)
+            #expect(await delegate.decideMedia(originHost: "example.net", camera: false, microphone: true) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.net", key: .microphone) == nil)
 
-        // Any remembered deny denies without asking.
-        settings.setDecision(profileID: profile, host: "deny.example", key: .microphone, .deny)
-        settings.setDecision(profileID: profile, host: "deny.example", key: .camera, .allow)
-        let asked = events.mediaQuestions.count
-        #expect(await delegate.decideMedia(originHost: "deny.example", camera: true, microphone: true) == .deny)
-        #expect(events.mediaQuestions.count == asked)
-        host.close(page.tabID)
-        await removeStore(profile)
+            // Any remembered deny denies without asking.
+            settings.setDecision(profileID: profile, host: "deny.example", key: .microphone, .deny)
+            settings.setDecision(profileID: profile, host: "deny.example", key: .camera, .allow)
+            let asked = events.mediaQuestions.count
+            #expect(await delegate.decideMedia(originHost: "deny.example", camera: true, microphone: true) == .deny)
+            #expect(events.mediaQuestions.count == asked)
+            host.close(page.tabID)
+        }
     }
 
     /// Stopgap until a per-site settings panel exists: a Don't Allow is never stored, even with "Remember for this site" ticked.
     @Test func mediaDontAllowIsNeverRemembered() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
-        events.mediaAnswer = (false, true)
-        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
-        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
-        #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == nil)
-        // The next load asks again.
-        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
-        #expect(events.mediaQuestions.count == 2)
-        host.close(page.tabID)
-        await removeStore(profile)
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            events.mediaAnswer = (false, true)
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .microphone) == nil)
+            // The next load asks again.
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: true) == .deny)
+            #expect(events.mediaQuestions.count == 2)
+            host.close(page.tabID)
+        }
     }
 
     /// The page navigated while the question was up: whoever answered, the answer is for a page that is gone. Nothing is remembered (an
     /// allow stored for the old host must not follow the tab to wherever it went) and nothing is granted.
     @Test func mediaAnswerAfterANavigationIsDeniedAndNotRemembered() async throws {
-        let host = makeHost()
-        let profile = UUID()
-        let page = host.page(for: request(profile: profile), writer: writer)
-        let delegate = try delegate(of: page)
-        events.mediaAnswer = (true, true)
-        events.whileAskingMedia = { page.committed() }
-        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
-        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
-        // A page remade under the same tab is not the page that asked either.
-        events.whileAskingMedia = { host.close(page.tabID); _ = host.page(for: self.request(page.tabID, profile: profile), writer: self.writer) }
-        #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
-        #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
-        host.close(page.tabID)
-        await removeStore(profile)
+        try await withProfile { profile in
+            let host = makeHost()
+            let page = host.page(for: request(profile: profile), writer: writer)
+            let delegate = try delegate(of: page)
+            events.mediaAnswer = (true, true)
+            events.whileAskingMedia = { page.committed() }
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+            // A page remade under the same tab is not the page that asked either.
+            events.whileAskingMedia = { host.close(page.tabID); _ = host.page(for: self.request(page.tabID, profile: profile), writer: self.writer) }
+            #expect(await delegate.decideMedia(originHost: "example.com", camera: true, microphone: false) == .deny)
+            #expect(settings.decision(profileID: profile, host: "example.com", key: .camera) == nil)
+            events.whileAskingMedia = nil // the closure holds the page and host
+            host.close(page.tabID)
+        }
     }
 
     @Test func pageEndingOrCommittingDropsItsWaitingQuestions() async throws {

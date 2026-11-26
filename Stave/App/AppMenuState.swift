@@ -15,6 +15,10 @@ final class AppMenuState {
     var searchEngine: SearchEngineSetting?
     /// Nil until the store is open.
     var externalLinks: ExternalLinkSetting?
+    /// Profiles, containers, websites and General for Settings; nil until the store is open.
+    var settings: SettingsModel?
+    /// The rolling backups, for Settings ▸ Advanced; nil until the store is open.
+    var backups: DatabaseBackups?
     /// Whether macOS opens `http` links with this build; read when Settings appears and when Stave becomes active.
     var isDefaultBrowser = false
     /// The key browser window's compact state, for the View ▸ Compact Mode checkmark.

@@ -44,6 +44,8 @@ public final class PageHost {
     @ObservationIgnored public var hasOwner: @MainActor (UUID) -> Bool = { _ in false }
     /// The latest snapshot asked for per tab; an older or cancelled one never lands.
     @ObservationIgnored private var snapshotTokens: [UUID: UUID] = [:]
+    /// The store of every unloaded page whose web view still waits for its snapshot (keyed by the teardown's own token), for `usesStore`.
+    @ObservationIgnored private var tearingDownStores: [UUID: DataStoreKey] = [:]
     @ObservationIgnored private var hibernationTask: Task<Void, Never>?
     /// One per page; kept here because WebKit holds its delegates weakly.
     @ObservationIgnored private var delegates: [UUID: PageDelegate] = [:]
@@ -245,6 +247,20 @@ public final class PageHost {
     /// window closes and Stave stays open, the app unloads these, so no page plays audio or holds a camera with no window to reach it.
     public var persistentTabIDs: [UUID] {
         pages.values.filter { if case .persistent = $0.store { true } else { false } }.map(\.tabID)
+    }
+
+    /// How long to wait for unloaded pages to let go of a store before removing it: their snapshot timeout plus a second for the teardown
+    /// to run. Derived from `snapshotTimeout`, so the two can't drift apart.
+    public var teardownWaitLimit: Duration { snapshotTimeout + .seconds(1) }
+
+    /// Whether any page still holds one of these stores. Callers poll this up to `teardownWaitLimit`.
+    public func usesAnyStore(_ ids: [UUID]) -> Bool { ids.contains { usesStore($0) } }
+
+    /// Whether any page holds the persistent store `id`: a live page (a pop-up's included), or one unloaded whose teardown still waits for
+    /// its snapshot, since the web view lives until then. A store in use can't be removed (`WebDataStores.remove`).
+    public func usesStore(_ id: UUID) -> Bool {
+        let key = DataStoreKey.persistent(id)
+        return pages.values.contains { $0.store == key } || tearingDownStores.values.contains(key)
     }
 
     public func flushAll() {
@@ -495,6 +511,10 @@ public final class PageHost {
         let tabID = page.tabID
         snapshotTokens[tabID] = token
         let pending = PendingTearDown(page: thenTearDown ? page : nil, delegate: delegate)
+        if thenTearDown {
+            tearingDownStores[token] = page.store
+            pending.onFinish = { [weak self] in self?.tearingDownStores[token] = nil }
+        }
         snapshotter(page.webView) { [weak self] image in
             if let self, self.snapshotTokens[tabID] == token {
                 self.snapshotTokens[tabID] = nil
@@ -549,6 +569,8 @@ public final class PageHost {
 private final class PendingTearDown {
     private var page: LivePage?
     private var delegate: PageDelegate?
+    /// Called once, when the page is torn down.
+    var onFinish: (@MainActor () -> Void)?
 
     init(page: LivePage?, delegate: PageDelegate?) {
         self.page = page
@@ -562,6 +584,8 @@ private final class PendingTearDown {
         self.page = nil
         delegate = nil
         PageHost.tearDown(page)
+        onFinish?()
+        onFinish = nil
     }
 }
 

@@ -177,4 +177,20 @@ struct WindowSessionTests {
         #expect(left.count == 1)
         #expect(left.first?.url == "https://example.com/new")
     }
+
+    @Test func discardingAProfileDropsOnlyItsStates() throws {
+        let (store, profile, ws) = try fixture()
+        let other = try store.createProfile(name: "Q")
+        let otherWs = try #require(try store.workspaces(profileID: other.id).first)
+        let session = WindowSession(store: store)
+        session.enableSaving()
+        let a = state(profile, ws)
+        let b = state(other, otherWs)
+        session.update(a)
+        session.update(b)
+        session.discardStates(forProfile: profile.id)
+        #expect(session.states.map(\.id) == [b.id])
+        session.discardStates(forProfile: UUID()) // another profile: nothing goes
+        #expect(session.states.map(\.id) == [b.id])
+    }
 }

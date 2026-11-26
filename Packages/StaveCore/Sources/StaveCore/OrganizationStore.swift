@@ -52,6 +52,18 @@ public final class OrganizationStore: Sendable {
         return try insertProfile(name: Self.defaultProfileName, in: db)
     }
 
+    /// Renames the profile. A name that is empty once trimmed throws `.blankName`; the stored name is the trimmed one.
+    public func renameProfile(_ id: UUID, to name: String) throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw StoreError.blankName }
+        try writer.write { db in
+            guard var profile = try Profile.fetchOne(db, key: id) else { throw StoreError.notFound }
+            profile.name = trimmed
+            profile.modifiedAt = now()
+            try profile.update(db)
+        }
+    }
+
     // MARK: - Workspaces
 
     @discardableResult
@@ -134,6 +146,11 @@ public final class OrganizationStore: Sendable {
                 }
             }
             _ = try workspace.delete(db)
+            // A link from another app must never be aimed at a workspace that is gone.
+            try resetExternalLinkTarget(in: db) { target in
+                if case .workspace(_, let workspaceID) = target { return workspaceID == id }
+                return false
+            }
         }
     }
 

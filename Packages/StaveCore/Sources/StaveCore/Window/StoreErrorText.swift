@@ -12,6 +12,9 @@ public enum StoreErrorText {
         case .notFound: "That item no longer exists."
         case .notPinned: "Only pinned tabs and Essentials have a pinned page."
         case .importChanged: "Stave imported from Arc while this was open, so it didn't import a second time. Nothing was changed."
+        case .lastProfile: "Stave needs at least one profile, so the last one can't be deleted."
+        case .blankName: "Give it a name."
+        case .invalidColour: "Pick one of the colours in the list."
         case .backupFailed: "Stave couldn't back up your data before updating it, so it didn't open it. Free some disk space and try again."
         default: fallback
         }
