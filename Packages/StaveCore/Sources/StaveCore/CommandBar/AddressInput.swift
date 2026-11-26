@@ -1,9 +1,23 @@
 import Foundation
 
-/// What typed text means. Only `http`/`https` text, or scheme-less text that looks like a host, becomes a URL;
-/// every other scheme (`javascript:`, `file:`, `data:`, `about:`) and anything with whitespace is a search.
+/// What typed text means. Only `http`/`https` text, or scheme-less text that looks like a host, becomes a URL; a typed `mailto:` or `tel:`
+/// is a link for another app (as in Safari); every other scheme (`javascript:`, `file:`, `data:`, `about:`) and anything with whitespace
+/// is a search.
 public enum AddressInput: Equatable, Sendable {
     case empty, url(String), search(String)
+    /// A `mailto:` or `tel:` link to hand to the app that handles it. It goes to the page as a typed navigation (`NavigationSource.typed`),
+    /// whose policy asks "Open this link in ‹App›?" or, with no app, shows "No app can open this link". It is never a tab's address.
+    case externalLink(String)
+
+    /// The schemes a typed address may hand to another app. Plan 5, Task 15 (plan 3 decision 5): a short list, so a typed `zoommtg:` or
+    /// `sms:` stays a search.
+    static let externalSchemes: Set<String> = ["mailto", "tel"]
+
+    /// Whether the text is a typed link for another app, whatever its case (a result row's address, which a tab must never store).
+    public static func isExternalLink(_ text: String) -> Bool {
+        guard let scheme = URLScheme.scheme(of: text) else { return false }
+        return externalSchemes.contains(scheme)
+    }
 
     public static func classify(_ text: String) -> AddressInput {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -11,12 +25,20 @@ public enum AddressInput: Equatable, Sendable {
         if text.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }) {
             return .search(text)
         }
+        if isTypedExternalLink(text) { return .externalLink(text) }
         if let explicit = explicitWebURL(text) { return explicit ? .url(text) : .search(text) }
         switch bareKind(text) {
         case .localOrIP: return .url("http://" + text)
         case .host: return .url("https://" + text)
         case nil: return .search(text)
         }
+    }
+
+    /// `mailto:` or `tel:` followed by something, within the length links from other apps may have, and a URL that parses.
+    private static func isTypedExternalLink(_ text: String) -> Bool {
+        guard isExternalLink(text), ExternalOpen.accepts(text), URL(string: text) != nil else { return false }
+        guard let colon = text.firstIndex(of: ":") else { return false }
+        return text.index(after: colon) < text.endIndex
     }
 
     /// nil when the text does not start with `http://` or `https://`; otherwise whether it has a host.

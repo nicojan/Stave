@@ -24,6 +24,28 @@ public struct PageStatus: Equatable, Sendable {
     }
 }
 
+/// The `PageStatus` fields the menu bar reads (the page menu, the Find menu and the tab shortcuts), and nothing else. The menus observe this
+/// instead of `status`, so a title change or a progress tick, which no menu item reads, doesn't rebuild them (plan 5, Task 15).
+public struct PageMenuFields: Equatable, Sendable {
+    public var isLoading: Bool
+    public var canGoBack: Bool
+    public var canGoForward: Bool
+    public var url: String
+    public var hasFailure: Bool
+
+    public init(isLoading: Bool, canGoBack: Bool, canGoForward: Bool, url: String, hasFailure: Bool) {
+        self.isLoading = isLoading
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.url = url
+        self.hasFailure = hasFailure
+    }
+
+    init(_ status: PageStatus) {
+        self.init(isLoading: status.isLoading, canGoBack: status.canGoBack, canGoForward: status.canGoForward, url: status.url, hasFailure: status.failure != nil)
+    }
+}
+
 /// Everything the host needs to make or adopt a tab's page.
 public struct PageRequest: Sendable, Equatable {
     public var tabID: UUID
@@ -69,7 +91,11 @@ public final class LivePage {
     public let store: DataStoreKey
     /// Nil in a private window.
     public let siteSettingsProfileID: UUID?
-    public internal(set) var status: PageStatus
+    public internal(set) var status: PageStatus {
+        didSet { syncMenuFields() }
+    }
+    /// The part of `status` the menus read. Written only when it changes, so observing it ignores every other status change.
+    public private(set) var menuFields: PageMenuFields
     public internal(set) var isContentBlockingOn: Bool
     /// The page's zoom (`pageZoom`), set only through `setZoom` so the menus can follow it (decision 12).
     public private(set) var zoom = ZoomLevels.defaultLevel
@@ -78,6 +104,10 @@ public final class LivePage {
     @ObservationIgnored private var recorder: PageRecorder
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private let now: () -> Date
+    /// Asks for `work` to run after the given seconds (the title's trailing write). The host sets it, so tests can run it by hand.
+    @ObservationIgnored var scheduleTitleFlush: @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = LivePage.sleepThenRun
+    /// A trailing title write has been asked for and hasn't run yet: no second one is asked for.
+    @ObservationIgnored private var titleFlushScheduled = false
     @ObservationIgnored public private(set) var isClosed = false
     /// Test hook: the stored `interactionState` was set on the web view instead of loading the URL.
     @ObservationIgnored private(set) var didRestoreState = false
@@ -112,7 +142,9 @@ public final class LivePage {
         self.webView = webView
         store = request.store
         siteSettingsProfileID = request.siteSettingsProfileID
-        status = PageStatus(url: request.url, title: request.title)
+        let initial = PageStatus(url: request.url, title: request.title)
+        status = initial
+        menuFields = PageMenuFields(initial)
         self.isContentBlockingOn = isContentBlockingOn
         self.writer = writer
         recorder = PageRecorder(url: request.url, title: request.title, faviconURL: request.faviconURL)
@@ -239,6 +271,30 @@ public final class LivePage {
     func record(_ event: PageEvent) {
         guard !isClosed, !holdsWrites else { return }
         perform(recorder.record(event, at: now()))
+        scheduleTitleFlushIfNeeded()
+    }
+
+    /// A title-only change that waited gets one trailing write when its window ends, so the stored title never lags for long.
+    private func scheduleTitleFlushIfNeeded() {
+        guard !titleFlushScheduled, let delay = recorder.pendingTitleDelay(at: now()) else { return }
+        titleFlushScheduled = true
+        scheduleTitleFlush(delay) { [weak self] in
+            guard let self else { return }
+            titleFlushScheduled = false
+            flushTitle()
+        }
+    }
+
+    static func sleepThenRun(_ seconds: TimeInterval, _ work: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            work()
+        }
+    }
+
+    private func syncMenuFields() {
+        let fields = PageMenuFields(status)
+        if fields != menuFields { menuFields = fields }
     }
 
     /// Writes any throttled `interactionState` now. Nothing while writes are held: the web view's state then is the crashed or refused
@@ -246,6 +302,13 @@ public final class LivePage {
     func flush() {
         guard !isClosed, !holdsWrites else { return }
         perform(recorder.flush(at: now()))
+    }
+
+    /// Writes only the pending title now (the trailing write, a tab about to be archived). Its pending `interactionState` is left to its
+    /// own two-second limit.
+    func flushTitle() {
+        guard !isClosed, !holdsWrites else { return }
+        perform(recorder.flushTitle(at: now()))
     }
 
     /// Stops every write and observation. Nothing pending is flushed.

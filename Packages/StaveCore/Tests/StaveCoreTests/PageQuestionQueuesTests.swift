@@ -18,6 +18,10 @@ final class FakeQuestionWindow: PageQuestionWindow {
     private(set) var downloadsShown = 0
     private(set) var downloadHosts: [String?] = []
     var downloadFinish: ((WaitingQuestions<DownloadChoice>.Result) -> Void)?
+    private(set) var dialogsShown: [DialogRequest] = []
+    var dialogFinish: ((WaitingQuestions<DialogReply>.Result) -> Void)?
+    private(set) var externalShown: [(host: String?, appName: String)] = []
+    var externalFinish: ((WaitingQuestions<Bool>.Result) -> Void)?
 
     func canAsk(_ tabID: UUID) -> Bool { !sheetUp && shownTabs.contains(tabID) }
 
@@ -47,6 +51,22 @@ final class FakeQuestionWindow: PageQuestionWindow {
         return true
     }
 
+    func showDialog(tabID: UUID, request: DialogRequest, finish: @escaping (WaitingQuestions<DialogReply>.Result) -> Void) -> Bool {
+        guard canAsk(tabID) else { return false }
+        sheetUp = true
+        dialogsShown.append(request)
+        dialogFinish = finish
+        return true
+    }
+
+    func showExternalApp(tabID: UUID, host: String?, url: URL, appName: String, finish: @escaping (WaitingQuestions<Bool>.Result) -> Void) -> Bool {
+        guard canAsk(tabID) else { return false }
+        sheetUp = true
+        externalShown.append((host, appName))
+        externalFinish = finish
+        return true
+    }
+
     /// Ends the one sign-in sheet about `site`, as the app does: it reports cancelled (by the system, not the user).
     func endAuthSheets(tabID: UUID, site: String) {
         endedAuthSites.append(site)
@@ -64,6 +84,8 @@ final class FakeQuestionWindow: PageQuestionWindow {
             if kinds.contains(.media) { mediaFinish?(.cancelled) }
             if kinds.contains(.auth) { authFinish?(.cancelled) }
             if kinds.contains(.download) { downloadFinish?(.cancelled) }
+            if kinds.contains(.dialog) { dialogFinish?(.cancelled) }
+            if kinds.contains(.externalApp) { externalFinish?(.cancelled) }
         }
     }
 }
@@ -119,7 +141,7 @@ struct PageQuestionQueuesTests {
         queues.cancel(tabID: tab)
         #expect(await media.value == nil)
         #expect(await auth.value == nil)
-        #expect(window.ended.last?.1 == [.media, .auth, .download])
+        #expect(window.ended.last?.1 == [.media, .auth, .download, .dialog, .externalApp])
     }
 
     @Test func cancelResolvesQuestionsThatAreUp() async {
@@ -290,5 +312,196 @@ struct PageQuestionQueuesTests {
         queues.cancel(tabID: tab)
         #expect(await question.value == nil)
         #expect(!window.sheetUp)
+    }
+
+    // MARK: JavaScript dialogs and the external-app question (Task 15, decisions 21 and 22)
+
+    private let message = "Hello"
+    private func request(_ kind: DialogRequest.Kind = .alert) -> DialogRequest {
+        DialogRequest(kind: kind, origin: "example.com", message: message, offerToStop: false)
+    }
+
+    /// An `alert()` from a tab that isn't shown is held, not answered at once: no sheet until the tab is shown, then the sheet.
+    @Test func backgroundAlertWaitsUntilShown() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        var answered = false
+        let alert = Task { () -> DialogReply? in
+            let reply = await queues.askDialog(tabID: tab, request: request(), isStale: { false })
+            answered = true
+            return reply
+        }
+        for _ in 0..<50 { await Task.yield() }
+        queues.drainNow()
+        #expect(window.dialogsShown.isEmpty)
+        #expect(!answered, "the page's script stays blocked, as in Chrome and Firefox")
+
+        // Another tab being shown changes nothing.
+        window.shownTabs = [UUID()]
+        queues.drainNow()
+        #expect(window.dialogsShown.isEmpty)
+
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.dialogsShown == [request()])
+        window.sheetUp = false
+        window.dialogFinish?(.answered(DialogReply(accepted: true, text: nil, stopDialogs: false)))
+        #expect(await alert.value == DialogReply(accepted: true, text: nil, stopDialogs: false))
+    }
+
+    /// A hidden tab's confirm and prompt wait the same way, and each keeps its own answer.
+    @Test func backgroundConfirmAndPromptKeepTheirAnswers() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        let confirm = Task { await queues.askDialog(tabID: tab, request: request(.confirm), isStale: { false }) }
+        let prompt = Task { await queues.askDialog(tabID: tab, request: request(.prompt(defaultText: "x")), isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        window.shownTabs = [tab]
+        queues.drainNow()
+        // One sheet at a time, oldest first.
+        #expect(window.dialogsShown.map(\.kind) == [.confirm])
+        window.sheetUp = false
+        window.dialogFinish?(.answered(DialogReply(accepted: false, text: nil, stopDialogs: false)))
+        #expect(await confirm.value?.accepted == false)
+        queues.drainNow()
+        #expect(window.dialogsShown.map(\.kind) == [.confirm, .prompt(defaultText: "x")])
+        window.sheetUp = false
+        window.dialogFinish?(.answered(DialogReply(accepted: true, text: "typed", stopDialogs: false)))
+        #expect(await prompt.value?.text == "typed")
+    }
+
+    /// A tab hidden while its dialog is up sends the dialog back to waiting; it comes up again when the tab is shown.
+    @Test func dialogSentBackWaitsAgain() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        window.shownTabs = [tab]
+        queues.register(window)
+        let confirm = Task { await queues.askDialog(tabID: tab, request: request(.confirm), isStale: { false }) }
+        await settle { window.dialogsShown.count == 1 }
+        window.sheetUp = false
+        window.shownTabs = []
+        window.dialogFinish?(.sentBack)
+        queues.drainNow()
+        #expect(window.dialogsShown.count == 1)
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.dialogsShown.count == 2)
+        window.sheetUp = false
+        window.dialogFinish?(.answered(DialogReply(accepted: true, text: nil, stopDialogs: false)))
+        #expect(await confirm.value?.accepted == true)
+    }
+
+    /// A navigation (a new committed document) resolves a waiting confirm with no answer, so the page's `confirm()` returns false, and the
+    /// dialog is never shown later. The same for the sheet when it is up.
+    @Test func navigationResolvesAWaitingConfirm() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        let waiting = Task { await queues.askDialog(tabID: tab, request: request(.confirm), isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.cancel(tabID: tab)
+        #expect(await waiting.value == nil)
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.dialogsShown.isEmpty)
+
+        let up = Task { await queues.askDialog(tabID: tab, request: request(.confirm), isStale: { false }) }
+        await settle { window.dialogsShown.count == 1 }
+        queues.cancel(tabID: tab)
+        #expect(await up.value == nil)
+        #expect(!window.sheetUp, "the dialog's sheet comes down with its document")
+    }
+
+    @Test func staleDialogIsDroppedWithoutBeingShown() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        var stale = false
+        let waiting = Task { await queues.askDialog(tabID: tab, request: request(), isStale: { stale }) }
+        for _ in 0..<50 { await Task.yield() }
+        stale = true
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(await waiting.value == nil)
+        #expect(window.dialogsShown.isEmpty)
+    }
+
+    /// The external-app question is the tab's: it isn't shown while the tab is hidden, and it comes back when the tab is shown again.
+    @Test func externalQuestionHidesWithItsTabAndComesBack() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        window.shownTabs = [tab]
+        queues.register(window)
+        let question = Task { await queues.askExternalApp(tabID: tab, host: "example.com", url: URL(string: "mailto:a@example.com")!, appName: "Mail", isStale: { false }) }
+        await settle { window.externalShown.count == 1 }
+        #expect(window.externalShown.first?.host == "example.com")
+        // The tab is hidden: the sheet comes down and the question waits.
+        window.sheetUp = false
+        window.shownTabs = []
+        window.externalFinish?(.sentBack)
+        queues.drainNow()
+        #expect(window.externalShown.count == 1)
+        // Shown again: it is asked again.
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.externalShown.count == 2)
+        window.sheetUp = false
+        window.externalFinish?(.answered(true))
+        #expect(await question.value == true)
+    }
+
+    /// "Bring It Here" moves the page to another window: the question is dropped, waiting or up, and no window asks it later. The tab's
+    /// other questions are not touched.
+    @Test func externalQuestionDroppedOnBringHere() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        window.shownTabs = [tab]
+        queues.register(window)
+        let url = URL(string: "mailto:a@example.com")!
+        let up = Task { await queues.askExternalApp(tabID: tab, host: nil, url: url, appName: "Mail", isStale: { false }) }
+        await settle { window.externalShown.count == 1 }
+        let media = Task { await queues.askMedia(tabID: tab, host: "example.com", camera: true, microphone: false, isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.cancelExternalApp(tabID: tab)
+        #expect(await up.value == nil)
+        #expect(!window.sheetUp)
+        // The camera question was waiting behind that sheet and is still alive: it comes up now.
+        queues.drainNow()
+        #expect(window.mediaShown == 1)
+        window.sheetUp = false
+        window.mediaFinish?(.answered(MediaAnswer(allow: true, remember: false)))
+        #expect(await media.value == MediaAnswer(allow: true, remember: false))
+
+        // A waiting one (its tab hidden) is dropped too and never shown later.
+        window.shownTabs = []
+        let waiting = Task { await queues.askExternalApp(tabID: tab, host: nil, url: url, appName: "Mail", isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.cancelExternalApp(tabID: tab)
+        #expect(await waiting.value == nil)
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.externalShown.count == 1)
+    }
+
+    /// A page hibernation unloads, closed or forgotten: one `cancel(tabID:)` drops every kind of question it had, dialogs and the
+    /// external-app question included, so none is shown over a page that is gone.
+    @Test func cancelDropsEveryKindOfQuestion() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        let url = URL(string: "mailto:a@example.com")!
+        let dialog = Task { await queues.askDialog(tabID: tab, request: request(.confirm), isStale: { false }) }
+        let external = Task { await queues.askExternalApp(tabID: tab, host: nil, url: url, appName: "Mail", isStale: { false }) }
+        let media = Task { await queues.askMedia(tabID: tab, host: "example.com", camera: true, microphone: false, isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.cancel(tabID: tab)
+        #expect(await dialog.value == nil)
+        #expect(await external.value == nil)
+        #expect(await media.value == nil)
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.dialogsShown.isEmpty && window.externalShown.isEmpty && window.mediaShown == 0)
     }
 }

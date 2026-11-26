@@ -108,11 +108,11 @@ final class PageEventsRouter: PageEvents {
         popups.popup(tabID)?.prompts ?? privateController(for: tabID)?.prompts ?? controller(for: tabID)?.prompts
     }
 
-    /// Asked on the window (or pop-up) of the tab that asks, and only while it shows that tab; anywhere else it resolves false. Ending
-    /// the tab's panels (closed, unloaded, deselected) resolves it too, which frees the delegate's one-at-a-time lock.
-    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
-        guard let prompts = prompts(for: tabID) else { return false }
-        return await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
+    /// Waits in the app-wide queue until the window or pop-up showing the tab can ask, and goes back to waiting when the tab is hidden
+    /// (decision 22). False when the user cancels, or when the system drops it (the page navigated or moved to another window, closed or
+    /// unloaded), which opens nothing.
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> QuestionAnswer {
+        await environment.pageQuestions.askExternalApp(pageHost: environment.pageHost, tabID: tabID, host: host, url: url, appName: appName)
     }
 
     /// Waits in the app-wide queue until the window or pop-up showing the tab can ask (held, not refused; decision 29). `.unasked` only
@@ -150,18 +150,18 @@ final class PageEventsRouter: PageEvents {
         environment.pageQuestions.cancelAuth(tabID: tabID, site: site)
     }
 
+    /// JavaScript dialogs wait in the app-wide queue until the window or pop-up showing the tab can ask (decision 21), as in Chrome and
+    /// Firefox; a navigation or the page closing resolves them with their safe answer.
     func alert(tabID: UUID, origin: String?, message: String) async {
-        await prompts(for: tabID)?.alert(tabID: tabID, origin: origin, message: message)
+        await environment.pageQuestions.alert(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message)
     }
 
     func confirm(tabID: UUID, origin: String?, message: String) async -> Bool {
-        guard let prompts = prompts(for: tabID) else { return false }
-        return await prompts.confirm(tabID: tabID, origin: origin, message: message)
+        await environment.pageQuestions.confirm(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message)
     }
 
     func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
-        guard let prompts = prompts(for: tabID) else { return nil }
-        return await prompts.prompt(tabID: tabID, origin: origin, message: message, defaultText: defaultText)
+        await environment.pageQuestions.prompt(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message, defaultText: defaultText)
     }
 
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? {

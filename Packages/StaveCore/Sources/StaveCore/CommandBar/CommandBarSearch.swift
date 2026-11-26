@@ -8,7 +8,7 @@ public enum CommandBarSearch {
         let row: CommandResult
         switch AddressInput.classify(typed) {
         case .empty: return emptyQueryTabs(candidates.tabs).prefix(limit).map { .tab($0) }
-        case .url(let url): row = .open(url: url)
+        case .url(let url), .externalLink(let url): row = .open(url: url)
         case .search(let text): row = .search(query: text)
         }
         let needle = fold(typed)

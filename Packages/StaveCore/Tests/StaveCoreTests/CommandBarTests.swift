@@ -282,6 +282,58 @@ struct CommandBarTests {
         #expect(model.snapshot.regular.count == 1)
     }
 
+    /// A typed `mailto:` row goes to the page as a typed navigation (which asks) and is never stored as a tab's address: a tab that
+    /// restored a `mailto:` would be refused, and a new tab for it would be an empty one.
+    @Test func typedMailtoIsHandedToThePageNotStored() throws {
+        #expect(CommandBarSearch.results(query: "mailto:a@example.com", candidates: CommandCandidates()).first == .open(url: "mailto:a@example.com"))
+        let world = try makeWorld()
+        let first = try world.tab("first")
+        let model = try world.window(selected: first.id)
+        var typed: [String] = []
+        model.loadTyped = { _, url in typed.append(url); return true }
+        #expect(model.perform(.open(url: "mailto:a@example.com"), mode: .currentTab) == .done)
+        #expect(typed == ["mailto:a@example.com"])
+        #expect(model.selectedTab?.url == "https://example.com/first")
+        // L4: with no page this window can take (the tab shows in another window), nothing is stored and the link isn't lost: like Safari
+        // asking for a link typed into a window, a blank tab opens here and the question is asked over it.
+        var attempts: [UUID] = []
+        model.loadTyped = { id, _ in attempts.append(id); return attempts.count > 1 }
+        #expect(model.perform(.open(url: "tel:5551234"), mode: .currentTab) == .done)
+        #expect(attempts.count == 2 && attempts.first == first.id && attempts.last == model.selectedTabID)
+        #expect(model.selectedTab?.url == "")
+        #expect(model.selectedTabID != first.id)
+        model.select(first.id)
+        #expect(model.selectedTab?.url == "https://example.com/first", "the first tab keeps its address")
+        // A new tab for it stays blank: its address is never the mailto: link.
+        model.loadTyped = { _, url in typed.append(url); return true }
+        #expect(model.perform(.open(url: "mailto:b@example.com"), mode: .newTab) == .done)
+        #expect(model.selectedTab?.url == "")
+        #expect(typed.last == "mailto:b@example.com")
+    }
+
+    /// R1-2: the selected tab shows in another window. A typed `mailto:` must not be asked there (that window may be hidden): it opens a
+    /// blank tab here and is asked over it. A typed web address still goes to the tab's page (that window's), as before.
+    @Test func typedMailtoWhileTheTabShowsElsewhereOpensABlankTabHere() throws {
+        let world = try makeWorld()
+        let first = try world.tab("first")
+        let owner = try world.window(selected: first.id)
+        let model = try world.window(selected: first.id)
+        #expect(model.placement == .elsewhere(windowID: owner.windowID))
+        var attempts: [(UUID, String)] = []
+        model.loadTyped = { id, url in attempts.append((id, url)); return true }
+        #expect(model.perform(.open(url: "mailto:a@example.com"), mode: .currentTab) == .done)
+        #expect(attempts.count == 1)
+        #expect(attempts.first?.0 != first.id, "the owning window's tab is not asked")
+        #expect(attempts.first?.0 == model.selectedTabID)
+        #expect(model.selectedTab?.url == "")
+        #expect(owner.selectedTabID == first.id)
+        // A typed web address keeps today's behaviour: handed to the tab's page.
+        model.select(first.id)
+        attempts = []
+        #expect(model.perform(.open(url: "https://example.org/x"), mode: .currentTab) == .done)
+        #expect(attempts.count == 1 && attempts.first?.0 == first.id)
+    }
+
     @Test func performSearchWithoutEngine() throws {
         let world = try makeWorld()
         let model = try world.window()

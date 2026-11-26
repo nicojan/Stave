@@ -118,12 +118,14 @@ extension PrivateWindowModel: CommandBarWindow {
     }
 
     private func open(typed url: String, mode: CommandBarMode, target: UUID?) {
+        // A typed `mailto:` or `tel:` goes to the page (which asks) and is never a tab's address.
+        let isExternal = AddressInput.isExternalLink(url)
         guard mode == .currentTab, let id = target ?? selectedTabID, tabs.contains(where: { $0.id == id }) else {
-            let created = open(url: url, below: nil, select: true)
+            let created = open(url: isExternal ? "" : url, below: nil, select: true)
             _ = loadTyped?(created, url)
             return
         }
-        if loadTyped?(id, url) == true { return }
+        if loadTyped?(id, url) == true || isExternal { return }
         update(id, url: url, title: "")
     }
 }

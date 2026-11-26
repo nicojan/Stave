@@ -201,6 +201,15 @@ extension BrowserWindowController: PageLifecycle {
         environment.popups.closeAll(openedBy: id)
     }
 
+    /// The store is about to archive the tab: its pending title is written first, so the archive keeps it.
+    func tabWillClose(_ id: UUID) { pageHost.flushTitle(id) }
+
+    /// This window closed and no window shows these tabs: a JavaScript dialog one of them waits on is answered with its safe value, since
+    /// nothing will ever show it.
+    func tabsLeftWithoutWindow(_ ids: [UUID]) {
+        for id in ids { environment.pageQuestions.cancelDialogs(tabID: id) }
+    }
+
     func tabClosed(_ id: UUID) {
         endQuestionsEverywhere(for: id)
         find.forget(id)
@@ -217,6 +226,14 @@ extension BrowserWindowController: PageLifecycle {
 
     /// The store replaced the tab's address and history (Back to Pinned Page). The live page is closed without a flush, so nothing of the old
     /// page is written back, and made again from the store by whichever window shows the tab, this one or another.
+    /// "Bring It Here" took the page from the window that showed it: the external-app question that window had up for it is dropped (a
+    /// stale sheet can't open a link for a page it no longer shows), and the window's other sheets for the tab go back to waiting, to be
+    /// shown by this window.
+    func tabTakenOver(_ id: UUID) {
+        environment.pageQuestions.cancelExternalApp(tabID: id)
+        for controller in peers() where controller !== self { controller.prompts.hide(id) }
+    }
+
     func tabNavigated(_ id: UUID) {
         guard pageHost.existingPage(id) != nil else { return }
         endQuestionsEverywhere(for: id)
@@ -241,7 +258,7 @@ extension BrowserWindowController: PageLifecycle {
         openedByUserTabs.remove(id) // a reopened tab left before its page was made is no longer "just opened by the user"
         prompts.hide(id)
         pageHost.captureSnapshot(id)
-        pageHost.flushAll() // the host flushes every page or none; a flush with nothing pending writes nothing
+        pageHost.flush(id) // only this tab's pending title and state; another tab's wait for their own deselect, unload or quit
         if environment.livePages.owner(of: id) == nil { pageHost.markShown(id, false) }
         if shownTabID == id { shownTabID = nil }
     }

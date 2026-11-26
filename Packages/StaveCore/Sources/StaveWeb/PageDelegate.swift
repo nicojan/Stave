@@ -10,6 +10,17 @@ public enum QuestionAnswer: Sendable {
     case allowed, declined, unasked
 }
 
+extension QuestionAnswer {
+    /// The external-app queue's reply: true is Open, false the user's Cancel, nil a question the system dropped.
+    public init(externalAppReply reply: Bool?) {
+        switch reply {
+        case .some(true): self = .allowed
+        case .some(false): self = .declined
+        case .none: self = .unasked
+        }
+    }
+}
+
 /// What a page asks of the app: tabs, pop-ups, sheets and the downloads list (plan 3, Task 7).
 @MainActor public protocol PageEvents: AnyObject {
     /// Nil: refused (opener gone). When `webView` is given, the app adopts it (`PageHost.adopt`) before returning.
@@ -25,9 +36,11 @@ public enum QuestionAnswer: Sendable {
     /// `window.close()` from any page: a pop-up's window closes; a tab closes as with the close shortcut (it goes to the archive, as in
     /// Safari, where a script may close any tab).
     func closePage(_ tabID: UUID)
-    /// "Open this link in ‹App›?" for the tab's page. `host`: the asking page's site, named in the question; nil for a typed address.
-    /// Asked only while the tab is shown; otherwise false.
-    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool
+    /// "Open this link in ‹App›?" for the tab's page. `host`: the site of the frame that clicked (else the page's), named in the question; nil
+    /// for a typed address. The question is the tab's: it waits while the tab is hidden and comes back when it is shown; the app drops it
+    /// (`unasked`) when the page navigates, closes or moves to another window ("Bring It Here"). `declined` is the user's Cancel; only that
+    /// starts the cooldown. The delegate opens the link only when the page is still the one that asked.
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> QuestionAnswer
     /// "‹host› wants you to sign in" for an HTTP Basic, Digest, NTLM or default-method challenge. A question that can't be shown yet (the tab
     /// isn't shown, another sheet is up) waits until it can. `.cancelled`: the user pressed Cancel. Nil: the system dropped it (the tab went
     /// away, navigated or failed to load first). Either way nothing is sent; only the user's Cancel counts toward the cancel limit.
@@ -85,6 +98,12 @@ struct NavigationRequest {
     var modifiers: NSEvent.ModifierFlags = []
     /// An `<a download>` link.
     var shouldDownload = false
+    /// The host of the frame that started the navigation (a clicked link's frame), nil when WebKit gives none or the frame has no web
+    /// origin. The external-app question names it (plan 5, decision 22).
+    var sourceHost: String? { MainActor.assumeIsolated { sourceHostReader?() ?? fixedSourceHost } }
+    private var fixedSourceHost: String?
+    /// Reads the clicking frame only when asked (the external-app branch), never while the action is first read.
+    private var sourceHostReader: (@MainActor () -> String?)?
 
     @MainActor init(_ action: WKNavigationAction) {
         url = action.request.url?.absoluteString ?? ""
@@ -93,9 +112,18 @@ struct NavigationRequest {
         type = action.navigationType
         modifiers = action.modifierFlags
         shouldDownload = action.shouldPerformDownload
+        // `action.sourceFrame` is imported as non-optional, but WebKit returns nil for app-started loads (a typed address, a restored
+        // page, an opened file) and for new-window navigations on macOS before about 15.6, which traps in Swift (Apple forum threads
+        // 806449 and 781748). So it is read through key-value coding, only in the external-app branch, and only its security origin is
+        // used: `frame.request` is bridged to URLRequest and traps the same way.
+        sourceHostReader = { [action] in
+            guard let frame = action.value(forKey: "sourceFrame") as? WKFrameInfo else { return nil }
+            return PageDelegate.dialogOrigin(securityHost: frame.securityOrigin.host)
+        }
     }
 
-    init(_ url: String, targetsNewWindow: Bool = false, isMainFrame: Bool = true, type: WKNavigationType = .linkActivated, modifiers: NSEvent.ModifierFlags = [], shouldDownload: Bool = false) {
+    init(_ url: String, targetsNewWindow: Bool = false, isMainFrame: Bool = true, type: WKNavigationType = .linkActivated, modifiers: NSEvent.ModifierFlags = [], shouldDownload: Bool = false, sourceHost: String? = nil) {
+        self.fixedSourceHost = sourceHost
         self.url = url
         self.targetsNewWindow = targetsNewWindow
         self.isMainFrame = isMainFrame
@@ -114,6 +142,9 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     let tabID: UUID
     weak var page: LivePage?
     weak var host: PageHost?
+    /// JavaScript dialogs this page asked that are not answered yet (their script waits on WebKit's completion handler). A page with one
+    /// can't answer `requestMediaPlaybackState()`, so hibernation skips it.
+    var pendingDialogs = 0
     private weak var ownEvents: PageEvents?
     /// The URL of the main-frame navigation last allowed, for failures whose error names no URL.
     var pendingURL: URL?
@@ -270,7 +301,7 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             if opensHere, let failure { page.status.failure = failure }
             return .cancel
         case .askToOpenExternally(let address):
-            startExternal(address, typed: false)
+            startExternal(address, typed: false, askingHost: navigation.sourceHost)
             return .cancel
         case .allow:
             // An `<a download>` link the policy allows downloads, whatever frame or window it targets.
@@ -439,34 +470,38 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
     // MARK: External apps
 
-    func startExternal(_ address: String, typed: Bool) {
+    /// `askingHost`: the frame that clicked, when WebKit gave it; the sheet names it, else the top page.
+    func startExternal(_ address: String, typed: Bool, askingHost: String? = nil) {
         guard !externalPending else { return }
         if let quietUntil = externalQuietUntil, let now = host?.currentDate(), now < quietUntil { return }
         externalPending = true
         externalTask = Task { [weak self] in
-            await self?.openExternally(address, typed: typed)
+            await self?.openExternally(address, typed: typed, askingHost: askingHost)
             self?.externalPending = false
         }
     }
 
-    /// Asks before handing a link to its app. With no app, only a typed address says so.
-    func openExternally(_ address: String, typed: Bool) async {
+    /// Asks before handing a link to its app. With no app, only a typed address says so. The question is the tab's (decision 22): it waits
+    /// while the tab is hidden, and the app drops it when the page navigates or moves to another window; a dropped question opens nothing
+    /// and is not the user's No, so it starts no cooldown.
+    func openExternally(_ address: String, typed: Bool, askingHost: String? = nil) async {
         guard let host else { return }
         guard let url = URL(string: address), let app = host.externalApps.appFor(url) else {
             if typed, let page, !page.isClosed { page.status.failure = .noAppForLink(url: address) }
             return
         }
-        guard let events else { return }
-        // The page that asks is named; a typed address is the user's own, so none is.
-        let asking = typed ? nil : page.flatMap { SiteHost.normalized($0.status.url) }
+        guard let events, let asked = page, !asked.isClosed else { return }
+        let commits = asked.commitCount
+        // The sheet names the frame that clicked when it is known, else the top page; a typed address is the user's own, so none is named.
+        let asking = typed ? nil : askingHost.flatMap { SiteHost.normalized($0) } ?? SiteHost.normalized(asked.status.url)
         let confirmed = await events.confirmExternalApp(tabID: tabID, host: asking, url: url, appName: Self.appName(app))
-        guard confirmed else {
-            externalQuietUntil = host.currentDate().addingTimeInterval(Self.externalCooldown)
-            return
+        // The tab may have closed, or its page been replaced or navigated, while the question waited or was up.
+        guard !asked.isClosed, host.existingPage(tabID) === asked, asked.commitCount == commits else { return }
+        switch confirmed {
+        case .allowed: host.externalApps.open(url)
+        case .declined: externalQuietUntil = host.currentDate().addingTimeInterval(Self.externalCooldown)
+        case .unasked: break // dropped by the system (for instance "Bring It Here"): not the user's No, so no cooldown
         }
-        // The tab may have closed (or its page been replaced) while the question was up.
-        guard let page, !page.isClosed, host.existingPage(tabID) === page else { return }
-        host.externalApps.open(url)
     }
 
     static func appName(_ app: URL) -> String {

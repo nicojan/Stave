@@ -81,8 +81,8 @@ extension BrowserWindowController: PageEvents {
 
     // MARK: - Questions
 
-    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
-        await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> QuestionAnswer {
+        await environment.pageQuestions.askExternalApp(pageHost: environment.pageHost, tabID: tabID, host: host, url: url, appName: appName)
     }
 
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
@@ -115,15 +115,15 @@ extension BrowserWindowController: PageEvents {
     }
 
     func alert(tabID: UUID, origin: String?, message: String) async {
-        await prompts.alert(tabID: tabID, origin: origin, message: message)
+        await environment.pageQuestions.alert(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message)
     }
 
     func confirm(tabID: UUID, origin: String?, message: String) async -> Bool {
-        await prompts.confirm(tabID: tabID, origin: origin, message: message)
+        await environment.pageQuestions.confirm(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message)
     }
 
     func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
-        await prompts.prompt(tabID: tabID, origin: origin, message: message, defaultText: defaultText)
+        await environment.pageQuestions.prompt(pageHost: environment.pageHost, tabID: tabID, origin: origin, message: message, defaultText: defaultText)
     }
 
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? {

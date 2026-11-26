@@ -45,6 +45,8 @@ final class FakeEvents: PageEvents {
     /// Runs while a "wants to download several files" question is up.
     var whileAskingSeveral: (() async -> Void)?
     var externalAnswer = false
+    /// True: the app drops the question (`unasked`), as Bring It Here does.
+    var externalDropped = false
     var mediaQuestions: [(host: String, camera: Bool, microphone: Bool)] = []
     var mediaAnswer: (allow: Bool, remember: Bool) = (false, false)
     /// Runs while the camera and microphone question is up.
@@ -79,7 +81,10 @@ final class FakeEvents: PageEvents {
     func cancelWaitingQuestions(tabID: UUID) {
         cancelledTabs.append(tabID)
         dropHeldSeveral()
+        onCancelWaiting?(tabID)
     }
+    /// Lets a test wire the app's real queues to what the host reports.
+    var onCancelWaiting: ((UUID) -> Void)?
     /// Tabs whose waiting sign-in questions alone were cancelled (a main-frame load failed).
     var cancelledAuthTabs: [UUID] = []
     /// The sites those cancels were for (`AuthChallenge.siteKey`), in the same order.
@@ -133,11 +138,12 @@ final class FakeEvents: PageEvents {
         return downloadAnswer ? .allowed : .declined
     }
 
-    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
+    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> QuestionAnswer {
         externalQuestions.append((url, appName))
         externalAskers.append((tabID, host))
         whileConfirming?()
-        return externalAnswer
+        if externalDropped { return .unasked }
+        return externalAnswer ? .allowed : .declined
     }
 
     func askMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool) async -> (allow: Bool, remember: Bool) {
@@ -174,7 +180,19 @@ final class FakeEvents: PageEvents {
         return authAnswer.map { .signedIn($0) } ?? .cancelled
     }
 
-    func alert(tabID: UUID, origin: String?, message: String) async { alerts.append(message); dialogOrigins.append(origin) }
+    /// True: `alert` waits until `releaseAlerts()`, as the app's does while the tab is hidden.
+    var holdAlerts = false
+    var heldAlerts: [CheckedContinuation<Void, Never>] = []
+    func releaseAlerts() {
+        let held = heldAlerts
+        heldAlerts = []
+        for continuation in held { continuation.resume() }
+    }
+    func alert(tabID: UUID, origin: String?, message: String) async {
+        alerts.append(message)
+        dialogOrigins.append(origin)
+        if holdAlerts { await withCheckedContinuation { heldAlerts.append($0) } }
+    }
     func confirm(tabID: UUID, origin: String?, message: String) async -> Bool { dialogOrigins.append(origin); return confirmAnswer }
     func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? { dialogOrigins.append(origin); return promptAnswer }
     func chooseFiles(tabID: UUID, allowsMultiple: Bool, allowsDirectories: Bool) async -> [URL]? { chosenFiles }
@@ -746,11 +764,9 @@ struct PageDelegateTests {
         host.close(page.tabID)
     }
 
-    @Test func dialogOriginPrefersTheSecurityOrigin() {
-        #expect(PageDelegate.dialogOrigin(securityHost: "ads.example.net", requestURL: URL(string: "https://example.com/")) == "ads.example.net")
-        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: URL(string: "https://frame.example.org/x")) == "frame.example.org")
-        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: URL(string: "about:srcdoc")) == nil)
-        #expect(PageDelegate.dialogOrigin(securityHost: "", requestURL: nil) == nil)
+    @Test func dialogOriginIsTheSecurityOriginsHostOrNil() {
+        #expect(PageDelegate.dialogOrigin(securityHost: "ads.example.net") == "ads.example.net")
+        #expect(PageDelegate.dialogOrigin(securityHost: "") == nil)
     }
 
     // MARK: Media

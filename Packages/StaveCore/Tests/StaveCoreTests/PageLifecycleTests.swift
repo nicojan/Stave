@@ -16,6 +16,37 @@ private final class FakePages: PageLifecycle {
     func tabOpenedByUser(_ id: UUID) { openedByUser.append(id) }
 }
 
+/// Records only `tabTakenOver`; the other calls are not what these tests are about.
+@MainActor
+private final class TakeOverSpy: PageLifecycle {
+    var takenOver: [UUID] = []
+    func tabClosed(_ id: UUID) {}
+    func tabUnloaded(_ id: UUID) {}
+    func tabDeselected(_ id: UUID) {}
+    func tabNavigated(_ id: UUID) {}
+    func tabOpenedByUser(_ id: UUID) {}
+    func tabTakenOver(_ id: UUID) { takenOver.append(id) }
+}
+
+/// Writes a title into the store when told the tab will close, as a page flushing its pending title does.
+@MainActor
+private final class TitleFlusher: PageLifecycle {
+    let store: OrganizationStore
+    var order: [String] = []
+    var leftWithoutWindow: [[UUID]] = []
+    init(store: OrganizationStore) { self.store = store }
+    func tabClosed(_ id: UUID) { order.append("closed") }
+    func tabUnloaded(_ id: UUID) {}
+    func tabDeselected(_ id: UUID) {}
+    func tabNavigated(_ id: UUID) {}
+    func tabOpenedByUser(_ id: UUID) {}
+    func tabWillClose(_ id: UUID) {
+        order.append("willClose")
+        try? store.updateNavigation(tabID: id, url: "https://example.com/late", title: "Late title", faviconURL: nil, interactionState: nil)
+    }
+    func tabsLeftWithoutWindow(_ ids: [UUID]) { leftWithoutWindow.append(ids) }
+}
+
 @MainActor
 struct PageLifecycleTests {
     @MainActor private struct World {
@@ -337,5 +368,111 @@ struct PageLifecycleTests {
         #expect(try world.store.archivedTabs(profileID: world.profile.id).isEmpty)
         #expect(pages.closed.isEmpty)
         #expect(pages.deselected.isEmpty)
+    }
+
+    /// "Bring It Here" takes the page from the window showing it: the lifecycle hears of it (the app drops the external-app question
+    /// that window had up), once, and only when the page really changed windows.
+    @Test func bringingAPageHereTellsItsLifecycle() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let w1 = try world.window(selected: tab.id)
+        let w2 = try world.window(selected: tab.id)
+        let spy = TakeOverSpy()
+        w2.pages = spy
+        #expect(world.livePages.owner(of: tab.id) == w1.windowID)
+        w2.bringSelectedHere()
+        #expect(world.livePages.owner(of: tab.id) == w2.windowID)
+        #expect(spy.takenOver == [tab.id])
+        // Already the owner: nothing moved, so nothing is told.
+        w2.bringSelectedHere()
+        #expect(spy.takenOver == [tab.id])
+        // No selection: nothing to bring.
+        let empty = try world.window()
+        let emptySpy = TakeOverSpy()
+        empty.pages = emptySpy
+        empty.bringSelectedHere()
+        #expect(emptySpy.takenOver.isEmpty)
+    }
+
+    /// H3: the page's pending title is flushed before the store archives the tab, so the archive keeps it rather than a blank title.
+    @Test func closingATabFlushesItsTitleBeforeTheArchive() throws {
+        let world = try makeWorld()
+        let tab = try world.tab("a")
+        let window = try world.window(selected: tab.id)
+        let pages = TitleFlusher(store: world.store)
+        window.pages = pages
+        window.close(tab.id)
+        #expect(pages.order == ["willClose", "closed"])
+        let archived = window.archivedTabs()
+        #expect(archived.count == 1 && archived.first?.title == "Late title")
+    }
+
+    /// H2: closing a window tells the page host which of its tabs no window shows now, so their waiting dialogs can be answered.
+    @Test func closingAWindowReportsTabsNoWindowShows() throws {
+        let world = try makeWorld()
+        let background = try world.tab("b")
+        let window = try world.window()
+        let pages = TitleFlusher(store: world.store)
+        window.pages = pages
+        window.windowWillClose()
+        #expect(Set(pages.leftWithoutWindow.flatMap { $0 }).contains(background.id))
+    }
+
+    /// R1-3: closing a window cancels dialogs only for tabs no open window lists. An Essential another window still lists keeps waiting.
+    @Test func closingAWindowKeepsTabsAnotherWindowStillLists() throws {
+        let world = try makeWorld()
+        let essential = try world.tab("e")
+        try world.store.makeEssential(essential.id)
+        let only = try world.tab("only")
+        let closing = try world.window(selected: essential.id)
+        let staying = try world.window()
+        #expect(staying.snapshot.essentials.map(\.id) == [essential.id])
+        let pages = TitleFlusher(store: world.store)
+        closing.pages = pages
+        closing.windowWillClose()
+        let reported = Set(pages.leftWithoutWindow.flatMap { $0 })
+        #expect(!reported.contains(essential.id), "another open window lists the Essential")
+        #expect(reported.contains(only.id) == false, "the other window lists the same workspace's tabs too")
+        staying.windowWillClose()
+        let last = TitleFlusher(store: world.store)
+        let third = try world.window()
+        third.pages = last
+        third.windowWillClose()
+        #expect(Set(last.leftWithoutWindow.flatMap { $0 }).isSuperset(of: [essential.id, only.id]))
+    }
+
+    /// R1-8: every way a tab is archived flushes its title first, so the archive keeps it.
+    @Test func removingPinnedAndEssentialFlushesTitlesBeforeTheArchive() throws {
+        let world = try makeWorld()
+        let pinned = try world.tab("p")
+        let essential = try world.tab("e")
+        try world.store.pinTab(pinned.id, folderID: nil)
+        try world.store.makeEssential(essential.id)
+        let window = try world.window()
+        let pages = TitleFlusher(store: world.store)
+        window.pages = pages
+        window.removePinned(pinned.id)
+        window.removeEssential(essential.id)
+        #expect(pages.order == ["willClose", "closed", "willClose", "closed"])
+        let archived = window.archivedTabs()
+        #expect(archived.count == 2)
+        #expect(archived.allSatisfy { $0.title == "Late title" })
+    }
+
+    @Test func deletingAWorkspaceFlushesTitlesBeforeTheArchive() throws {
+        let world = try makeWorld()
+        let other = try world.store.createWorkspace(profileID: world.profile.id, name: "Two", icon: "", colorHex: "#FFFFFF")
+        _ = try world.store.openTab(url: "https://example.com/a", title: "a", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        let b = try world.store.openTab(url: "https://example.org/b", title: "b", workspaceID: other.id, origin: .commandBar, containerID: nil, edge: .bottom)
+        try world.store.pinTab(b.id, folderID: nil)
+        let window = try world.window()
+        let pages = TitleFlusher(store: world.store)
+        window.pages = pages
+        window.deleteWorkspace(other.id)
+        #expect(pages.order.filter { $0 == "willClose" }.count == 2)
+        #expect(pages.order.prefix(2).allSatisfy { $0 == "willClose" }, "both flushed before anything is archived")
+        let archived = window.archivedTabs()
+        #expect(archived.count == 2)
+        #expect(archived.allSatisfy { $0.title == "Late title" })
     }
 }

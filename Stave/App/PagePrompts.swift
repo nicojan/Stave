@@ -9,7 +9,7 @@ struct PagePanel {
     let end: () -> Void
     /// For a sign-in sheet: the site it is about (`AuthChallenge.siteKey`), so a failed load can end only that site's sheet.
     var site: String?
-    /// Set for a sheet that comes from the waiting queue (media, sign-in), which goes back to waiting when its tab is hidden: marks it sent
+    /// Set for a sheet that comes from the waiting queue (media, sign-in, dialogs, external app), which goes back to waiting when its tab is hidden: marks it sent
     /// back (a flag, not a return code), then ends it.
     var sendBack: (() -> Void)?
 
@@ -21,9 +21,8 @@ struct PagePanel {
         self.sendBack = sendBack
     }
 
-    /// The kind of question this sheet is, for the kinds `PageQuestionQueues` cancels together (a camera or sign-in sheet from the waiting
-    /// queue, a download question's sheet). Nil for the rest (JavaScript dialogs, the file picker, the external-app question), which a new
-    /// document leaves alone.
+    /// The kind of this sheet, for the kinds `PageQuestionQueues` cancels together (a camera, sign-in, dialog or external-app sheet from the
+    /// waiting queue, a download question's sheet). Nil for the file picker, which a new document leaves alone.
     var kind: PageQuestionKind?
 
     var isQueued: Bool { sendBack != nil }
@@ -44,13 +43,15 @@ final class SentBackFlag {
 
 /// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download a file", "download
 /// several files", camera and microphone, HTTP sign-in, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
-/// can't be asked (its tab isn't shown here, another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its
-/// own window, so it never blocks another window.
+/// can't be asked (another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its own window, so it never
+/// blocks another window.
 ///
-/// The camera and microphone, HTTP sign-in and several-downloads questions are the exception to "refused at once": they are asked through the
-/// app-wide `PageQuestionCenter`, where they wait when they can't be shown, and are shown by whichever window shows their tab when no sheet
-/// is up. Hiding the tab while the sheet is up sends the question back to waiting. A camera question is denied, remembering nothing, and a
-/// sign-in question cancelled, when the page goes away or navigates, its tab goes away (`forget`), or the window it is up on closes.
+/// Most questions are asked through the app-wide `PageQuestionCenter`, where they wait when they can't be shown, and are shown by whichever
+/// window shows their tab when no sheet is up: camera and microphone, HTTP sign-in, several downloads, JavaScript dialogs (decision 21) and
+/// the external-app question (decision 22). Hiding the tab while the sheet is up sends the question back to waiting. A camera question is
+/// denied, remembering nothing, a sign-in question cancelled, a dialog answered with its safe answer and an external-app question dropped,
+/// when the page goes away or navigates, its tab goes away (`forget`), or the window it is up on closes. The file picker and the
+/// first-download question are asked only while the tab is shown, and are cancelled when it is hidden.
 @MainActor
 final class PagePrompts: PageQuestionWindow {
     private weak var window: NSWindow?
@@ -58,14 +59,6 @@ final class PagePrompts: PageQuestionWindow {
     /// Whether this window shows the tab now: every question is asked only on the window showing its tab.
     private let shows: (UUID) -> Bool
     private var panels: [UUID: PagePanel] = [:]
-    /// Per tab: stops a page that loops `alert()` from locking the window (`PageDialogGate`). Each gate belongs to one `LivePage` (held
-    /// weakly): a page that was unloaded or remade gets a fresh gate, so a stopped gate never matches the new page's commit count.
-    private var gates: [UUID: GateEntry] = [:]
-
-    private struct GateEntry {
-        weak var page: LivePage?
-        var gate: PageDialogGate
-    }
     private var isClosed = false
     private let center: PageQuestionCenter
     private var sheetEndObserver: NSObjectProtocol?
@@ -85,14 +78,18 @@ final class PagePrompts: PageQuestionWindow {
 
     // MARK: - Questions
 
-    /// "Allow example.com to open this link in Zoom?", naming the page that asks (a typed address names none), with the link below.
-    func confirmExternalApp(tabID: UUID, host: String?, url: URL, appName: String) async -> Bool {
+    /// "Allow example.com to open this link in Zoom?", naming the frame that asks (a typed address names none), with the link below. Called
+    /// by `PageQuestionQueues` when this window can ask now; `finish` hears how the sheet ended: answered (Open is true), sent back (its
+    /// tab was hidden, so the question waits again) or cancelled (the page navigated or moved to another window, the window closed).
+    func showExternalApp(tabID: UUID, host: String?, url: URL, appName: String, finish: @escaping (WaitingQuestions<Bool>.Result) -> Void) -> Bool {
         let alert = NSAlert()
         alert.messageText = PageText.externalAppQuestion(appName: appName, host: host)
         alert.informativeText = PageText.dialogMessage(url.absoluteString)
         alert.addButton(withTitle: PageText.openButton)
         alert.addButton(withTitle: PageText.cancelButton)
-        return await present(alert, for: tabID) == .alertFirstButtonReturn
+        return showQueued(alert, tabID: tabID, kind: .externalApp, finish: finish) { response, _ in
+            response == .alertFirstButtonReturn || response == .alertSecondButtonReturn ? response == .alertFirstButtonReturn : nil
+        }
     }
 
     /// "example.com wants to download a file", Allow / Don't Allow, for the first download of a page Stave reopened by itself. Only a real
@@ -245,29 +242,38 @@ final class PagePrompts: PageQuestionWindow {
         return true
     }
 
-    func alert(tabID: UUID, origin: String?, message: String) async {
-        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return }
+    /// A JavaScript dialog: the asking frame's site as the heading and its capped text below. Called by `PageQuestionQueues` when this
+    /// window can ask now; a tab hidden while it is up sends it back to waiting, keeping what was typed in a prompt.
+    func showDialog(tabID: UUID, request: DialogRequest, finish: @escaping (WaitingQuestions<DialogReply>.Result) -> Void) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = PageText.dialogHeading(origin: request.origin)
+        alert.informativeText = PageText.dialogMessage(request.message)
+        if request.offerToStop {
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = PageText.stopDialogsOption
+            alert.suppressionButton?.state = .off
+        }
+        var field: NSTextField?
+        if case .prompt(let defaultText) = request.kind {
+            let input = NSTextField(string: center.draft(for: tabID, request: request) ?? PageText.dialogMessage(defaultText ?? ""))
+            input.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+            input.setAccessibilityLabel(PageText.dialogMessage(request.message))
+            alert.accessoryView = input
+            alert.window.initialFirstResponder = input
+            field = input
+        }
         alert.addButton(withTitle: PageText.okButton)
-        _ = await presentDialog(alert, tabID: tabID)
-    }
-
-    func confirm(tabID: UUID, origin: String?, message: String) async -> Bool {
-        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return false }
-        alert.addButton(withTitle: PageText.okButton)
-        alert.addButton(withTitle: PageText.cancelButton)
-        return await presentDialog(alert, tabID: tabID) == .alertFirstButtonReturn
-    }
-
-    func prompt(tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
-        guard let alert = dialog(tabID: tabID, origin: origin, message: message) else { return nil }
-        let field = NSTextField(string: PageText.dialogMessage(defaultText ?? ""))
-        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
-        field.setAccessibilityLabel(PageText.dialogMessage(message))
-        alert.accessoryView = field
-        alert.addButton(withTitle: PageText.okButton)
-        alert.addButton(withTitle: PageText.cancelButton)
-        alert.window.initialFirstResponder = field
-        return await presentDialog(alert, tabID: tabID) == .alertFirstButtonReturn ? field.stringValue : nil
+        if request.kind != .alert { alert.addButton(withTitle: PageText.cancelButton) }
+        let shown = showQueued(alert, tabID: tabID, kind: .dialog, finish: { [center] (result: WaitingQuestions<DialogReply>.Result) in
+            // What was typed survives a send back (the user hid the tab mid-answer), tied to this question; any other ending drops it.
+            if case .sentBack = result { center.keepDraft(field?.stringValue, for: tabID, request: request) } else { center.keepDraft(nil, for: tabID, request: request) }
+            finish(result)
+        }, answer: { (response: NSApplication.ModalResponse, alert: NSAlert) -> DialogReply? in
+            guard response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return nil }
+            let accepted = response == .alertFirstButtonReturn
+            return DialogReply(accepted: accepted, text: accepted ? field?.stringValue : nil, stopDialogs: alert.suppressionButton?.state == .on)
+        })
+        return shown
     }
 
     /// The upload picker, as a sheet. Cancelled (nil) when it can't be shown or is ended.
@@ -285,6 +291,44 @@ final class PagePrompts: PageQuestionWindow {
         }
         panels[id] = nil
         return response == .OK ? panel.urls : nil
+    }
+
+    /// Shows the alert as a sheet that belongs to the waiting queue: `answer` turns the user's button into the question's answer (nil for a
+    /// sheet that was ended, not answered); a sheet ended because its tab was hidden reports `.sentBack`, any other ending `.cancelled`.
+    /// False, with nothing shown, when this window can't ask now.
+    private func showQueued<Answer: Sendable>(
+        _ alert: NSAlert, tabID: UUID, kind: PageQuestionKind,
+        finish: @escaping (WaitingQuestions<Answer>.Result) -> Void, answer: @escaping (NSApplication.ModalResponse, NSAlert) -> Answer?
+    ) -> Bool {
+        guard let window, canAsk(tabID) else { return false }
+        let id = UUID()
+        let sheet = alert.window
+        let sentBack = SentBackFlag()
+        panels[id] = PagePanel(
+            tabID: tabID,
+            kind: kind,
+            end: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                window.endSheet(sheet, returnCode: .abort)
+            },
+            sendBack: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                sentBack.isSet = true
+                window.endSheet(sheet, returnCode: .abort)
+            }
+        )
+        let center = center
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.panels[id] = nil
+            if let answered = answer(response, alert) {
+                finish(.answered(answered))
+            } else {
+                finish(sentBack.isSet ? .sentBack : .cancelled)
+            }
+            // The window is free of this sheet: another waiting question may go up.
+            center.drain()
+        }
+        return true
     }
 
     // MARK: - Ending
@@ -307,7 +351,7 @@ final class PagePrompts: PageQuestionWindow {
         }
     }
 
-    /// The tab is no longer shown here: its sheets come down. A camera, sign-in or several-files question goes back to waiting; every other one is cancelled.
+    /// The tab is no longer shown here: its sheets come down. A camera, sign-in, several-files, dialog or external-app question goes back to waiting; every other one is cancelled.
     func hide(_ tabID: UUID) {
         for (id, panel) in panels where panel.tabID == tabID {
             panels[id] = nil
@@ -325,15 +369,14 @@ final class PagePrompts: PageQuestionWindow {
     func close() {
         end { _ in true }
         isClosed = true
-        gates = [:]
         center.unregister(self)
         if let sheetEndObserver { NotificationCenter.default.removeObserver(sheetEndObserver) }
         sheetEndObserver = nil
     }
 
-    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it, and its waiting camera and sign-in questions are denied or cancelled.
+    /// A tab's page went away (closed, unloaded, reset): its dialog count goes with it, and its waiting questions (camera, sign-in, downloads,
+    /// dialogs, the external-app question) are denied, cancelled or dropped.
     func forget(_ tabID: UUID) {
-        gates[tabID] = nil
         center.cancel(tabID: tabID)
     }
 
@@ -342,38 +385,6 @@ final class PagePrompts: PageQuestionWindow {
     func canAsk(_ tabID: UUID) -> Bool {
         guard let window, !isClosed, window.attachedSheet == nil else { return false }
         return shows(tabID)
-    }
-
-    /// The JavaScript dialog: the asking frame's site as the heading and its capped text below. Nil when the page's dialogs were stopped,
-    /// or the page is gone, so the question resolves at once.
-    private func dialog(tabID: UUID, origin: String?, message: String) -> NSAlert? {
-        guard let page = pageHost.existingPage(tabID) else { return nil }
-        var entry = gates[tabID].flatMap { $0.page === page ? $0 : nil } ?? GateEntry(page: page, gate: PageDialogGate())
-        let verdict = entry.gate.next(at: Date(), navigation: page.commitCount)
-        gates[tabID] = entry
-        guard case .ask(let offerToStop) = verdict else { return nil }
-        let alert = NSAlert()
-        alert.messageText = PageText.dialogHeading(origin: origin)
-        alert.informativeText = PageText.dialogMessage(message)
-        if offerToStop {
-            alert.showsSuppressionButton = true
-            alert.suppressionButton?.title = PageText.stopDialogsOption
-            alert.suppressionButton?.state = .off
-        }
-        return alert
-    }
-
-    /// Shows a JavaScript dialog; a ticked "Don't show more dialogs" stops the page's dialogs until it navigates.
-    private func presentDialog(_ alert: NSAlert, tabID: UUID) async -> NSApplication.ModalResponse {
-        let page = pageHost.existingPage(tabID)
-        let navigation = page?.commitCount ?? 0
-        let response = await present(alert, for: tabID)
-        // Only the page that asked is stopped; a page remade while the sheet was up keeps its own fresh gate.
-        if alert.showsSuppressionButton, alert.suppressionButton?.state == .on, var entry = gates[tabID], let page, entry.page === page {
-            entry.gate.stop(navigation: navigation)
-            gates[tabID] = entry
-        }
-        return response
     }
 
     /// Shows the alert as a sheet and waits for its answer, or `.abort` at once when it can't be asked.

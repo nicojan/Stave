@@ -65,6 +65,12 @@ public final class PageHost {
     @ObservationIgnored var testRuleLists: [WKContentRuleList] = []
     /// Seam for tests: whether a page is playing media or using the camera or microphone.
     @ObservationIgnored var mediaCheck: @MainActor (WKWebView) async -> Bool = PageHost.isBusyWithMedia
+    /// Seam for tests: how long one hidden page may take to answer the media check before it counts as busy.
+    @ObservationIgnored var mediaCheckLimit: Duration = .seconds(5)
+    /// Pages whose media check from an earlier hibernation round has not returned (by identity, so a remade page is asked afresh).
+    @ObservationIgnored private var unfinishedMediaChecks: Set<ObjectIdentifier> = []
+    /// Seam for tests: runs a page's trailing title write after its delay. The default sleeps; tests run the work by hand.
+    @ObservationIgnored var titleScheduler: @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = LivePage.sleepThenRun
     /// Set by the app: whether the tab's page has pop-ups open, which keeps it from hibernating (ruling R14).
     @ObservationIgnored public var hasOpenPopups: @MainActor (UUID) -> Bool = { _ in false }
 
@@ -269,22 +275,73 @@ public final class PageHost {
         for page in pages.values { page.flush() }
     }
 
+    /// Writes one tab's pending title and state now (the tab was deselected); other tabs stay as they are. No page: nothing to do.
+    public func flush(_ tabID: UUID) {
+        pages[tabID]?.flush()
+    }
+
+    /// Writes the tab's pending title now, before the store archives it, so the archive keeps the latest title. No page: nothing to do.
+    public func flushTitle(_ tabID: UUID) {
+        pages[tabID]?.flushTitle()
+    }
+
     // MARK: Hibernation
 
-    /// Unloads the pages `HibernationPolicy` picks, after asking each unshown page about media.
+    /// Unloads the pages `HibernationPolicy` picks, after asking each unshown page about media. Pop-ups are read after every media check
+    /// has finished (a pop-up can open while a later page is being checked), and again right before each unload. Unloading drops the
+    /// page's questions in every window kind (`unload` tells the app).
     public func hibernateIdle() async {
         let candidates = Array(pages.values)
-        var infos: [LivePageInfo] = []
-        for page in candidates {
-            let busy = page.isShown ? false : await mediaCheck(page.webView)
-            infos.append(LivePageInfo(
-                id: page.tabID, isShown: page.isShown, lastShownAt: page.lastShownAt, isBusyWithMedia: busy, hasOpenPopups: hasOpenPopups(page.tabID)
-            ))
+        // Every check runs at once and each is time-limited, so one page that never answers can't hold up the others.
+        let checks = candidates.map { page in Task { @MainActor in await self.isBusy(page) } }
+        var busyPages: [UUID: Bool] = [:]
+        for (page, check) in zip(candidates, checks) { busyPages[page.tabID] = await check.value }
+        let infos = candidates.map { page in
+            LivePageInfo(
+                id: page.tabID, isShown: page.isShown, lastShownAt: page.lastShownAt,
+                isBusyWithMedia: busyPages[page.tabID] ?? false, hasOpenPopups: hasOpenPopups(page.tabID)
+            )
         }
         for id in HibernationPolicy.pagesToUnload(infos, now: now()) {
             // The pool may have changed while the media checks ran.
-            guard let page = pages[id], candidates.contains(where: { $0 === page }), !page.isShown else { continue }
+            guard let page = pages[id], candidates.contains(where: { $0 === page }), !page.isShown, !hasOpenPopups(id) else { continue }
             unload(id)
+        }
+    }
+
+    /// Whether an unshown page can't be hibernated now. A page with a JavaScript dialog waiting is busy without being asked: its script is
+    /// blocked in WebKit's completion handler and the media question may never come back. Any other check that takes longer than
+    /// `mediaCheckLimit` counts as busy too (try again next round).
+    private func isBusy(_ page: LivePage) async -> Bool {
+        if page.isShown { return false }
+        if delegates[page.tabID]?.pendingDialogs ?? 0 > 0 { return true }
+        // R1-6: a check from an earlier round that never returned is still out; asking again would only pile up abandoned checks.
+        let checked = ObjectIdentifier(page)
+        if unfinishedMediaChecks.contains(checked) { return true }
+        unfinishedMediaChecks.insert(checked)
+        let check = mediaCheck, webView = page.webView, limit = mediaCheckLimit
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            let once = ResumeOnce(continuation)
+            Task { @MainActor in
+                let busy = await check(webView)
+                self.unfinishedMediaChecks.remove(checked)
+                once.resume(busy)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                once.resume(true)
+            }
+        }
+    }
+
+    /// Resumes a continuation the first time it is told, ignores the rest.
+    @MainActor
+    private final class ResumeOnce {
+        private var continuation: CheckedContinuation<Bool, Never>?
+        init(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation = continuation }
+        func resume(_ value: Bool) {
+            continuation?.resume(returning: value)
+            continuation = nil
         }
     }
 
@@ -546,6 +603,7 @@ public final class PageHost {
     }
 
     private func insert(_ page: LivePage) {
+        page.scheduleTitleFlush = titleScheduler
         pages[page.tabID] = page
         startHibernationIfNeeded()
     }

@@ -2,12 +2,17 @@ import AppKit
 import StaveCore
 import StaveWeb
 
-/// The app's door to the queues of page questions (`PageQuestionQueues` in StaveCore: camera and microphone, HTTP sign-in, and
-/// "wants to download several files"). This type only knows how to tell that a question's page has gone stale, which needs `PageHost`; everything else is the
-/// queues'. Windows register through `PageQuestionWindow` (`PagePrompts` implements it, and keeps the AppKit sheets).
+/// The app's door to the queues of page questions (`PageQuestionQueues` in StaveCore: camera and microphone, HTTP sign-in, "wants to
+/// download several files", JavaScript dialogs and "Open this link in ‹App›?"). This type knows how to tell that a question's page has gone
+/// stale, which needs `PageHost`, and hands dialogs to `PageDialogCoordinator`; everything else is the queues'. Windows register through `PageQuestionWindow` (`PagePrompts` implements it, and keeps the AppKit sheets).
 @MainActor
 final class PageQuestionCenter {
     private let queues = PageQuestionQueues()
+    /// Runs each page's dialog gate (a page that loops `alert()`) and maps replies; its rules live in StaveCore.
+    private lazy var dialogs = PageDialogCoordinator(queues: queues)
+
+    func draft(for tabID: UUID, request: DialogRequest) -> String? { dialogs.draft(for: tabID, request: request) }
+    func keepDraft(_ text: String?, for tabID: UUID, request: DialogRequest) { dialogs.keepDraft(text, for: tabID, request: request) }
 
     func register(_ prompts: PagePrompts) { queues.register(prompts) }
     func unregister(_ prompts: PagePrompts) { queues.unregister(prompts) }
@@ -34,8 +39,38 @@ final class PageQuestionCenter {
         return await queues.askSeveralDownloads(tabID: tabID, host: host, isStale: isStale)
     }
 
+    /// "Open this link in ‹App›?" for the tab's page as it is now (decision 22). True is Open; false is the user's Cancel or a question the
+    /// system dropped (`unasked`: the page navigated, went away, or moved to another window).
+    func askExternalApp(pageHost: PageHost, tabID: UUID, host: String?, url: URL, appName: String) async -> QuestionAnswer {
+        guard let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return .unasked }
+        return QuestionAnswer(externalAppReply: await queues.askExternalApp(tabID: tabID, host: host, url: url, appName: appName, isStale: isStale))
+    }
+
+    /// The page moved to another window ("Bring It Here"): only its external-app question is dropped.
+    func cancelExternalApp(tabID: UUID) { queues.cancelExternalApp(tabID: tabID) }
+
+    // MARK: JavaScript dialogs (decision 21)
+
+    func alert(pageHost: PageHost, tabID: UUID, origin: String?, message: String) async {
+        guard let page = pageHost.existingPage(tabID), let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return }
+        await dialogs.alert(tabID: tabID, page: page, navigation: page.commitCount, origin: origin, message: message, isStale: isStale)
+    }
+
+    func confirm(pageHost: PageHost, tabID: UUID, origin: String?, message: String) async -> Bool {
+        guard let page = pageHost.existingPage(tabID), let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return false }
+        return await dialogs.confirm(tabID: tabID, page: page, navigation: page.commitCount, origin: origin, message: message, isStale: isStale)
+    }
+
+    func prompt(pageHost: PageHost, tabID: UUID, origin: String?, message: String, defaultText: String?) async -> String? {
+        guard let page = pageHost.existingPage(tabID), let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return nil }
+        return await dialogs.prompt(tabID: tabID, page: page, navigation: page.commitCount, origin: origin, message: message, defaultText: defaultText, isStale: isStale)
+    }
+
+    /// Held JavaScript dialogs of a tab no window shows any more are answered with their safe values (its window closed).
+    func cancelDialogs(tabID: UUID) { dialogs.cancelDialogs(tabID: tabID) }
+
     func drain() { queues.drain() }
-    func cancel(tabID: UUID) { queues.cancel(tabID: tabID) }
+    func cancel(tabID: UUID) { dialogs.cancel(tabID: tabID) }
     func cancelAuth(tabID: UUID, site: String) { queues.cancelAuth(tabID: tabID, site: site) }
 
     /// Nil when the tab has no page now; else a check that is true once that page is gone, remade or has committed another document.

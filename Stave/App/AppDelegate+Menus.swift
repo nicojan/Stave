@@ -97,12 +97,14 @@ extension AppDelegate {
     /// A live page's status for the page menu. The blocking toggle applies only to a page with a web site (`PageMenuState.blockingState`).
     /// `section` is where the selected tab sits, for ⌘D's rule; a private window's page has none.
     static func summary(of page: LivePage, section: SlotSection? = nil, isPrivate: Bool = false) -> PageStatusSummary {
-        PageStatusSummary(
-            isLoading: page.status.isLoading, canGoBack: page.status.canGoBack, canGoForward: page.status.canGoForward,
-            hasPage: true, blockingOn: PageMenuState.blockingState(url: page.status.url, isOn: page.isContentBlockingOn),
-            hasFailure: page.status.failure != nil, isBlank: PageMenuState.isBlank(url: page.status.url), zoom: page.zoom,
+        // Reads `menuFields`, not `status`: the menus rebuild only when a field they use changes, not on every title or progress tick.
+        let fields = page.menuFields
+        return PageStatusSummary(
+            isLoading: fields.isLoading, canGoBack: fields.canGoBack, canGoForward: fields.canGoForward,
+            hasPage: true, blockingOn: PageMenuState.blockingState(url: fields.url, isOn: page.isContentBlockingOn),
+            hasFailure: fields.hasFailure, isBlank: PageMenuState.isBlank(url: fields.url), zoom: page.zoom,
             inspectorAvailable: PageTools.canShowInspector(page.webView), sourceAvailable: PageTools.canShowPageSource(page.webView),
-            selectedSection: section, isPrivate: isPrivate, hasSite: SitePanelSite.host(forPageURL: page.status.url) != nil
+            selectedSection: section, isPrivate: isPrivate, hasSite: SitePanelSite.host(forPageURL: fields.url) != nil
         )
     }
 

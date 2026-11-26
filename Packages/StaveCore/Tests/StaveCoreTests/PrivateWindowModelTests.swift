@@ -137,6 +137,24 @@ struct PrivateWindowModelTests {
         #expect(loads.first?.1 == "http://localhost:3000")
     }
 
+    /// A typed `mailto:` is handed to the page and never stored as a private tab's address.
+    @Test func typedMailtoIsNeverStoredInAPrivateTab() {
+        let model = PrivateWindowModel()
+        var loads: [String] = []
+        model.loadTyped = { _, url in loads.append(url); return false }
+        let a = model.open(url: "https://example.com/a", below: nil, select: true)
+        let bar = CommandBarModel(mode: .currentTab, candidates: model.commandCandidates, currentURL: "https://example.com/a", currentTabID: a)
+        bar.query = "mailto:a@example.com"
+        #expect(bar.activate(in: model) == .close(.done))
+        #expect(loads == ["mailto:a@example.com"])
+        #expect(model.tabs.first { $0.id == a }?.url == "https://example.com/a")
+        let blank = CommandBarModel(mode: .newTab, candidates: model.commandCandidates, currentURL: nil)
+        blank.query = "tel:5551234"
+        #expect(blank.activate(in: model) == .close(.done))
+        #expect(model.selectedTab?.url == "")
+        #expect(loads.last == "tel:5551234")
+    }
+
     @Test func currentTabAddressGoesToThatTab() {
         let model = PrivateWindowModel()
         var loaded = false

@@ -43,6 +43,8 @@ public final class LivePageRegistry {
     }
 
     private var state = State()
+    /// What each open window lists in its sidebar, read on demand (a window's list changes without the registry hearing of it).
+    @ObservationIgnored private var listings: [UUID: @MainActor () -> Set<UUID>] = [:]
 
     public init() {}
 
@@ -67,7 +69,20 @@ public final class LivePageRegistry {
         state = state.releasing(windowID)
     }
 
-    public func windowClosed(_ windowID: UUID) { release(windowID: windowID) }
+    public func windowClosed(_ windowID: UUID) {
+        listings[windowID] = nil
+        release(windowID: windowID)
+    }
+
+    /// Registers how to read the tabs `windowID` lists (its Essentials, pinned and regular tabs); dropped when the window closes.
+    public func setListing(for windowID: UUID, _ listing: @escaping @MainActor () -> Set<UUID>) {
+        listings[windowID] = listing
+    }
+
+    /// Whether any open window lists the tab.
+    public func isListed(_ tabID: UUID) -> Bool {
+        listings.values.contains { $0().contains(tabID) }
+    }
 
     public func tabRemoved(_ tabID: UUID) {
         var next = state

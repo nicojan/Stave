@@ -16,6 +16,21 @@ public protocol PageLifecycle: AnyObject {
     /// The user opened the tab just now (⇧⌘T): the next page made for it is user-opened (`PageRequest.openedByUser`), so it can download
     /// without waiting for a click. Told before the tab is selected.
     func tabOpenedByUser(_ id: UUID)
+    /// Another window took the tab's live page over ("Bring It Here"): a question the page's old window had up for it is dropped, so a stale
+    /// sheet can't act for a page that window no longer shows. Told to the window that took it. Optional: the default does nothing.
+    func tabTakenOver(_ id: UUID)
+    /// A window closed, and no window shows these tabs of its workspace now: a JavaScript dialog one of them waits on has nobody left to show
+    /// it, so it is answered with its safe value. Optional: the default does nothing.
+    func tabsLeftWithoutWindow(_ ids: [UUID])
+    /// The tab is about to be archived: its page writes any title still waiting (the archive keeps the last title written). Told before the
+    /// store closes the tab. Optional: the default does nothing.
+    func tabWillClose(_ id: UUID)
+}
+
+extension PageLifecycle {
+    public func tabTakenOver(_ id: UUID) {}
+    public func tabsLeftWithoutWindow(_ ids: [UUID]) {}
+    public func tabWillClose(_ id: UUID) {}
 }
 
 /// What one browser window shows and does. Views read it and call it; every write goes through `perform(_:)`,
@@ -102,6 +117,10 @@ public final class BrowserWindowModel: CommandBarWindow {
         isCompact = (try? store.setting(SettingKeys.compactMode)) ?? SettingKeys.compactMode.defaultValue
         selectedTabID = Self.allTabs(in: loaded.snapshot).contains { $0.id == state.selectedTabID } ? state.selectedTabID : nil
         if let selectedTabID { livePages.show(selectedTabID, in: windowID) }
+        let listedID = windowID
+        livePages.setListing(for: listedID) { [weak self] in
+            self.map { Set(Self.allTabs(in: $0.snapshot).map(\.id)) } ?? []
+        }
     }
 
     /// Re-reads the store. A missing workspace falls back to the profile's first, a missing profile to the first profile.
@@ -228,7 +247,10 @@ public final class BrowserWindowModel: CommandBarWindow {
     /// Takes the selected tab's live page from the window that shows it.
     public func bringSelectedHere() {
         guard let id = selectedTabID else { return }
+        let previous = livePages.owner(of: id)
         livePages.bringHere(id, to: windowID)
+        // Told only when the page really changed windows, so a question the old window had up for it can be dropped (decision 22).
+        if let previous, previous != windowID { pages?.tabTakenOver(id) }
     }
 
     /// `reportDeselect` is false only for a tab that no longer exists; its close is reported instead.
@@ -315,6 +337,7 @@ public final class BrowserWindowModel: CommandBarWindow {
             lastError = message
             return
         }
+        for tabID in archivedIDs { pages?.tabWillClose(tabID) }
         let neighbour = id == snapshot.workspace.id ? neighbourIndex(ofWorkspace: id) : nil
         let deleted: Void? = perform {
             try store.deleteWorkspace(id)
@@ -378,6 +401,8 @@ public final class BrowserWindowModel: CommandBarWindow {
     public func close(_ tabID: UUID) {
         let wasSelected = tabID == selectedTabID
         let next = wasSelected ? neighbour(of: tabID) : nil
+        // The archive keeps the title as last written, so a title still waiting in the page is written first (H3).
+        pages?.tabWillClose(tabID)
         guard let result = perform({ try store.closeTab(tabID) }) else { return }
         if case .archived = result { tabGone(tabID) }
         if wasSelected { select(next) }
@@ -449,9 +474,11 @@ public final class BrowserWindowModel: CommandBarWindow {
     public func unpin(_ tabID: UUID) { perform { try store.unpinTab(tabID) } }
     public func makeEssential(_ tabID: UUID) { perform { try store.makeEssential(tabID) } }
     public func removeEssential(_ tabID: UUID) {
+        pages?.tabWillClose(tabID)
         if perform({ try store.removeEssential(tabID) }) != nil { tabGone(tabID) }
     }
     public func removePinned(_ tabID: UUID) {
+        pages?.tabWillClose(tabID)
         if perform({ try store.removePinnedTab(tabID) }) != nil { tabGone(tabID) }
     }
 
@@ -628,15 +655,24 @@ public final class BrowserWindowModel: CommandBarWindow {
     }
 
     private func open(url: String, mode: CommandBarMode, target: UUID?) {
-        guard mode == .currentTab, let id = target ?? selectedTabID, (try? store.tabExists(id)) == true else {
-            guard let created = createTab(url: url, origin: .commandBar, containerID: nil) else { return }
-            select(created.id)
-            _ = loadTyped?(created.id, url)
-            return
+        // A typed `mailto:` or `tel:` goes to the page (which asks) and is never a tab's address: a stored one would only be refused later.
+        let isExternal = AddressInput.isExternalLink(url)
+        if mode == .currentTab, let id = target ?? selectedTabID, (try? store.tabExists(id)) == true {
+            // R1-2: a link for another app aimed at a tab that shows in another window must not be asked there (that window may be hidden):
+            // it falls through to a blank tab here. A typed web address keeps going to loadTyped, whose page the other window owns.
+            let shownElsewhere = livePages.placement(of: id, in: windowID) != .here
+            if !(isExternal && shownElsewhere) {
+                // A live page navigates; its commit writes the address (ruling R5), so nothing is stored for a load that fails.
+                if loadTyped?(id, url) == true { return }
+                if !isExternal {
+                    perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
+                    return
+                }
+            }
         }
-        // A live page navigates; its commit writes the address (ruling R5), so nothing is stored for a load that fails.
-        if loadTyped?(id, url) == true { return }
-        perform { try store.updateNavigation(tabID: id, url: url, title: "", faviconURL: nil, interactionState: nil) }
+        guard let created = createTab(url: isExternal ? "" : url, origin: .commandBar, containerID: nil) else { return }
+        select(created.id)
+        _ = loadTyped?(created.id, url)
     }
 
     private func search(_ query: String, mode: CommandBarMode, target: UUID?) -> CommandOutcome {
@@ -736,5 +772,10 @@ public final class BrowserWindowModel: CommandBarWindow {
         }
     }
 
-    public func windowWillClose() { livePages.windowClosed(windowID) }
+    public func windowWillClose() {
+        livePages.windowClosed(windowID)
+        // R1-3: only tabs no open window lists (an Essential or a shared workspace's tab stays waiting for the window that still lists it).
+        let unshown = Self.allTabs(in: snapshot).map(\.id).filter { livePages.owner(of: $0) == nil && !livePages.isListed($0) }
+        if !unshown.isEmpty { pages?.tabsLeftWithoutWindow(unshown) }
+    }
 }
