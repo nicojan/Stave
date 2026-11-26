@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuState.searchEngine = environment.searchEngine
             menuState.externalLinks = environment.externalLinks
             menuState.historyRetention = environment.historyRetention
+            menuState.downloadRetention = environment.downloadRetention
             let storeRemoval = makeStoreRemoval(environment) // one instance, so the launch retry and every deletion take turns
             menuState.settings = makeSettingsModel(environment, removal: storeRemoval)
             retryPendingStoreRemovals(storeRemoval)
@@ -123,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard launchCompleted, let environment else { return }
         // Private windows leave nothing: their pages close unflushed, their pop-ups close, their stores and download rows go.
         for controller in privateControllers { controller.tearDown() }
+        // "When Stave quits": the ended rows of the downloads list go (rows only; a running download is stopped at the next launch).
+        environment.downloads.trimAtQuit()
         environment.pageHost.flushAll()
         for controller in controllers { controller.reportNow() }
         environment.sidebarWidth.saveIfChanged()

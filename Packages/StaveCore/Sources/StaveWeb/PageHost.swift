@@ -51,7 +51,7 @@ public final class PageHost {
     @ObservationIgnored private var hibernationTask: Task<Void, Never>?
     /// One per page; kept here because WebKit holds its delegates weakly.
     @ObservationIgnored private var delegates: [UUID: PageDelegate] = [:]
-    @ObservationIgnored private let activeDownloads = ActiveDownloads()
+    @ObservationIgnored let activeDownloads = ActiveDownloads()
     /// A private session's camera, microphone and content-blocking answers, in memory only (decision 11); they go with the session's last window.
     @ObservationIgnored var privateMediaAnswers: [PrivateMediaKey: SiteDecision] = [:]
     /// A private session's site values (its zoom), JSON in memory only: a private window writes no site values. They go with the session,
@@ -462,22 +462,50 @@ public final class PageHost {
         activeDownloads.track(download, delegate: delegate)
     }
 
-    func beginDownload(_ download: WKDownload, delegate: PageDelegate, rowID: UUID, list: DownloadList, destination: URL, source: URL?) {
+    func beginDownload(_ download: WKDownload, delegate: PageDelegate, rowID: UUID, list: DownloadList, destination: URL, source: QuarantineSource?) {
         activeDownloads.begin(download, delegate: delegate, rowID: rowID, list: list, destination: destination, source: source)
     }
 
     /// Checked before every download's destination is given to WebKit, off the main thread.
     @ObservationIgnored let downloadsFolder = DownloadsFolderCheck()
 
+    /// Seam for tests: whether WebKit has written bytes for a download.
+    var downloadWroteBytes: @MainActor (WKDownload) -> Bool {
+        get { activeDownloads.wroteBytes }
+        set { activeDownloads.wroteBytes = newValue }
+    }
+
     /// Seam for tests: how a download's file is quarantined.
-    var markDownload: @MainActor (URL, URL?) throws -> Void {
+    var markDownload: @MainActor (URL, QuarantineSource?) throws -> Void {
         get { activeDownloads.mark }
         set { activeDownloads.mark = newValue }
     }
 
-    /// Test seam: what WebKit's first progress report does, capturing the destination file's identity as this download's.
-    func claimDownloadFile(_ rowID: UUID) {
-        activeDownloads.claimDestination(forRow: rowID)
+    /// The names in the Downloads folder, read off the main thread. A seam so a test can hold the listing open while WebKit fails a download.
+    @ObservationIgnored var folderListing: @Sendable (URL) async -> Set<String> = { await PageHost.existingNames(in: $0) }
+
+    /// A free, reserved destination for a download's suggested name. The folder is listed off the main thread (`~/Downloads` can be slow,
+    /// and the first touch may bring up macOS's folder question), then the name is chosen and reserved with no suspension in between.
+    func reserveDestination(for suggestedFilename: String, in directory: URL) async -> URL {
+        let listing = activeDownloads.beginListing()
+        let existing = await folderListing(directory)
+        return activeDownloads.reserve(DownloadFilename.sanitized(suggestedFilename), in: directory, existing: existing, listing: listing)
+    }
+
+    nonisolated static func existingNames(in directory: URL) async -> Set<String> {
+        await Task.detached(priority: .userInitiated) {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+            return Set(names.map(ActiveDownloads.fold))
+        }.value
+    }
+
+    func downloadHasFailedBeforeBegin(_ download: WKDownload) -> Bool {
+        activeDownloads.hasFailedBeforeBegin(download)
+    }
+
+    /// Gives back a name `reserveDestination` reserved for a download that then never began.
+    func releaseDestination(_ destination: URL) {
+        activeDownloads.release(destination)
     }
 
     func downloadFinished(_ download: WKDownload) {

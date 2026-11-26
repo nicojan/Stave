@@ -52,6 +52,8 @@ public final class BrowserWindowModel: CommandBarWindow {
     @ObservationIgnored private var focusSerial = 0
     /// Set by the app: removes website data for Clear History's "Also remove cookies and website data".
     @ObservationIgnored public weak var websiteData: WebsiteDataRemoving?
+    /// The app's downloads list: Clear History removes the profile's ended rows from the store, and the open list follows.
+    @ObservationIgnored public weak var downloads: DownloadList?
 
     /// The page host, told about closed, unloaded and deselected tabs. Weak: the app owns both.
     @ObservationIgnored public weak var pages: PageLifecycle?
@@ -710,7 +712,9 @@ public final class BrowserWindowModel: CommandBarWindow {
         let since = range.since(now: now, calendar: calendar)
         let cleared = await Task.detached { Result { try store.clearHistory(profileID: profileID, since: since) } }.value
         switch cleared {
-        case .success: lastError = nil
+        case .success:
+            lastError = nil
+            downloads?.forgetEnded(owner: .profile(profileID), since: since)
         case .failure(let error):
             NSLog("Stave: could not clear history: \(error)")
             lastError = StoreErrorText.message(for: error)

@@ -2,8 +2,8 @@ import AppKit
 import StaveCore
 import StaveWeb
 
-/// The app's door to the queues of page questions (`PageQuestionQueues` in StaveCore: camera and microphone, HTTP sign-in; Task 14 adds
-/// its own there). This type only knows how to tell that a question's page has gone stale, which needs `PageHost`; everything else is the
+/// The app's door to the queues of page questions (`PageQuestionQueues` in StaveCore: camera and microphone, HTTP sign-in, and
+/// "wants to download several files"). This type only knows how to tell that a question's page has gone stale, which needs `PageHost`; everything else is the
 /// queues'. Windows register through `PageQuestionWindow` (`PagePrompts` implements it, and keeps the AppKit sheets).
 @MainActor
 final class PageQuestionCenter {
@@ -25,6 +25,13 @@ final class PageQuestionCenter {
     func askAuth(pageHost: PageHost, tabID: UUID, challenge: AuthChallenge) async -> AuthReply? {
         guard let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return nil }
         return await queues.askAuth(tabID: tabID, challenge: challenge, isStale: isStale)
+    }
+
+    /// Asks about several downloads for the tab's page as it is now. Held, not refused, while it can't be shown (decision 29); nil when the
+    /// page is gone, remade or navigated first, or the tab has no page: the download is then refused and nothing is recorded.
+    func askSeveralDownloads(pageHost: PageHost, tabID: UUID, host: String?) async -> DownloadChoice? {
+        guard let isStale = staleCheck(pageHost: pageHost, tabID: tabID) else { return nil }
+        return await queues.askSeveralDownloads(tabID: tabID, host: host, isStale: isStale)
     }
 
     func drain() { queues.drain() }

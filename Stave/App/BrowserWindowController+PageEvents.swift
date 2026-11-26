@@ -86,7 +86,11 @@ extension BrowserWindowController: PageEvents {
     }
 
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
-        await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
+        switch await environment.pageQuestions.askSeveralDownloads(pageHost: environment.pageHost, tabID: tabID, host: host) {
+        case .allow?: .allowed
+        case .dontAllow?: .declined
+        case nil: .unasked
+        }
     }
 
     func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {

@@ -209,4 +209,67 @@ struct WaitingQuestionsTests {
         for task in tasks { answers.append(await task.value) }
         #expect(answers == ["0", "1", "2"])
     }
+
+    // MARK: The several-downloads question (Task 14, question 7)
+
+    /// What `PageQuestionQueues` asks for the several-downloads question: Allow or Don't Allow. StaveWeb's `QuestionAnswer` is not visible
+    /// here, so this stands in; the generic queue treats any answer type the same.
+    private enum SeveralAnswer: Sendable, Equatable { case allow, dontAllow }
+
+    /// Driven as the app drives the camera question: `show` returns false while the tab is hidden, and a drain after the tab shows asks it.
+    @Test func severalFilesQuestionWaitsForHiddenTab() async {
+        let queue = WaitingQuestions<SeveralAnswer>()
+        let tab = UUID()
+        var tabShown = false
+        var shownCount = 0
+        var finish: ((WaitingQuestions<SeveralAnswer>.Result) -> Void)?
+        let resolved = Flag()
+        let task = Task { @MainActor () -> SeveralAnswer? in
+            let answer = await queue.ask(tabID: tab) { done in
+                guard tabShown else { return false }
+                shownCount += 1
+                finish = done
+                return true
+            }
+            resolved.isSet = true
+            return answer
+        }
+        await settle()
+        queue.drain()
+        await settle()
+        #expect(shownCount == 0, "hidden tab: held, not refused")
+        #expect(!resolved.isSet)
+
+        tabShown = true
+        queue.drain()
+        #expect(shownCount == 1)
+        finish?(.answered(.allow))
+        #expect(await task.value == .allow)
+    }
+
+    /// A tab hidden while its sheet is up sends the question back to waiting; the next drain asks it again, and its answer still arrives.
+    @Test func severalFilesQuestionSentBackWaitsAgain() async {
+        let queue = WaitingQuestions<SeveralAnswer>()
+        let tab = UUID()
+        var tabShown = true
+        var finishes: [(WaitingQuestions<SeveralAnswer>.Result) -> Void] = []
+        let task = Task { @MainActor in
+            await queue.ask(tabID: tab) { done in
+                guard tabShown else { return false }
+                finishes.append(done)
+                return true
+            }
+        }
+        await settle()
+        #expect(finishes.count == 1)
+        tabShown = false
+        finishes[0](.sentBack)
+        queue.drain()
+        #expect(finishes.count == 1)
+        tabShown = true
+        queue.drain()
+        #expect(finishes.count == 2)
+        finishes[1](.answered(.dontAllow))
+        #expect(await task.value == .dontAllow)
+    }
 }

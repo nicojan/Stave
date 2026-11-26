@@ -11,8 +11,10 @@ struct DebugLaunchOptions: Equatable {
     var arcHome: URL?
     /// `-StaveSeedSample`: write `SampleOrganization` into a store that has no tabs.
     var seedSample: Bool
+    /// `-StaveDownloadsDirectory <path>`: the folder downloads go to instead of `~/Downloads`. Debug only, like the others.
+    var downloadsDirectory: URL?
 
-    static let none = DebugLaunchOptions(dataDirectory: nil, arcHome: nil, seedSample: false)
+    static let none = DebugLaunchOptions(dataDirectory: nil, arcHome: nil, seedSample: false, downloadsDirectory: nil)
 
     static var current: DebugLaunchOptions {
         get throws {
@@ -21,7 +23,8 @@ struct DebugLaunchOptions: Equatable {
             return DebugLaunchOptions(
                 dataDirectory: parsed.dataDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) },
                 arcHome: parsed.effectiveArcHome.map { URL(fileURLWithPath: $0, isDirectory: true) },
-                seedSample: parsed.seedSample
+                seedSample: parsed.seedSample,
+                downloadsDirectory: parsed.downloadsDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) }
             )
             #else
             return none

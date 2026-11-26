@@ -22,6 +22,8 @@ public enum SettingKeys {
     public static let externalLinkTarget = SettingKey<ExternalLinkTarget>(name: "externalLinkTarget", defaultValue: .lastUsed)
     /// "Remove history items" (decision 9, question 15): one year by default, as in Safari.
     public static let historyRetention = SettingKey<HistoryRetention>(name: "historyRetention", defaultValue: .year)
+    /// "Remove download list items" (decision 33, question 22): after one day by default, as in Safari.
+    public static let downloadListRetention = SettingKey<DownloadListRetention>(name: "downloadListRetention", defaultValue: .day)
     /// Website data stores of deleted profiles and containers that are not yet removed from disk (H2). Written in the transaction that deletes
     /// the rows and trimmed one ID at a time after each removal succeeds; the next launch retries what is left.
     public static let pendingStoreRemovals = SettingKey<[UUID]>(name: "pendingStoreRemovals", defaultValue: [])

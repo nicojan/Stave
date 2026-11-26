@@ -89,7 +89,13 @@ struct GeneralPane: View {
                 }
                 .accessibilityLabel(HistoryRetention.settingTitle)
             }
-            if state.externalLinks == nil && state.searchEngine == nil && state.historyRetention == nil {
+            if let downloadRetention = state.downloadRetention {
+                Picker(DownloadListRetention.settingTitle, selection: Binding(get: { downloadRetention.retention }, set: { downloadRetention.set($0) })) {
+                    ForEach(DownloadListRetention.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .accessibilityLabel(DownloadListRetention.settingTitle)
+            }
+            if state.externalLinks == nil && state.searchEngine == nil && state.historyRetention == nil && state.downloadRetention == nil {
                 Text(PageChromeText.dataNotOpen).foregroundStyle(.secondary)
             }
         }

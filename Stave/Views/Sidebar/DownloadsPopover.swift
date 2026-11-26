@@ -19,8 +19,10 @@ struct DownloadsButton: View {
                     .buttonStyle(.borderless)
                     .help(DownloadRowText.buttonLabel)
                     .accessibilityLabel(DownloadRowText.buttonLabel)
-                    .popover(isPresented: $showing, arrowEdge: .trailing) {
-                        DownloadsPopover(downloads: downloads, owner: owner)
+                    // Opens upward from the bottom bar and is capped to the window's height, so it stays inside the window (plan 3 recorded it
+                    // hanging below the bottom edge when it opened sideways). One popover, one material.
+                    .popover(isPresented: $showing, arrowEdge: .top) {
+                        DownloadsPopover(downloads: downloads, owner: owner, maxHeight: Self.popoverMaxHeight())
                     }
             }
         }
@@ -31,13 +33,39 @@ struct DownloadsButton: View {
     }
 }
 
+extension DownloadsButton {
+    /// The list's tallest height: 360, or less when the window is short, leaving room for the bar and the title bar.
+    static func popoverMaxHeight() -> CGFloat {
+        let windowHeight = NSApp.keyWindow?.contentLayoutRect.height ?? 600
+        return max(120, min(360, windowHeight - 120))
+    }
+}
+
 /// This profile's downloads, newest first: each row's name, state and progress, with Cancel while it runs and Show in Finder once done;
 /// Clear removes the rows that ended. Every label and enablement comes from `DownloadRowText`.
 struct DownloadsPopover: View {
     let downloads: DownloadList
     let owner: DownloadOwner
+    var maxHeight: CGFloat = 360
+
+    /// The finished rows whose file is gone, found off the main thread (a file on a slow or unmounted volume must not stall the popover).
+    @State private var missingFiles: Set<UUID> = []
+    /// The rows the check has answered for. Show in Finder stays disabled for a row until then, so a missing file is never offered.
+    @State private var checkedFiles: Set<UUID> = []
 
     private var items: [DownloadItem] { downloads.items(for: owner) }
+
+    /// Changes when a row appears, ends or names another file, which is when the missing set must be looked at again.
+    private var fileKey: [String] { items.map { "\($0.id)|\(DownloadRowText.finishedFile($0)?.path ?? "")" } }
+
+    private func refreshMissingFiles() async {
+        let snapshot = items
+        let missing = await Task.detached(priority: .utility) {
+            DownloadRowText.missingFileIDs(snapshot) { FileManager.default.fileExists(atPath: $0.path) }
+        }.value
+        missingFiles = missing
+        checkedFiles = Set(snapshot.map(\.id))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -58,7 +86,11 @@ struct DownloadsPopover: View {
             }
         }
         .frame(width: 320)
-        .frame(minHeight: 80, maxHeight: 360)
+        .frame(minHeight: 80, maxHeight: maxHeight)
+        // Opaque, so the list reads as one material where the popover crosses the sidebar's edge (translucent, it showed a seam: darker over the
+        // sidebar, lighter over the page).
+        .background(Color(nsColor: .windowBackgroundColor))
+        .task(id: fileKey) { await refreshMissingFiles() }
     }
 
     private func row(_ item: DownloadItem) -> some View {
@@ -76,7 +108,7 @@ struct DownloadsPopover: View {
                 }
             }
             HStack {
-                Text(DownloadRowText.status(item)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(DownloadRowText.status(item, missingFile: missingFiles.contains(item.id))).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Spacer()
                 if DownloadRowText.canCancel(item) {
                     Button(DownloadRowText.cancelButton) { downloads.cancel(item.id) }
@@ -86,6 +118,7 @@ struct DownloadsPopover: View {
                 if let file = DownloadRowText.finishedFile(item) {
                     Button(DownloadRowText.showInFinderButton) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
                         .controlSize(.small)
+                        .disabled(!DownloadRowText.canShowInFinder(item, missingFile: missingFiles.contains(item.id) || !checkedFiles.contains(item.id)))
                         .accessibilityLabel(DownloadRowText.showInFinderLabel(item))
                 }
             }

@@ -162,6 +162,44 @@ struct HistoryTests {
         #expect(archiveBefore.count == 1)
     }
 
+    /// Review Focus 4: Clear History also removes the profile's ended download rows in the range, never a file, and keeps a running row.
+    @MainActor @Test func clearHistoryClearsEndedDownloads() throws {
+        let world = try makeWorld()
+        let clock = world.clock
+        let list = DownloadList(store: world.store, retention: { .manually }, now: { clock.date })
+        let owner = DownloadOwner.profile(world.profile.id)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("StaveClearDL-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func download(_ name: String, finish: Bool) throws -> (UUID, URL) {
+            let file = dir.appendingPathComponent(name)
+            try Data("x".utf8).write(to: file)
+            let id = list.begin(owner: owner, filename: name, sourceHost: nil)
+            if finish { list.finish(id, at: file) }
+            return (id, file)
+        }
+        let old = try download("old.txt", finish: true)
+        clock.advance(by: 3 * 86_400)
+        let recentDone = try download("recent.txt", finish: true)
+        let recentFailed = list.begin(owner: owner, filename: "bad.bin", sourceHost: nil)
+        list.fail(recentFailed, message: "no")
+        let running = try download("running.bin", finish: false)
+        let since = clock.date.addingTimeInterval(-3600)
+
+        _ = try world.store.clearHistory(profileID: world.profile.id, since: since)
+        list.forgetEnded(owner: owner, since: since) // the open list follows the store
+
+        let ids = list.items(for: owner).map(\.id)
+        #expect(ids.contains(old.0), "before the range: kept")
+        #expect(!ids.contains(recentDone.0) && !ids.contains(recentFailed), "ended rows in the range go")
+        #expect(ids.contains(running.0), "a running download's row is kept")
+        for file in [old.1, recentDone.1, running.1] { #expect(FileManager.default.fileExists(atPath: file.path)) }
+
+        _ = try world.store.clearHistory(profileID: world.profile.id, since: nil)
+        let left = try world.database.writer.read { db in try DownloadRecord.fetchAll(db) }
+        #expect(left.map(\.filename) == ["running.bin"], "all history clears every ended row, never a running one")
+    }
+
     @Test func clearRanges() throws {
         let world = try makeWorld()
         let calendar = Self.calendar

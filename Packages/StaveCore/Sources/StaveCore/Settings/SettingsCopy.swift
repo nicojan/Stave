@@ -92,7 +92,7 @@ public enum SettingsCopy {
             [
                 ExternalOpenText.defaultBrowserButton(isDefault: false).title, ExternalOpenText.defaultBrowserButton(isDefault: true).title,
                 ExternalOpenText.linkTargetTitle, SearchEngineSetting.title, newTabEdgeTitle,
-                newTabEdgeChoice(.top), newTabEdgeChoice(.bottom), HistoryRetention.settingTitle,
+                newTabEdgeChoice(.top), newTabEdgeChoice(.bottom), HistoryRetention.settingTitle, DownloadListRetention.settingTitle,
             ]
         case .tabs:
             [WorkspaceShortcutsSetting.title, CompactModeSetting.title, archiveTrimTitle, archiveTrimValue]

@@ -115,13 +115,17 @@ final class PageEventsRouter: PageEvents {
         return await prompts.confirmExternalApp(tabID: tabID, host: host, url: url, appName: appName)
     }
 
-    /// Asked like the external-app question: only while the tab is shown, else refused.
+    /// Waits in the app-wide queue until the window or pop-up showing the tab can ask (held, not refused; decision 29). `.unasked` only
+    /// when the system drops it: a new document, the page closing, the tab forgotten or the window closing.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
-        guard let prompts = prompts(for: tabID) else { return .unasked }
-        return await prompts.confirmSeveralDownloads(tabID: tabID, host: host)
+        switch await environment.pageQuestions.askSeveralDownloads(pageHost: environment.pageHost, tabID: tabID, host: host) {
+        case .allow?: .allowed
+        case .dontAllow?: .declined
+        case nil: .unasked
+        }
     }
 
-    /// Asked like the several-files question: only while the tab is shown, else refused.
+    /// Asked on the window or pop-up showing the tab: only while the tab is shown, else `unasked`.
     func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
         guard let prompts = prompts(for: tabID) else { return .unasked }
         return await prompts.confirmDownload(tabID: tabID, host: host)

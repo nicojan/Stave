@@ -6,6 +6,8 @@ public struct LaunchArguments: Equatable, Sendable {
     public static let dataDirectoryFlag = "-StaveDataDirectory"
     public static let arcHomeFlag = "-StaveArcHome"
     public static let seedSampleFlag = "-StaveSeedSample"
+    /// Debug builds only: replaces the downloads folder, so a check never touches the real `~/Downloads` (or its folder prompt).
+    public static let downloadsDirectoryFlag = "-StaveDownloadsDirectory"
 
     public enum Failure: Error, Equatable, Sendable {
         /// The flag has no value, a value that starts with "-", or a path that is not absolute.
@@ -15,6 +17,14 @@ public struct LaunchArguments: Equatable, Sendable {
     public var dataDirectory: String?
     public var arcHome: String?
     public var seedSample: Bool
+    public var downloadsDirectory: String?
+
+    public init(dataDirectory: String?, arcHome: String?, seedSample: Bool, downloadsDirectory: String? = nil) {
+        self.dataDirectory = dataDirectory
+        self.arcHome = arcHome
+        self.seedSample = seedSample
+        self.downloadsDirectory = downloadsDirectory
+    }
 
     public static let none = LaunchArguments(dataDirectory: nil, arcHome: nil, seedSample: false)
 
@@ -22,7 +32,8 @@ public struct LaunchArguments: Equatable, Sendable {
         LaunchArguments(
             dataDirectory: try path(after: dataDirectoryFlag, in: arguments),
             arcHome: try path(after: arcHomeFlag, in: arguments),
-            seedSample: arguments.contains(seedSampleFlag)
+            seedSample: arguments.contains(seedSampleFlag),
+            downloadsDirectory: try path(after: downloadsDirectoryFlag, in: arguments)
         )
     }
 

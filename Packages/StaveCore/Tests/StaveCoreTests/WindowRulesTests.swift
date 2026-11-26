@@ -107,6 +107,13 @@ struct LaunchArgumentsTests {
         #expect(parsed == LaunchArguments(dataDirectory: "/tmp/a", arcHome: "/tmp/b", seedSample: true))
     }
 
+    @Test func downloadsDirectoryFlagParses() throws {
+        let parsed = try LaunchArguments.parse(["Stave", "-StaveDownloadsDirectory", "/private/tmp/x/downloads"])
+        #expect(parsed.downloadsDirectory == "/private/tmp/x/downloads")
+        #expect(parsed.dataDirectory == nil)
+        #expect(try LaunchArguments.parse(["Stave"]).downloadsDirectory == nil)
+    }
+
     @Test(arguments: [
         (["-StaveDataDirectory"], "-StaveDataDirectory"),
         (["-StaveDataDirectory", "-StaveSeedSample"], "-StaveDataDirectory"),
@@ -114,6 +121,9 @@ struct LaunchArgumentsTests {
         (["-StaveDataDirectory", ""], "-StaveDataDirectory"),
         (["-StaveArcHome"], "-StaveArcHome"),
         (["-StaveArcHome", "home"], "-StaveArcHome"),
+        (["-StaveDownloadsDirectory"], "-StaveDownloadsDirectory"),
+        (["-StaveDownloadsDirectory", "downloads"], "-StaveDownloadsDirectory"),
+        (["-StaveDownloadsDirectory", "-StaveSeedSample"], "-StaveDownloadsDirectory"),
     ])
     func presentButUnusableThrowsNamingTheFlag(arguments: [String], flag: String) {
         #expect(throws: LaunchArguments.Failure.unusable(flag: flag)) { try LaunchArguments.parse(arguments) }

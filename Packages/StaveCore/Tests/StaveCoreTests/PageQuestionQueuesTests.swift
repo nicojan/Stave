@@ -15,6 +15,9 @@ final class FakeQuestionWindow: PageQuestionWindow {
     private var authSite: String?
     var mediaFinish: ((WaitingQuestions<MediaAnswer>.Result) -> Void)?
     var authFinish: ((WaitingQuestions<AuthReply>.Result) -> Void)?
+    private(set) var downloadsShown = 0
+    private(set) var downloadHosts: [String?] = []
+    var downloadFinish: ((WaitingQuestions<DownloadChoice>.Result) -> Void)?
 
     func canAsk(_ tabID: UUID) -> Bool { !sheetUp && shownTabs.contains(tabID) }
 
@@ -35,6 +38,15 @@ final class FakeQuestionWindow: PageQuestionWindow {
         return true
     }
 
+    func showSeveralDownloads(tabID: UUID, host: String?, finish: @escaping (WaitingQuestions<DownloadChoice>.Result) -> Void) -> Bool {
+        guard canAsk(tabID) else { return false }
+        sheetUp = true
+        downloadsShown += 1
+        downloadHosts.append(host)
+        downloadFinish = finish
+        return true
+    }
+
     /// Ends the one sign-in sheet about `site`, as the app does: it reports cancelled (by the system, not the user).
     func endAuthSheets(tabID: UUID, site: String) {
         endedAuthSites.append(site)
@@ -51,6 +63,7 @@ final class FakeQuestionWindow: PageQuestionWindow {
             sheetUp = false
             if kinds.contains(.media) { mediaFinish?(.cancelled) }
             if kinds.contains(.auth) { authFinish?(.cancelled) }
+            if kinds.contains(.download) { downloadFinish?(.cancelled) }
         }
     }
 }
@@ -197,5 +210,85 @@ struct PageQuestionQueuesTests {
         await settle { window.authShown == 2 }
         queues.cancel(tabID: tab)
         #expect(await system.value == nil)
+    }
+
+    // MARK: The several-downloads question (Task 14, question 7)
+
+    /// A question that can't be asked now is held, not refused: it waits while its tab is hidden, and is asked once the tab is shown.
+    @Test func severalFilesQuestionHeldUntilItsTabIsShown() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        let question = Task { await queues.askSeveralDownloads(tabID: tab, host: "example.com", isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.drainNow()
+        #expect(window.downloadsShown == 0)
+
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.downloadsShown == 1)
+        #expect(window.downloadHosts == ["example.com"])
+        window.sheetUp = false
+        window.downloadFinish?(.answered(.allow))
+        #expect(await question.value == .allow)
+    }
+
+    /// Another sheet on the window holds the question; it comes up when that sheet is gone.
+    @Test func severalFilesQuestionWaitsBehindAnotherSheet() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        window.shownTabs = [tab]
+        window.sheetUp = true
+        queues.register(window)
+        let question = Task { await queues.askSeveralDownloads(tabID: tab, host: nil, isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(window.downloadsShown == 0)
+        window.sheetUp = false
+        queues.drainNow()
+        #expect(window.downloadsShown == 1)
+        window.sheetUp = false
+        window.downloadFinish?(.answered(.dontAllow))
+        #expect(await question.value == .dontAllow)
+    }
+
+    /// A new committed document, closing the page or forgetting the tab (`cancel(tabID:)`) drops the question: nil, never shown.
+    @Test func heldQuestionDroppedOnNavigation() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        let held = Task { await queues.askSeveralDownloads(tabID: tab, host: "example.com", isStale: { false }) }
+        for _ in 0..<50 { await Task.yield() }
+        queues.cancel(tabID: tab)
+        #expect(await held.value == nil)
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(window.downloadsShown == 0, "a dropped question is never shown later")
+    }
+
+    @Test func staleSeveralFilesQuestionIsDroppedWithoutBeingShown() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        queues.register(window)
+        var stale = false
+        let held = Task { await queues.askSeveralDownloads(tabID: tab, host: "example.com", isStale: { stale }) }
+        for _ in 0..<50 { await Task.yield() }
+        stale = true
+        window.shownTabs = [tab]
+        queues.drainNow()
+        #expect(await held.value == nil)
+        #expect(window.downloadsShown == 0)
+    }
+
+    /// One `cancel(tabID:)` covers a question that is up too: its sheet is ended and it resolves nil.
+    @Test func cancelResolvesAShownSeveralFilesQuestion() async {
+        let queues = PageQuestionQueues()
+        let window = FakeQuestionWindow()
+        window.shownTabs = [tab]
+        queues.register(window)
+        let question = Task { await queues.askSeveralDownloads(tabID: tab, host: "example.com", isStale: { false }) }
+        await settle { window.downloadsShown == 1 }
+        queues.cancel(tabID: tab)
+        #expect(await question.value == nil)
+        #expect(!window.sheetUp)
     }
 }

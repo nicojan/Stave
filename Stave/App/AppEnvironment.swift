@@ -37,8 +37,10 @@ final class AppEnvironment {
     let pageHost: PageHost
     /// Retained here for the app's life: `PageHost` and its pages hold the writer weakly.
     let pageWriter: StorePageWriter
-    /// Downloads in memory, per profile.
+    /// Downloads per profile, kept in the database (decision 33); a private window's are in memory only.
     let downloads: DownloadList
+    /// "Remove download list items", for Settings; the list reads the stored value on every trim and every finished download.
+    let downloadRetention: DownloadListRetentionSetting
     /// The writer for pop-up pages, which are no store tabs: it drops every write. Retained here for the same reason as `pageWriter`.
     let popupWriter = DiscardingPageWriter()
     /// Every open pop-up window, by opener tab.
@@ -93,7 +95,12 @@ final class AppEnvironment {
         self.historyRetention = retention
         let writer = StorePageWriter(store: store, revision: revision)
         self.pageWriter = writer
-        self.downloads = DownloadList()
+        let downloadRetention = DownloadListRetentionSetting(store: store, revision: revision)
+        downloadRetention.onSaveError = { NSLog("Stave: could not save how long the downloads list is kept: \($0)") }
+        self.downloadRetention = downloadRetention
+        let downloads = DownloadList(store: store, retention: { (try? store.setting(SettingKeys.downloadListRetention)) ?? SettingKeys.downloadListRetention.defaultValue })
+        downloads.restoreAtLaunch()
+        self.downloads = downloads
         let webStores = WebDataStores()
         self.webStores = webStores
         self.websiteDataRemover = WebsiteDataRemover(stores: webStores)
@@ -125,18 +132,17 @@ final class AppEnvironment {
         startDailyHistoryTrim()
     }
 
-    /// Every `HistoryRetention.trimInterval` until the process ends, history rows older than the setting go (decision 9).
+    /// Every `HistoryRetention.trimInterval` until the process ends, history rows older than the setting go (decision 9), and so do ended
+    /// download-list rows older than a day when the list is set to "After one day" (decision 33). Rows only, never a file.
     private func startDailyHistoryTrim() {
         let store = store
-        historyTrim = Task.detached(priority: .utility) {
+        historyTrim = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(HistoryRetention.trimInterval))
                 guard !Task.isCancelled else { return }
-                do {
-                    try store.trimHistoryBySetting()
-                } catch {
-                    NSLog("Stave: could not trim history: \(error)")
-                }
+                let trimmed = await Task.detached(priority: .utility) { Result { try store.trimHistoryBySetting() } }.value
+                if case .failure(let error) = trimmed { NSLog("Stave: could not trim history: \(error)") }
+                self?.downloads.trimDaily()
             }
         }
     }
@@ -147,9 +153,18 @@ final class AppEnvironment {
             .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
-    /// `~/Downloads`, from FileManager.
+    #if DEBUG
+    /// `-StaveDownloadsDirectory <path>` (Debug builds only; Release has no such variable), for by-hand checks that must not touch the real
+    /// `~/Downloads`. Set once, by `live(options:)`, before any window opens.
+    private static var downloadsOverride: URL?
+    #endif
+
+    /// `~/Downloads`, from FileManager; in a Debug build, the launch option's folder when one was given.
     static var downloadsDirectory: URL {
-        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        #if DEBUG
+        if let downloadsOverride { return downloadsOverride }
+        #endif
+        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
     }
 
@@ -164,6 +179,12 @@ final class AppEnvironment {
             )
             directory = StavePaths.dataDirectory(bundleIdentifier: Bundle.main.bundleIdentifier!, applicationSupport: support)
         }
+        #if DEBUG
+        if let folder = options.downloadsDirectory {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            downloadsOverride = folder
+        }
+        #endif
         return try AppEnvironment(
             dataDirectory: directory,
             arcHome: options.arcHome ?? FileManager.default.homeDirectoryForCurrentUser,

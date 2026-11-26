@@ -64,8 +64,11 @@ extension PageText {
 }
 
 /// Keeps a page from saving file after file with no click (plan 3 final review). The first download of a document proceeds; the next one
-/// asks ("‹host› wants to download several files"). Allowed: the rest of that document's downloads proceed. Refused (or not askable): the
-/// rest are refused without asking again. A new document (`navigation`, the page's main-frame commit count, changes) starts over.
+/// asks ("‹host› wants to download several files"). Allowed: the rest of that document's downloads proceed. Don't Allow: the rest are
+/// refused without asking again. A question that can't be shown yet is held, not refused (`PageQuestionQueues.askSeveralDownloads`), and
+/// the downloads that arrive meanwhile wait behind it and follow its answer; one dropped (a new document, the page closing, the tab
+/// forgotten) refuses its downloads and records nothing. A new document (`navigation`, the page's main-frame commit count, changes)
+/// starts over.
 ///
 /// A page Stave reopened by itself (nobody has acted on it) is the one exception to "the first proceeds": its first download asks
 /// ("‹host› wants to download a file"), and counts as the document's first whatever the answer, so the next goes through the several-files
@@ -186,14 +189,31 @@ public enum DownloadRowText {
     public static let cancelButton = "Cancel"
     public static let showInFinderButton = "Show in Finder"
 
-    public static func status(_ item: DownloadItem) -> String {
+    /// "File not found" when `missingFile` (a finished row whose file is gone); `missingFileIDs` finds those rows.
+    public static let fileNotFound = "File not found"
+
+    public static func status(_ item: DownloadItem, missingFile: Bool = false) -> String {
         switch item.state {
         case .running(let fraction?): "\(Int((fraction * 100).rounded())) percent"
         case .running(nil): "Downloading…"
-        case .finished: "Done"
-        case .failed(let message): "Failed: \(message)"
+        case .finished: missingFile ? fileNotFound : "Done"
+        case .failed(let message): message.isEmpty ? "Failed" : "Failed: \(message)"
         case .cancelled: "Cancelled"
+        case .stopped: "Stopped"
         }
+    }
+
+    /// The finished rows whose file `exists` says is gone. `exists` touches the disk, so the caller runs this off the main thread.
+    public static func missingFileIDs(_ items: [DownloadItem], exists: (URL) -> Bool) -> Set<UUID> {
+        Set(items.compactMap { item in
+            guard case .finished(let url) = item.state, !exists(url) else { return nil }
+            return item.id
+        })
+    }
+
+    /// Show in Finder applies to a finished row whose file is still there.
+    public static func canShowInFinder(_ item: DownloadItem, missingFile: Bool) -> Bool {
+        finishedFile(item) != nil && !missingFile
     }
 
     public static func canCancel(_ item: DownloadItem) -> Bool {

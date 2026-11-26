@@ -11,6 +11,11 @@ public struct MediaAnswer: Sendable, Equatable {
     }
 }
 
+/// The user's answer to "‹host› wants to download several files".
+public enum DownloadChoice: Sendable, Equatable {
+    case allow, dontAllow
+}
+
 /// The kinds of sheet a page's question can have up. Used to end a tab's sheets by kind.
 public enum PageQuestionKind: Sendable, Hashable {
     case media, auth, download
@@ -25,13 +30,15 @@ public protocol PageQuestionWindow: AnyObject {
     func showMedia(tabID: UUID, host: String, camera: Bool, microphone: Bool, finish: @escaping (WaitingQuestions<MediaAnswer>.Result) -> Void) -> Bool
     /// Shows the HTTP sign-in sheet and returns true, or returns false. `finish` hears how it ended.
     func showAuth(tabID: UUID, challenge: AuthChallenge, finish: @escaping (WaitingQuestions<AuthReply>.Result) -> Void) -> Bool
+    /// Shows the "wants to download several files" sheet and returns true, or returns false. `finish` hears how it ended.
+    func showSeveralDownloads(tabID: UUID, host: String?, finish: @escaping (WaitingQuestions<DownloadChoice>.Result) -> Void) -> Bool
     /// Ends the tab's sheets of these kinds; their questions resolve as cancelled by the system (not the user's Cancel).
     func endSheets(tabID: UUID, kinds: Set<PageQuestionKind>)
     /// Ends the tab's sign-in sheet about `site` only (`AuthChallenge.siteKey`); other sheets stay.
     func endAuthSheets(tabID: UUID, site: String)
 }
 
-/// Every app-wide queue of page questions, in one place: camera and microphone, and HTTP sign-in (Task 14 adds the downloads'). A question
+/// Every app-wide queue of page questions, in one place: camera and microphone, HTTP sign-in, and "wants to download several files". A question
 /// that can't be shown yet (its tab isn't shown anywhere, or the window showing it has a sheet up) waits here, not in any one window, so
 /// whichever window or pop-up shows its tab shows it when it can. One `drain()` and one `cancel(tabID:)` cover every queue, so a new queue
 /// can't be missed by either.
@@ -43,6 +50,7 @@ public final class PageQuestionQueues {
 
     private let media = WaitingQuestions<MediaAnswer>()
     private let auth = WaitingQuestions<AuthReply>()
+    private let severalDownloads = WaitingQuestions<DownloadChoice>()
     private var windows: [WeakWindow] = []
 
     public init() {}
@@ -74,10 +82,21 @@ public final class PageQuestionQueues {
         }
     }
 
+    /// "‹host› wants to download several files". Held, not refused, while it can't be shown (its tab is hidden, another sheet is up), as
+    /// Chrome queues a tab's question until the tab is shown. Nil: dropped by the system (a new document committed, the page closed, the
+    /// tab was forgotten, the window closed), so nothing is answered and nothing is recorded.
+    public func askSeveralDownloads(tabID: UUID, host: String?, isStale: @escaping () -> Bool) async -> DownloadChoice? {
+        await severalDownloads.ask(tabID: tabID, isStale: isStale) { [weak self] finish in
+            guard let self, let window = live.first(where: { $0.canAsk(tabID) }) else { return false }
+            return window.showSeveralDownloads(tabID: tabID, host: host, finish: finish)
+        }
+    }
+
     /// Shows each waiting question that can be shown now, every queue, oldest first.
     public func drainNow() {
         media.drain()
         auth.drain()
+        severalDownloads.drain()
     }
 
     /// `drainNow`, a turn later, so a sheet that is still coming down is gone when the check runs.
@@ -91,6 +110,7 @@ public final class PageQuestionQueues {
         for window in live { window.endSheets(tabID: tabID, kinds: [.media, .auth, .download]) }
         media.cancel(tabID: tabID)
         auth.cancel(tabID: tabID)
+        severalDownloads.cancel(tabID: tabID)
     }
 
     /// Only the tab's sign-in questions about `site` are cancelled, by the system (a main-frame load to that site failed or was stopped; the

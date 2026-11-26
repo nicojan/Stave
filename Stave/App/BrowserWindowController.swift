@@ -79,6 +79,7 @@ final class BrowserWindowController: NSObject, NSWindowDelegate {
         observeFocusRequest()
         showSelected()
         model.websiteData = environment.websiteDataRemover
+        model.downloads = environment.downloads
     }
 
     // MARK: - Window

@@ -35,7 +35,11 @@ final class FakeEvents: PageEvents {
     var downloadAnswer = false
     /// True: the question couldn't be asked (no sheet could be shown, or it came down): neither an allow nor a decline.
     var downloadCouldNotAsk = false
-    var severalCouldNotAsk = false
+    /// True: the several-files question is held, as the app's queue holds a question it can't show yet, until the test answers it
+    /// (`answerHeldSeveral`) or something drops it (`cancelWaitingQuestions`, `dropHeldSeveral`).
+    var holdSeveralQuestion = false
+    private var heldSeveral: CheckedContinuation<QuestionAnswer, Never>?
+    var isSeveralQuestionHeld: Bool { heldSeveral != nil }
     /// Runs while a "wants to download a file" question is up.
     var whileAskingToDownload: (() async -> Void)?
     /// Runs while a "wants to download several files" question is up.
@@ -72,7 +76,10 @@ final class FakeEvents: PageEvents {
         return id
     }
 
-    func cancelWaitingQuestions(tabID: UUID) { cancelledTabs.append(tabID) }
+    func cancelWaitingQuestions(tabID: UUID) {
+        cancelledTabs.append(tabID)
+        dropHeldSeveral()
+    }
     /// Tabs whose waiting sign-in questions alone were cancelled (a main-frame load failed).
     var cancelledAuthTabs: [UUID] = []
     /// The sites those cancels were for (`AuthChallenge.siteKey`), in the same order.
@@ -106,9 +113,18 @@ final class FakeEvents: PageEvents {
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
         severalDownloadsQuestions.append((tabID, host))
         await whileAskingSeveral?()
-        if severalCouldNotAsk { return .unasked }
+        if holdSeveralQuestion { return await withCheckedContinuation { heldSeveral = $0 } }
         return severalDownloadsAnswer ? .allowed : .declined
     }
+
+    func answerHeldSeveral(_ answer: QuestionAnswer) {
+        let held = heldSeveral
+        heldSeveral = nil
+        held?.resume(returning: answer)
+    }
+
+    /// What the queue does to a question the system drops: it resolves with no answer.
+    func dropHeldSeveral() { answerHeldSeveral(.unasked) }
 
     func confirmDownload(tabID: UUID, host: String?) async -> QuestionAnswer {
         downloadQuestions.append((tabID, host))
@@ -971,16 +987,51 @@ struct PageDelegateTests {
 
     // MARK: Downloads
 
-    @Test func downloadNamesAreSafe() throws {
+    @Test func downloadNamesAreSafe() async throws {
         let dir = try tempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let first = PageDelegate.destination(for: "../../.zshrc", in: dir)
+        let host = makeHost()
+        let first = await host.reserveDestination(for: "../../.zshrc", in: dir)
         #expect(first.deletingLastPathComponent().standardizedFileURL == dir.standardizedFileURL)
         #expect(first.lastPathComponent == "zshrc")
         try Data("x".utf8).write(to: first)
-        let second = PageDelegate.destination(for: "../../.zshrc", in: dir)
+        // A file already in the folder (listed off the main thread) and a name reserved by a download still running both count.
+        let second = await host.reserveDestination(for: "../../.zshrc", in: dir)
         #expect(second.lastPathComponent == "zshrc (2)")
         #expect(second.deletingLastPathComponent().standardizedFileURL == dir.standardizedFileURL)
+        // Case-folded, as the default volume is.
+        let third = await host.reserveDestination(for: "ZSHRC", in: dir)
+        #expect(third.lastPathComponent == "ZSHRC (3)")
+    }
+
+    /// APFS treats a name typed composed or decomposed as the same file, so a decomposed name on disk collides with a composed suggestion.
+    @Test func decomposedNameOnDiskCountsAsTaken() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let host = makeHost()
+        let decomposed = "caf\u{0065}\u{0301}.txt"
+        try Data("x".utf8).write(to: dir.appendingPathComponent(decomposed))
+        let composed = await host.reserveDestination(for: "caf\u{00E9}.txt", in: dir)
+        #expect(composed.lastPathComponent.hasSuffix(" (2).txt"), "\(composed.lastPathComponent)")
+        // And two reservations that differ only in normalisation form don't collide.
+        let a = await host.reserveDestination(for: "r\u{0065}\u{0301}sum\u{00E9}.pdf", in: dir)
+        let b = await host.reserveDestination(for: "r\u{00E9}sum\u{0065}\u{0301}.pdf", in: dir)
+        #expect(a != b)
+        #expect(b.lastPathComponent.hasSuffix(" (2).pdf"))
+    }
+
+    /// A download ends while another one's folder listing is being read: the listing predates its file, so its name counts as taken.
+    @Test func nameFreedDuringAFolderListingStaysTaken() throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let active = ActiveDownloads()
+        let first = active.reserve("a.txt", in: dir, existing: [])
+        let listing = active.beginListing() // the listing is read now: a.txt is not in it yet
+        active.release(first) // the first download finishes (its file now exists, unseen by the listing)
+        let second = active.reserve("a.txt", in: dir, existing: [], listing: listing)
+        #expect(second.lastPathComponent == "a (2).txt")
+        // With no listing in flight a freed name is free again.
+        #expect(active.reserve("b.txt", in: dir, existing: []).lastPathComponent == "b.txt")
     }
 
     @Test func downloadLandsQuarantinedInTheDirectory() async throws {
@@ -1025,7 +1076,7 @@ struct PageDelegateTests {
     }
 
     /// Starts an untracked download and drives the delegate by hand, so WebKit never writes; the test writes "WebKit's" bytes itself.
-    private func handDrivenDownload(_ host: PageHost, _ page: LivePage, name: String) async throws -> (row: UUID, destination: URL) {
+    func handDrivenDownload(_ host: PageHost, _ page: LivePage, name: String) async throws -> (row: UUID, destination: URL) {
         let delegate = try delegate(of: page)
         let download = await page.webView.startDownload(using: URLRequest(url: URL(string: "data:text/plain,abc")!))
         let destination = try #require(await delegate.download(download, decideDestinationUsing: URLResponse(), suggestedFilename: name))
@@ -1173,10 +1224,10 @@ struct PageDelegateTests {
         events.downloadsDirectory = dir
         let host = makeHost()
         let page = host.page(for: request(), writer: writer)
+        host.markDownload = { _, _ in throw CocoaError(.fileWriteNoPermission) }
         let own = try await handDrivenDownload(host, page, name: "own.bin")
         try Data("all".utf8).write(to: own.destination)
-        host.claimDownloadFile(own.row)
-        host.markDownload = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+        host.claimDownloadFile(own.row) // the first mark fails too, so the file is never marked
         host.downloadFinished(try #require(host.activeDownload(own.row)))
         #expect(!FileManager.default.fileExists(atPath: own.destination.path))
         let ownState = events.downloads.items(for: .profile(page.tabID)).first { $0.id == own.row }?.state
@@ -1204,7 +1255,7 @@ struct PageDelegateTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         events.downloadsDirectory = dir
         let host = makeHost()
-        var marked: [(file: URL, source: URL?)] = []
+        var marked: [(file: URL, source: QuarantineSource?)] = []
         host.markDownload = { file, source in
             marked.append((file, source))
             try Quarantine.mark(file, source: source)
@@ -1218,7 +1269,8 @@ struct PageDelegateTests {
         host.claimDownloadFile(row)
         #expect(marked.count == 1)
         #expect(marked.first?.file == destination)
-        #expect(marked.first?.source == URL(string: "https://example.com/page"))
+        #expect(marked.first?.source?.download == URL(string: "https://example.com/page"))
+        #expect(marked.first?.source?.page == URL(string: "https://example.com/page"))
         #expect(isQuarantined(destination))
         #expect(PageDelegate.quarantineSource(URL(string: "blob:https://example.com/1"), pageURL: URL(string: "https://example.com/")) == URL(string: "https://example.com/"))
         #expect(PageDelegate.quarantineSource(URL(string: "https://cdn.example.com/f.zip"), pageURL: URL(string: "https://example.com/")) == URL(string: "https://cdn.example.com/f.zip"))

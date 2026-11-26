@@ -43,6 +43,8 @@ final class AppMenuState {
     var canShowHistory = false
     /// Nil until the store is open.
     var historyRetention: HistoryRetentionSetting?
+    /// Nil until the store is open.
+    var downloadRetention: DownloadListRetentionSetting?
     /// ⌘1–9, ⌃Tab, ⇧⌘T and ⌥⌘L for the key window (`TabShortcutMenuState`); ⌘D is `pageMenu.canPinSelected`.
     var tabKeys = TabShortcutMenuState.disabled
     /// Debug ▸ Crash Page Process: a page is shown and WebKit has the method.

@@ -87,7 +87,23 @@ public final class StaveDatabase: Sendable {
         migrator.registerMigration("v4", migrate: createSiteSettingTable)
         migrator.registerMigration("v5", migrate: createHistoryVisitTable)
         migrator.registerMigration("v6", migrate: createSiteValueTable)
+        migrator.registerMigration("v7", migrate: createDownloadRecordTable)
         return migrator
+    }
+
+    /// The kept downloads list, per profile (decision 33). `filePath` is the finished file; the row never owns it.
+    private static func createDownloadRecordTable(_ db: Database) throws {
+        try db.create(table: "downloadRecord") { t in
+            t.primaryKey("id", .blob)
+            t.column("profileID", .blob).notNull().references("profile", onDelete: .cascade)
+            t.column("filename", .text).notNull()
+            t.column("sourceHost", .text)
+            t.column("filePath", .text)
+            t.column("state", .text).notNull()
+            t.column("startedAt", .datetime).notNull()
+            t.column("endedAt", .datetime)
+        }
+        try db.create(index: "downloadRecord_on_profileID_startedAt", on: "downloadRecord", columns: ["profileID", "startedAt"])
     }
 
     /// Per-site values (zoom, from Task 16 the user agent), shaped like `siteSetting` (decision 12).

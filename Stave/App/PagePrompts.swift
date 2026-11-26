@@ -42,12 +42,12 @@ final class SentBackFlag {
     var isSet = false
 }
 
-/// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download several files", camera
-/// and microphone, HTTP sign-in, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
+/// The sheets one window (a browser window or a pop-up) shows for its pages: the external-app question, "download a file", "download
+/// several files", camera and microphone, HTTP sign-in, JavaScript alert, confirm and prompt, and the file picker. Every question resolves exactly once: answered, or refused, denied or cancelled when it
 /// can't be asked (its tab isn't shown here, another sheet is up, the window closed) or when `end` ends it. A page's dialog is a sheet on its
 /// own window, so it never blocks another window.
 ///
-/// The camera and microphone question and the HTTP sign-in question are the exception to "refused at once": they are asked through the
+/// The camera and microphone, HTTP sign-in and several-downloads questions are the exception to "refused at once": they are asked through the
 /// app-wide `PageQuestionCenter`, where they wait when they can't be shown, and are shown by whichever window shows their tab when no sheet
 /// is up. Hiding the tab while the sheet is up sends the question back to waiting. A camera question is denied, remembering nothing, and a
 /// sign-in question cancelled, when the page goes away or navigates, its tab goes away (`forget`), or the window it is up on closes.
@@ -106,15 +106,44 @@ final class PagePrompts: PageQuestionWindow {
         return Self.downloadAnswer(await present(alert, for: tabID, isDownload: true))
     }
 
-    /// "example.com wants to download several files", Allow / Don't Allow. Only a real Don't Allow is `declined`; a sheet that can't be
-    /// shown or comes down is `unasked`.
-    func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer {
+    /// "example.com wants to download several files", Allow / Don't Allow. Called by `PageQuestionQueues` when this window can ask now;
+    /// `finish` hears how the sheet ended: answered, sent back (its tab was hidden, so the question waits again) or cancelled (the page
+    /// navigated or went away, the window closed). Held, not refused, while it can't be shown (decision 29).
+    func showSeveralDownloads(tabID: UUID, host: String?, finish: @escaping (WaitingQuestions<DownloadChoice>.Result) -> Void) -> Bool {
+        guard let window, canAsk(tabID) else { return false }
         let alert = NSAlert()
         alert.messageText = PageText.severalDownloadsQuestion(host: host)
         alert.informativeText = PageText.severalDownloadsDetail
         alert.addButton(withTitle: PageText.allowButton)
         alert.addButton(withTitle: PageText.dontAllowButton)
-        return Self.downloadAnswer(await present(alert, for: tabID, isDownload: true))
+        let id = UUID()
+        let sheet = alert.window
+        let sentBack = SentBackFlag()
+        panels[id] = PagePanel(
+            tabID: tabID,
+            kind: .download,
+            end: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                window.endSheet(sheet, returnCode: .abort)
+            },
+            sendBack: { [weak window, weak sheet] in
+                guard let window, let sheet else { return }
+                sentBack.isSet = true
+                window.endSheet(sheet, returnCode: .abort)
+            }
+        )
+        let center = center
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.panels[id] = nil
+            switch response {
+            case .alertFirstButtonReturn: finish(.answered(.allow))
+            case .alertSecondButtonReturn: finish(.answered(.dontAllow))
+            default: finish(sentBack.isSet ? .sentBack : .cancelled)
+            }
+            // The window is free of this sheet: another waiting question may go up.
+            center.drain()
+        }
+        return true
     }
 
     private static func downloadAnswer(_ response: NSApplication.ModalResponse) -> QuestionAnswer {
@@ -278,7 +307,7 @@ final class PagePrompts: PageQuestionWindow {
         }
     }
 
-    /// The tab is no longer shown here: its sheets come down. A camera or sign-in question goes back to waiting; every other one is cancelled.
+    /// The tab is no longer shown here: its sheets come down. A camera, sign-in or several-files question goes back to waiting; every other one is cancelled.
     func hide(_ tabID: UUID) {
         for (id, panel) in panels where panel.tabID == tabID {
             panels[id] = nil

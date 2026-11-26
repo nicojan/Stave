@@ -122,13 +122,16 @@ extension OrganizationStore {
     }
 
     /// History ▸ Clear History…: the profile's visits since `since` (all of them when nil). Never touches tabs, pinned tabs, workspaces or
-    /// the archive. Task 14 extends it to ended download-list rows.
+    /// the archive. It also removes the profile's ended download-list rows that started in the range (never a downloaded file, and never
+    /// a download still running). The returned count is history rows only.
     @discardableResult
     public func clearHistory(profileID: UUID, since: Date?) throws -> Int {
         try database.writer.write { db in
             var request = HistoryVisit.filter(Column("profileID") == profileID)
             if let since { request = request.filter(Column("visitedAt") >= since) }
-            return try request.deleteAll(db)
+            let removed = try request.deleteAll(db)
+            try Self.endedDownloads(profileID: profileID, in: db, startedSince: since).deleteAll(db)
+            return removed
         }
     }
 

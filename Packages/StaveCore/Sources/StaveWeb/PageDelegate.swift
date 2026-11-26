@@ -3,8 +3,9 @@ import Foundation
 import StaveCore
 import WebKit
 
-/// The answer to a download question. `unasked` is not an answer: the sheet couldn't be shown (the tab isn't shown, another sheet is up) or
-/// came down without the user choosing (its tab was hidden, the page navigated, the window closed). Only `declined` is the user's No.
+/// The answer to a download question. `unasked` is not an answer: the question was dropped before the user chose (a new document committed,
+/// the page closed, the tab was forgotten, the window closed, or, for the first-download question, the sheet came down). Only `declined` is
+/// the user's No. A several-files question that can't be shown yet is not `unasked`: it is held until its tab is shown.
 public enum QuestionAnswer: Sendable {
     case allowed, declined, unasked
 }
@@ -31,8 +32,10 @@ public enum QuestionAnswer: Sendable {
     /// isn't shown, another sheet is up) waits until it can. `.cancelled`: the user pressed Cancel. Nil: the system dropped it (the tab went
     /// away, navigated or failed to load first). Either way nothing is sent; only the user's Cancel counts toward the cancel limit.
     func askAuth(tabID: UUID, challenge: AuthChallenge) async -> AuthReply?
-    /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`).
-    /// Asked only while the tab is shown; otherwise `unasked`.
+    /// "‹host› wants to download several files" (Allow / Don't Allow), for a document's second download onward (`PageDownloadGate`). A
+    /// question that can't be shown yet (the tab isn't shown, another sheet is up) is held until it can, as Chrome queues a tab's question
+    /// until the tab is shown. `unasked` only when it is dropped: a new document committed, the page closed, the tab forgotten or the window
+    /// closed.
     func confirmSeveralDownloads(tabID: UUID, host: String?) async -> QuestionAnswer
     /// "‹host› wants to download a file" (Allow / Don't Allow), for the first download of a page Stave reopened by itself, which nobody
     /// has acted on yet. Asked only while the tab is shown; otherwise `unasked`. Navigating takes its sheet down (`unasked`).
@@ -222,14 +225,6 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         let error = error as NSError
         guard grantedFolder != nil, currentURL?.isFileURL == true, error.domain == "WebKitInternal", error.code == 0 else { return false }
         return error.userInfo[NSURLErrorFailingURLErrorKey] == nil && error.userInfo[NSURLErrorFailingURLStringErrorKey] == nil
-    }
-
-    /// A safe, unused file name in `directory`. Check-then-use: if a file appears there before WebKit
-    /// writes, WebKit fails the download rather than overwriting it.
-    static func destination(for suggestedFilename: String, in directory: URL) -> URL {
-        DownloadFilename.unique(DownloadFilename.sanitized(suggestedFilename), in: directory) {
-            FileManager.default.fileExists(atPath: $0.path)
-        }
     }
 
     // MARK: Navigation
@@ -494,15 +489,25 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
         let access = await folderCheck.access(directory)
         // The questions may have been up for a while: everything is looked up again.
         guard let host, let events, let owner = events.downloadOwner(tabID: tabID) else { return nil }
+        // WebKit may have failed this download while its question was held: no row, no name.
+        guard !host.downloadHasFailedBeforeBegin(download) else { return nil }
         guard access == .readable else {
             let rowID = events.downloads.begin(owner: owner, filename: DownloadFilename.sanitized(suggestedFilename), sourceHost: nil)
             events.downloads.fail(rowID, message: access == .refused ? PageText.downloadsFolderRefused : PageText.downloadsFolderUnavailable)
             return nil
         }
         // The folder that was checked, so no other folder's question can come up on the main thread.
-        let destination = Self.destination(for: suggestedFilename, in: directory)
-        let source = Self.quarantineSource(download.originalRequest?.url ?? response.url, pageURL: page?.webView.url ?? page.flatMap { URL(string: $0.status.url) })
-        let rowID = events.downloads.begin(owner: owner, filename: destination.lastPathComponent, sourceHost: source?.host)
+        // A safe, unused, reserved name; if a file appears there before WebKit writes, WebKit fails the download rather than overwrite it.
+        let destination = await host.reserveDestination(for: suggestedFilename, in: directory)
+        // Checked again with no suspension before the row and the name are kept: a failure during the listing gives the name back.
+        guard !host.downloadHasFailedBeforeBegin(download) else {
+            host.releaseDestination(destination)
+            return nil
+        }
+        let pageURL = page?.webView.url ?? page.flatMap { URL(string: $0.status.url) }
+        let downloadURL = Self.quarantineSource(download.originalRequest?.url ?? response.url, pageURL: pageURL)
+        let source = QuarantineSource(download: downloadURL, page: pageURL)
+        let rowID = events.downloads.begin(owner: owner, filename: destination.lastPathComponent, sourceHost: downloadURL?.host)
         host.beginDownload(download, delegate: self, rowID: rowID, list: events.downloads, destination: destination, source: source)
         return destination
     }
@@ -512,7 +517,7 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
     /// downloads that arrive while one is up wait for it and follow its answer. After an Allow on the first-download question the waiting
     /// ones go on to one several-files question that covers them all (the first of them asks it). The several-files answer holds for the
     /// rest of the document; the first-download answer is not kept, but the download counts as the document's first either way. A question
-    /// that can't be asked counts as refused.
+    /// that is dropped (`unasked`) refuses that download and records nothing.
     func mayDownload() async -> Bool {
         let navigation = page.map(\.commitCount)
         let untouched = page?.awaitsUserAction ?? false
@@ -551,7 +556,7 @@ public final class PageDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, W
             return false
         }
         let answer = await events.confirmSeveralDownloads(tabID: tabID, host: page.flatMap { SiteHost.normalized($0.status.url) })
-        // A question that couldn't be asked refuses this download but is no answer: the gate records only the user's.
+        // A dropped question refuses this download but is no answer: the gate records only the user's.
         if answer != .unasked { downloadGate.answer(allow: answer == .allowed, navigation: navigation) }
         if epoch == questionEpoch { endQuestion(with: answer == .allowed ? .allowed : .refused) }
         return answer == .allowed

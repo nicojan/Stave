@@ -833,7 +833,7 @@ struct PageHostTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let file = dir.appendingPathComponent("f.txt")
         try Data("x".utf8).write(to: file)
-        try Quarantine.mark(file, source: URL(string: "https://example.com/f")!)
+        try Quarantine.mark(file, source: QuarantineSource(download: URL(string: "https://example.com/f")!, page: URL(string: "https://example.com/")))
         let fresh = URL(fileURLWithPath: file.path)
         let values = try fresh.resourceValues(forKeys: [.quarantinePropertiesKey])
         let properties = try #require(values.quarantineProperties)
